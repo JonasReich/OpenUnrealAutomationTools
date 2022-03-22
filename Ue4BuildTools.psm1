@@ -197,11 +197,13 @@ function Set-Ue4ConfigValue {
 }
 
 function Get-Ue4ProjectVersion {
+    param([parameter()] [string] $FallbackVersion = "0.1.0")
+
     $GeneralProjectSettings = (Get-Ue4Config "Game")."/Script/EngineSettings.GeneralProjectSettings"
     if ($GeneralProjectSettings.ContainsKey("ProjectVersion")) {
         return $GeneralProjectSettings.ProjectVersion
     } else {
-        return ""
+        return "$FallbackVersion"
     }
 }
 
