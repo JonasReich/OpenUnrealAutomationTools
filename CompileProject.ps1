@@ -36,7 +36,7 @@ if ($HasCore7Features) {
 }
 
 $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
-$TimeStamp = Get-Date -Format "yyyy-MM-dd-HH-mm"
+$TimeStamp = Get-Date -Format "yyyy-MM-dd_HH-mm"
 
 $UProjectPath = ""
 Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Verbose -Force
@@ -72,33 +72,35 @@ if ($UProjectPath -match "(?<ProjectName>[a-zA-Z0-9]+).uproject") {
 
 $UProject = Open-UEProject $UProjectPath
 
-Write-Output "-------------------------------------------------"
-Write-Output "Compiling Game Project"
-Write-Output "-------------------------------------------------"
-
 if ($UseBuildGraph) {
+    Write-Output "-------------------------------------------------"
+    Write-Output "Compiling Game Project (Build Graph)"
+    Write-Output "-------------------------------------------------"
+    
     # Compile editor binaries with BuildGraph
     # Buildgraph parameter names that contain colons (e.g. '-set:ProjectName') must be quoted.
     # Otherwise powershell inserts an unwanted space
     Start-UE UAT BuildGraph -script="$ScriptDirectory\Graph.xml" -target="Compile Game Editor" "-Set:ProjectName=`"$ProjectName`"" "-Set:ProjectDir=`"$RootFolder`"" "-Set:BuildConfig=Development"
 } else {
+    Write-Output "-------------------------------------------------"
+    Write-Output "Compiling Game (UBT)"
+    Write-Output "-------------------------------------------------"
+    
     # Regenerate project files
-    Start-UE UBT -projectfiles -project="$UProjectPath" -game -rocket -progress
+    Write-UEProjectFiles
 
-    # Compile editor and standalone binaries via UBT
-    $EditorTargetName = $ProjectName+"Editor"
-    Start-UE UBT "$EditorTargetName" "Development" "Win64" -project="$UProjectPath" -NoHotReloadFromIDE -editorrecompile -progress -noubtmakefiles -utf8output
-    Start-UE UBT "$ProjectName" "Development" "Win64" -project="$UProjectPath" -NoHotReloadFromIDE -editorrecompile -progress -noubtmakefiles -utf8output
+    # Compile editor binaries
+    $EditorTarget = "$ProjectName"+"Editor"
+    Build-UE "$EditorTarget" Development
+
+    # Compile standalone binaries
+    Build-UE "$ProjectName" Development
 }
 
 if ($RunTests) {
     Write-Output "-------------------------------------------------"
     Write-Output "Run Tests"
     Write-Output "-------------------------------------------------"
-    
-    # Launch Unreal with tests
-    $EditorTests = $true
-    $TestArgs = If ($EditorTests) { "-editor" } else { "-game" }
     
     # Fill from cmdline?
     $ExtraTests = "OpenUnrealUtilities"

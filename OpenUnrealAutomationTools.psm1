@@ -120,6 +120,74 @@ function Expand-Array {
     }
 }
 
+
+<#
+.SYNOPSIS
+    Regenerate the C++ solution and project files.
+.DESCRIPTION
+    This command should be executted ahead of any build commands.
+    It's not automatically invoked within the build command itself, because regenerating the project files
+    is a waste of time if you build multiple targets in a row.
+#>
+function Write-UEProjectFiles {
+    Start-UE UBT -projectfiles -project="$CurrentProjectPath" -game -rocket -progress
+}
+
+
+enum UeBuildTarget {
+    Game
+    Server
+    Client
+    Editor
+    Program
+}
+
+enum UeBuildConfiguration {
+    Debug
+    DebugGame
+    Development
+    Shipping
+    Test
+}
+
+<#
+.SYNOPSIS
+    Build a UE target using Unreal Build Tool (UBT)
+#>
+function Build-UE {
+    param(
+        [Parameter(Mandatory = $true)]
+        [String]
+        $Target,
+
+        [Parameter(Mandatory = $true)]
+        [UeBuildConfiguration]
+        $BuildConfigruation,
+
+        [String]
+        $Platform = "Win64",
+
+        # Any remaining arguments that should be passed to the UE program
+        [parameter(ValueFromRemainingArguments = $true)]
+        $RemainingArguments
+    )
+    Assert-UEEnvironment
+
+    $UBT_BuildConfiguration_Args = @{
+        [UeBuildConfiguration]::Debug       = "Debug"
+        [UeBuildConfiguration]::DebugGame   = "DebugGame"
+        [UeBuildConfiguration]::Development = "Development"
+        [UeBuildConfiguration]::Shipping    = "Shipping"
+        [UeBuildConfiguration]::Test        = "Test"
+    }
+
+    $BuildConfigurationArg = $UBT_BuildConfiguration_Args[$BuildConfigruation]
+    $EditorArgs = if ($Target -eq [UeBuildTarget]::Editor) { "-editorrecompile" } else { "" }
+
+    Start-UE UBT $Target $BuildConfigurationArg $Platform "-project=`"$CurrentProjectPath`"" -NoHotReloadFromIDE -progress -noubtmakefiles -utf8output $EditorArgs $RemainingArguments
+}
+
+
 <#
 .SYNOPSIS
     Starts an UE program with arbitrary command-line arguments.
@@ -289,4 +357,4 @@ function Set-UEProjectVersion {
     $Version | Set-UEConfigValue -ConfigName "Game" -Key "ProjectVersion" -Section "/Script/EngineSettings.GeneralProjectSettings"
 }
 
-Export-ModuleMember -Function Open-UEProject, Get-UEProgramPath, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
+Export-ModuleMember -Function Open-UEProject, Get-UEProgramPath, Write-UEProjectFiles, Build-UE, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
