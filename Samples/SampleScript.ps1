@@ -39,7 +39,7 @@ $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
 $TimeStamp = Get-Date -Format "yyyy-MM-dd_HH-mm"
 
 $UProjectPath = ""
-Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Verbose -Force
+Import-Module -Name "$ScriptDirectory/../OpenUnrealAutomationTools.psm1" -Verbose -Force
 
 if ([string]::IsNullOrEmpty($RootFolder)) {
     $RootFolder = Resolve-Path "$ScriptDirectory/.."
