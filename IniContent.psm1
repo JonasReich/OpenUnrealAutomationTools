@@ -1,6 +1,10 @@
 <#
 These functions are mostly based on https://gist.github.com/beruic/1be71ae570646bca40734280ea357e3c, which itself is
 mostly based on this stackoverflow thread: https://stackoverflow.com/a/43697842/1031534.
+
+Be careful when using with Unreal Engine ini files!
+Array syntax (multiple duplicate keys with + prefix) is not supported for export / write functions - only read functions!
+For such operations, you should probably use some kind of Unreal Engine commandlet.
 #>
 
 <#
@@ -16,6 +20,8 @@ Get-IniContent /path/to/my/inifile.ini
 .NOTES
 The resulting hash table has the form [SectionName->SectionContent], where SectionName is a string and SectionContent is a hash table of the form [key->value] where both are strings.
 #>
+
+$ErrorActionPreference = "Stop"
 function Get-IniContent {
     param(
         # The path to the INI file.
@@ -73,7 +79,15 @@ function Get-IniContent {
                 $Ini[$Section] = @{}
             }
             $name, $Value = $Matches[1..2]
-            $Ini[$Section][$name] = $Value
+            if ($name.StartsWith("+")) {
+                $key = $name.Substring(1)
+                if (-not $Ini[$Section].ContainsKey($key)) {
+                    $Ini[$Section][$key] = New-Object System.Collections.ArrayList
+                }
+                $Ini[$Section][$key].Add($Value) | Out-Null
+            } else {
+                $Ini[$Section][$name] = $Value
+            }
             continue
         }
     }
