@@ -10,11 +10,20 @@ $UEEnvironmentVariables = @(
     "CurrentProjectDirectory",
     "CurrentUProject",
     "CurrentEngineAssociation",
-    "EngineInstallRoot"
+    "EngineInstallRoot",
+    "UEIsInstalledBuild",
+    "UEMajorVersion",
+    "UEMinorVersion",
+    "UEPatchVersion",
+    "UEVersion"
 )
 
 foreach ($VariableName in $UEEnvironmentVariables) {
     Set-Variable -Name $VariableName -Value $null
+}
+
+function Get-UEVersionFilePath {
+    return "$EngineInstallRoot\Engine\Build\Build.version"
 }
 
 function Assert-UEEnvironment {
@@ -43,6 +52,7 @@ function Open-UEProject {
         [String]
         $ProjectPath
     )
+    Write-Verbose "Opening UE project `"$ProjectPath`""
     $script:CurrentProjectPath = Resolve-Path $ProjectPath
     $script:CurrentProjectName = (Get-Item $CurrentProjectPath).Name -replace ".uproject", ""
     $script:CurrentProjectDirectory = (Get-Item $CurrentProjectPath).Directory
@@ -50,20 +60,40 @@ function Open-UEProject {
     $script:CurrentUProject = ConvertFrom-Json -InputObject (Get-Content -raw $ProjectPath)
     
     $script:CurrentEngineAssociation = $CurrentUProject.EngineAssociation
-    $CustomBuildEnginePath = (Get-ItemProperty "Registry::HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds")."$CurrentEngineAssociation"
-    if (Test-Path $CustomBuildEnginePath) {
+    try {
+        $CustomBuildEnginePath = (Get-ItemProperty "Registry::HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds")."$CurrentEngineAssociation"
+        Test-Path $CustomBuildEnginePath
         $script:EngineInstallRoot = Resolve-Path $CustomBuildEnginePath
     }
-    else {
+    catch {
         $InstalledEnginePath = (Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\EpicGames\Unreal Engine\$CurrentEngineAssociation" -Name "InstalledDirectory").InstalledDirectory
         $script:EngineInstallRoot = Resolve-Path ($InstalledEnginePath)
     }
 
+    $script:UEIsInstalledBuild = if (Test-Path "$EngineInstallRoot\Engine\Build\InstalledBuild.txt") { $true } else { $false }
+
     Write-Verbose "Set current UE project to $CurrentProjectName ($CurrentProjectPath)"
     Write-Verbose "Engine association: $CurrentEngineAssociation ($EngineInstallRoot)"
 
-    Assert-UEEnvironment
-    
+    $EngineVersionFilePath = Get-UEVersionFilePath
+    if (Test-Path $EngineVersionFilePath) {
+        $EngineVersionFile = ConvertFrom-Json -InputObject (Get-Content -raw $EngineVersionFilePath)
+        $script:UEMajorVersion = $EngineVersionFile.MajorVersion
+        $script:UEMinorVersion = $EngineVersionFile.MinorVersion
+        $script:UEPatchVersion = $EngineVersionFile.PatchVersion
+        Write-Verbose "Detected UE Version from Build.version file"
+    }
+    else {
+        Write-Warning "Failed to detect engine version (Build.version file not found). Assuming UE 5.0.0"
+        $script:UEMajorVersion = 5
+        $script:UEMinorVersion = 0
+        $script:UEPatchVersion = 0
+    }
+    $script:UEVersion = "$UEMajorVersion.$UEMinorVersion.$UEPatchVersion"
+    Write-Verbose "Engine Version: $script:UEVersion"
+
+    Assert-UEEnvironment 
+
     return $CurrentUProject
 }
 
@@ -79,11 +109,18 @@ enum UEProgram {
     EditorCmd
 }
 
-$ProgramPaths = @{
+$ProgramPaths_UE4_Legacy = @{
     [UEProgram]::UAT       = "\Engine\Build\BatchFiles\RunUAT.bat"
     [UEProgram]::UBT       = "\Engine\Build\BatchFiles\Build.bat"
     [UEProgram]::Editor    = "\Engine\Binaries\Win64\UE4Editor.exe"
     [UEProgram]::EditorCmd = "\Engine\Binaries\Win64\UE4Editor-Cmd.exe"
+}
+
+$ProgramPaths = @{
+    [UEProgram]::UAT       = "\Engine\Build\BatchFiles\RunUAT.bat"
+    [UEProgram]::UBT       = "\Engine\Build\BatchFiles\Build.bat"
+    [UEProgram]::Editor    = "\Engine\Binaries\Win64\UnrealEditor.exe"
+    [UEProgram]::EditorCmd = "\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 }
 
 <#
@@ -100,7 +137,8 @@ function Get-UEProgramPath {
         $Program
     )
     Assert-UEEnvironment
-    $RelativePath = $ProgramPaths[$Program]
+    
+    $RelativePath = if ($script:UEMajorVersion -gt 4) { $ProgramPaths[$Program] } else { $ProgramPaths_UE4_Legacy[$Program] }
     Resolve-Path  "$EngineInstallRoot\$RelativePath"
 }
 
@@ -154,7 +192,7 @@ enum UeBuildConfiguration {
 .SYNOPSIS
     Build a UE target using Unreal Build Tool (UBT)
 #>
-function Build-UE {
+function Start-UEBuild {
     param(
         [Parameter(Mandatory = $true)]
         [String]
@@ -340,6 +378,10 @@ function Set-UEConfigValue {
     $Value | Set-IniValue -Path $IniPath -Key $Key -Section $Section
 }
 
+function Get-UEEngineVersion {
+
+}
+
 function Get-UEProjectVersion {
     param([parameter()] [string] $FallbackVersion = "0.1.0")
 
@@ -357,4 +399,7 @@ function Set-UEProjectVersion {
     $Version | Set-UEConfigValue -ConfigName "Game" -Key "ProjectVersion" -Section "/Script/EngineSettings.GeneralProjectSettings"
 }
 
-Export-ModuleMember -Function Open-UEProject, Get-UEProgramPath, Write-UEProjectFiles, Build-UE, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
+Export-ModuleMember -Function Open-UEProject, Get-UEProgramPath, Write-UEProjectFiles, Start-UEBuild, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
+foreach ($VariableName in $UEEnvironmentVariables) {
+    Export-ModuleMember -Variable $VariableName
+}

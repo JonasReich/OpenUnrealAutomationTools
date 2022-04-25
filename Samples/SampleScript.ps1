@@ -91,10 +91,10 @@ if ($UseBuildGraph) {
 
     # Compile editor binaries
     $EditorTarget = "$ProjectName"+"Editor"
-    Build-UE "$EditorTarget" Development
+    Start-UEBuild "$EditorTarget" Development
 
     # Compile standalone binaries
-    Build-UE "$ProjectName" Development
+    Start-UEBuild "$ProjectName" Development
 }
 
 if ($RunTests) {
