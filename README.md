@@ -1,6 +1,8 @@
 
 # Open Unreal Automation Tools
 
+![](./Resources/oua_wide.png)
+
 The Open Unreal Automation Tools are lightweight scripts for automating UE4 processes like builds, automation tests, etc.
 
 ## Development
