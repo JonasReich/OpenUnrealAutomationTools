@@ -10,8 +10,9 @@ param(
     [Parameter(Mandatory = $true)]
     $ProjectPath
 )
-
-## POWERSHELL SCRIPT CONFIG
+#--------------
+# POWERSHELL SCRIPT CONFIG
+#--------------
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -24,27 +25,47 @@ $Host.PrivateData.VerboseForegroundColor = 'Cyan'
 $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
 Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Verbose -Force
 
-## GET CONFIG FROM UE
+#--------------
+# GET CONFIG FROM UE
+#--------------
 
 $UProject = Open-UEProject $ProjectPath
 $GameIni = Get-UEConfig Game
 $UECmdPath = Get-UEProgramPath EditorCmd
 
-if ($GameIni.ContainsKey("MapsToCook")) {
-    $MapIniSectionNames = $GameIni["MapsToCook"]["ConfigSections"]
-    Write-Verbose "Detected the following map ini section names: $MapIniSectionNames"
+$MainSectionName = "/Script/OUUDeveloper.OUUMapsToCookSettings"
+
+$MapIniSectionNames = New-Object System.Collections.ArrayList
+$MapIniSectionNames.Add("") | Out-Null
+if ($GameIni.ContainsKey($MainSectionName)) {
+    foreach ($item in $GameIni[$MainSectionName]["ConfigSections"]) {
+        $MapIniSectionNames.Add($item) | Out-Null
+    }
+    if ($GameIni[$MainSectionName].ContainsKey("DefaultConfigSection")) {
+        $DefaultMapIniSection = $GameIni[$MainSectionName]["DefaultConfigSection"]
+        $InitialMapIniSectionIdx = $MapIniSectionNames.IndexOf($DefaultMapIniSection)
+        if ($InitialMapIniSectionIdx -eq -1) {
+            $MapIniSectionNames.Add($DefaultMapIniSection)
+            $InitialMapIniSectionIdx = $MapIniSectionNames.IndexOf($DefaultMapIniSection)
+        }
+    }
+    else {
+        $InitialMapIniSectionIdx = 0
+    }
+    $MapIniSection = $MapIniSectionNames[$InitialMapIniSectionIdx]
+    Write-Verbose "Detected ConfigSections: $MapIniSectionNames."
+    Write-Verbose "Detected DefaultConfigSection: $MapIniSection"
 }
 else {
-    Write-Warning "Expected a config section called [MapsToCook] in DefaultGame.ini to configure which map sections to use for map cook lists."
-    $MapIniSectionNames = @("")
+    Write-Warning "Expected a config section called [$MainSectionName] in DefaultGame.ini to configure which map sections to use for map cook lists."
 }
 
-$MapIniSection = $MapIniSectionNames[0]
-
 $Configuration = "Development"
-$Configurations = @($Configuration, "DebugGame", "Shipping", "Test")
+$Configurations = @("DebugGame", $Configuration, "Shipping", "Test")
 
-## WINFORMS GUI FOR LAUNCHER
+#--------------
+# WINFORMS GUI FOR LAUNCHER
+#--------------
 
 [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
 [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
@@ -55,22 +76,61 @@ $WinForm.Text = "Build Cook Run Launcher"
 $WinForm.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($UECmdPath)
 $WinForm.Topmost = $True
 
+$ToolTip = New-Object System.Windows.Forms.Tooltip
+$ToolTip.AutoPopDelay = 10000;
+$ToolTip.InitialDelay = 1;
+$ToolTip.ReshowDelay = 1;
+$ToolTip.ShowAlways = $true;
+
 $VerticalPadding = 15
 $HorizontalPadding = 10
 $AccumulatedHeight = $VerticalPadding
 
-function AddCombobox {
+$Font_Regular = New-Object System.Drawing.Font("Arial",8,[System.Drawing.FontStyle]::Regular)
+$Font_Bold = New-Object System.Drawing.Font("Arial",8,[System.Drawing.FontStyle]::Bold)
+$Font_Header = New-Object System.Drawing.Font("Arial",10,[System.Drawing.FontStyle]::Bold)
+
+#--------------
+# Layout helpers
+#--------------
+
+function SetTooltip {
+    param(
+        $Element,
+        $TooltipText
+    )
+    if (-not ($TooltipText -eq "")) {
+        $ToolTip.SetToolTip($Element, $TooltipText)
+    }
+}
+
+function AddLabel {
     param(
         $LabelText,
-        $Items
+        $IsHeader = $False,
+        $TooltipText = ""
     )
-
     $Label = New-Object System.Windows.Forms.Label
     $Label.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight)
     $script:AccumulatedHeight += 20
     $Label.Size = New-Object System.Drawing.Size(200, 20)
     $Label.Text = $LabelText
-    $WinForm.Controls.Add($Label)
+    $Label.Font = if ($IsHeader) { $Font_Header } else { $Font_Regular }
+    $WinForm.Controls.Add($Label) | Out-Null
+    SetTooltip $Label $TooltipText
+
+    return $Label
+}
+
+function AddCombobox {
+    param(
+        $LabelText,
+        $Items,
+        $Index = 0,
+        $TooltipText = ""
+    )
+
+    AddLabel -LabelText $LabelText -TooltipText $TooltipText | Out-Null
 
     $Combobox = New-Object System.Windows.Forms.Combobox
     $Combobox.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight)
@@ -82,22 +142,60 @@ function AddCombobox {
         $Combobox.Items.Add($Item) | Out-Null
     }
     $WinForm.Controls.Add($Combobox)
-    $Combobox.SelectedIndex = 0
+    $Combobox.SelectedIndex = $Index
+    SetTooltip $Combobox $TooltipText
 
     return $Combobox
 }
 
+function AddCheckBox {
+    param(
+        $LabelText,
+        $DefaultCheckedState,
+        $TooltipText = ""
+    )
+    $Checkbox = New-Object System.Windows.Forms.Checkbox 
+    $Checkbox.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight) 
+    $Checkbox.Size = New-Object System.Drawing.Size(200, 20)
+    $script:AccumulatedHeight += 20 + $VerticalPadding
+    $Checkbox.Text = $LabelText
+    $Checkbox.TabIndex = 4
+    $Checkbox.Checked = $DefaultCheckedState
+    $WinForm.Controls.Add($Checkbox) | Out-Null
+    SetTooltip $Checkbox $TooltipText
+
+    return $Checkbox
+}
+
+#--------------
+# Primary Layout
+#--------------
+
+AddLabel -LabelText "Build" -IsHeader $true | Out-Null
+
+# Build configuration combobox
+$ConfigurationCombobox = AddCombobox -LabelText "Build Config (Server + Client)" -Items ($Configurations) -Index 1 -TooltipText "DebugGame is best for detailed debugging. `
+Shipping does not have any logs / debug info.`
+Development is a good default in-between.`
+Test is closest to Shipping for performance testing."
+
+$ConfigurationCombobox.Add_SelectedIndexChanged({
+    $script:Configuration = $ConfigurationCombobox.Text
+})
+
+AddLabel -LabelText "Cook" -IsHeader $true | Out-Null
+
 # Maps to cook combobox
-$IniSectionCombobox = AddCombobox -LabelText "MapsToCook config section" -Items ($MapIniSectionNames)
+$IniSectionCombobox = AddCombobox -LabelText "MapsToCook config section" -Items ($MapIniSectionNames) -Index $InitialMapIniSectionIdx -TooltipText "Name of the map list to use for the build. Changes cooked maps and startup map."
 $IniSectionCombobox.Add_SelectedIndexChanged({
     $script:MapIniSection = $IniSectionCombobox.Text
 })
 
-# Build configuration combobox
-$ConfigurationCombobox = AddCombobox -LabelText "Build Config (Server + Client)" -Items ($Configurations)
-$ConfigurationCombobox.Add_SelectedIndexChanged({
-    $script:Configuration = $ConfigurationCombobox.Text
-})
+$PakCheckbox = AddCheckBox -LabelText "pak" -DefaultCheckedState $False -TooltipText "Combine assets into a few .pak files"
+
+AddLabel -LabelText "Run" -IsHeader $true | Out-Null
+
+$WaitForAttachCheckbox = AddCheckBox -LabelText "waitforattach" -DefaultCheckedState $False -TooltipText "Pause game until a debugger is attached. Useful to debug startup code."
 
 # Additional padding before launch button
 $AccumulatedHeight += $VerticalPadding
@@ -116,6 +214,10 @@ $LaunchButton.Add_Click({
     })
 $WinForm.Controls.Add($LaunchButton)
 
+#--------------
+# Show form + wait
+#--------------
+
 # Adjust size based on content (no scrolling / fixed size)
 $TitleBarHeight = 40
 $WinForm.Size = New-Object System.Drawing.Size(350, ($AccumulatedHeight + $TitleBarHeight))
@@ -125,21 +227,70 @@ $WinForm.MaximizeBox = $false
 # Shows the winform and pauses until closed
 [void] $WinForm.ShowDialog()
 
-## REACT TO GUI INPUTS / LAUNCH BuildCookRun
-
-if ($LaunchClicked) {
-    # TODO Add before -run parameter (?)
-    # -cmdline=" -Messaging" -device=WindowsNoEditor@DEUMUCCLW032 -addcmdline="-SessionId=E6ACA1E245978B313340D4A46A0995FD -SessionOwner='jreich' -SessionName='BuildCookLaunch_TQ2_Development'  "
-    $ExecutableArg = if ($script:UEMajorVersion -gt 4) { "-unrealexe=$UECmdPath" } else { "-ue4exe=$UECmdPath" }
-    $ConfigurationArgs = @("-clientconfig=$Configuration", "-serverconfig=$Configuration")
-
-    # TODO: Is this the right condition / what is the flag used for? Is this dependent on the engine version or the desired build output?
-    $InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
-
-    $PlatformArgs = @("-platform=Win64", "-targetplatform=Win64")
-    
-    Start-UE UAT -ScriptsForProject="$ProjectPath" BuildCookRun -project="$ProjectPath" $ExecutableArg -noP4 $ConfigurationArgs -nocompile -nocompileeditor $InstalledArg -utf8output $PlatformArgs -build -cook "-additionalcookeroptions='-MAPINISECTION=$MapIniSection'" -iterativecooking -SkipCookingEditorContent -compressed -iterativedeploy -stage -deploy -run
-}
-else {
+if (-not $LaunchClicked) {
     Write-Warning "Operation was canceled by user"
+    exit
 }
+
+#--------------
+# GENERAL SETTINGS
+#--------------
+$ExecutableArg = if ($script:UEMajorVersion -gt 4) { "-unrealexe=$UECmdPath" } else { "-ue4exe=$UECmdPath" }
+$GENERAL_ARGS = @(
+    "-project=\`"$ProjectPath\`"",
+    $ExecutableArg,
+    "-noP4",
+    "-utf8output"
+)
+
+#--------------
+# COMPILE / BUILD
+#--------------
+$ConfigurationArgs = @("-clientconfig=$Configuration", "-serverconfig=$Configuration")
+
+# TODO: Is this the right condition / what is the flag used for? Is this dependent on the engine version or the desired build output?
+$InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
+
+$COMPILE_ARGS = @(
+    $ConfigurationArgs,      # see above
+    "-nocompile",            # do not compile engine binaries from source
+    "-nocompileeditor",      # do not compile editor binaries
+    $InstalledArg,           # see above
+    "-platform=Win64",       # current platform
+    "-targetplatform=Win64"  # platform for game
+    "-build"                 # build the game
+)
+
+#--------------
+# COOK
+#--------------
+$MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`"" } else { $null }
+$PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
+$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
+
+#--------------
+# STAGE
+#--------------
+$STAGE_ARGS = @("-stage")
+
+#--------------
+# DEPLOY
+#--------------
+# As long as we do not support platforms other than Win64, deploy is not required
+$DEPLOY_ARGS = @() # @("-deploy", "-iterativedeploy")
+
+#--------------
+# RUN
+#--------------
+# These parameters were also present in default cmdline from ProjectLauncher
+# -cmdline=" -Messaging"  # -> command line to put into the stage in UE4CommandLine.txt
+# -device=WindowsNoEditor@PCNAME  # -> on which device to run
+# -addcmdline="-SessionId=E6ACA1E245978B313340D4A46A0995FD -SessionOwner='username' -SessionName='BuildCookLaunch_GameName_Development'  "  # -> pass session info to run cmdline
+
+# additional commandline args for game build during "run" step
+$WaitForAttachArg = if ($WaitForAttachCheckbox.Checked) { "-waitforattach" } else { "" }
+$RunCmdline = "$WaitForAttachArg"
+$RunCmdlineArg = if ($RunCmdline.Length -gt 0) { "-addcmdline=\`"$RunCmdline\`"" } else { $null }
+$RUN_ARGS = @("-run", $RunCmdlineArg)
+
+Start-UE UAT -ScriptsForProject="$ProjectPath" BuildCookRun $GENERAL_ARGS $COMPILE_ARGS $COOK_ARGS $DEPLOY_ARGS $STAGE_ARGS $RUN_ARGS
