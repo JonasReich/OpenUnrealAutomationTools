@@ -1,2 +1,4 @@
 .git
 Saved/
+__pycache__/
+*.egg-info
