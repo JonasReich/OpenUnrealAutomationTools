@@ -29,8 +29,10 @@ class UnrealEngine:
         return UnrealEngine(UnrealEnvironment.create_from_project_file(project_file=project_file))
 
     def run(self, program: UnrealProgram, arguments: list[str], raise_on_error: bool = True, add_default_parameters: bool = True) -> int:
-        all_arguments = [self.environment.get_program_path(program),
-                         self.environment.project_name] + arguments
+        optional_project_argument = [self.environment.project_name] if program in [
+            UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] else []
+        all_arguments = [self.environment.get_program_path(
+            program)] + optional_project_argument + arguments
         if add_default_parameters:
             all_arguments += self.get_default_program_arguments(program)
 
@@ -42,7 +44,7 @@ class UnrealEngine:
                 f"Program {program} returned non-zero exit code: {exit_code}")
         return exit_code
 
-    def generate_project_files(self) -> None:
+    def generate_project_files(self, engine_sln = False) -> None:
         if not self.environment.is_source_engine and not self.environment.has_project:
             raise OUAException(
                 "Cannot generate project files for environments that are not source builds but also do not have a project")
@@ -52,10 +54,10 @@ class UnrealEngine:
 
         # Generate the project files
         generate_script = self.get_generate_script()
-        subprocess.call([generate_script,
-                         "-project=" + str(self.environment.project_file),
-                         "-game",
-                         "-engine"],
+        project_args = ["-project=" + str(self.environment.project_file),
+                         "-game"] if not engine_sln else []
+        generate_args = [generate_script] + project_args
+        subprocess.call(generate_args,
                         cwd=os.path.dirname(self.environment.project_root))
 
     def get_generate_script(self) -> str:
