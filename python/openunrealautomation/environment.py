@@ -41,7 +41,8 @@ class UnrealEnvironment:
         self.is_installed_engine = os.path.exists(
             f"{engine_root}/Engine/Build/InstalledBuild.txt")
 
-        self.engine_version = UnrealVersion.create_from_file(f"{self.engine_root}/Engine/Build/Build.version")
+        self.engine_version = UnrealVersion.create_from_file(
+            f"{self.engine_root}/Engine/Build/Build.version")
 
         self.project_root = os.path.abspath(project_root)
         self.project_file = os.path.abspath(str(project_file))
@@ -52,14 +53,14 @@ class UnrealEnvironment:
 
     def __str__(self) -> str:
         has_project_bool = self.has_project()
-        
+
         if self.is_source_engine:
             distribution_type = "Source"
         elif self.is_installed_engine:
             distribution_type = "Installed"
         else:
             distribution_type = "Unknown"
-        
+
         return \
             f"Engine Root:     {self.engine_root}\n"\
             f"Engine Version:  {self.engine_version}\n"\
@@ -116,7 +117,7 @@ class UnrealEnvironment:
             return engine_root
 
         engine_root = UnrealEnvironment.find_engine_parent_dir(
-            project_file)
+            project_file.file_path)
         if engine_root is None:
             raise OUAException(
                 f"Could not find an engine root for project file {project_file}")
