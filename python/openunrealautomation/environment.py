@@ -2,11 +2,13 @@ import glob
 import os
 import pathlib
 import winreg
+from datetime import datetime
 
-from openunrealautomation.core import *
-from openunrealautomation.descriptor import UnrealProjectDescriptor, UnrealPluginDescriptor
-from openunrealautomation.version import UnrealVersion
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
+from openunrealautomation.core import *
+from openunrealautomation.descriptor import (UnrealPluginDescriptor,
+                                             UnrealProjectDescriptor)
+from openunrealautomation.version import UnrealVersion
 
 
 class UnrealEnvironment:
@@ -18,6 +20,9 @@ class UnrealEnvironment:
 
     Use the create_from_* factory methods instead of creating an UnrealPaths object directly.
     """
+
+    creation_time: datetime = None
+    creation_time_str :str = ""
 
     # Path to the engine root directory
     engine_root: str = ""
@@ -58,6 +63,11 @@ class UnrealEnvironment:
             print(f"Created Unreal Environment:\n{self}")
 
     def __str__(self) -> str:
+        # Cache the creation time once so it can be used by various processes as timestamp
+        # The format string is adopted from the way UE formats the timestamps for log file backups.
+        self.creation_time = datetime.now()
+        self.creation_time_str = datetime.strftime(self.creation_time, "%Y.%m.%d-%H.%M.%S")
+
         has_project_bool = self.has_project()
 
         if self.is_source_engine:
@@ -72,6 +82,7 @@ class UnrealEnvironment:
 
         ouu = self.find_open_unreal_utilities()
         return \
+            f"Creation Time:   {self.creation_time_str}\n"\
             f"Engine Root:     {self.engine_root}\n"\
             f"Engine Version:  {self.engine_version}\n"\
             f"Distribution:    {distribution_type}\n"\
@@ -129,6 +140,9 @@ class UnrealEnvironment:
     def has_project(self) -> bool:
         return len(self.project_root) > 0
 
+    def is_native_project(self)-> bool:
+        return self.project_root.startswith(self.engine_root)
+
     def find_plugin(self, plugin_name) -> UnrealPluginDescriptor:
         engine_plugin = self.find_plugin_in_dir(
             dir=f"{self.engine_root}/Engine/Plugins", plugin_name=plugin_name)
@@ -150,7 +164,7 @@ class UnrealEnvironment:
 
     def has_open_unreal_utilities(self) -> bool:
         """Is the OpenUnrealUtilities plugin installed?"""
-        return bool(self.find_open_unreal_utilities("OpenUnrealUtilities"))
+        return bool(self.find_open_unreal_utilities())
 
     def get_program_path(self, program: UnrealProgram) -> str:
         if program == UnrealProgram.UAT:

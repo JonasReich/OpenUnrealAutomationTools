@@ -18,6 +18,28 @@ class UnrealProgram(Enum):
     EDITOR_CMD = 3
 
 
+class UnrealBuildConfiguration(Enum):
+    DEBUG = 0, "Debug"
+    DEBUG_GAME = 1, "DebugGame"
+    DEVELOPMENT = 2, "Development"
+    SHIPPING = 3, "Shipping"
+    TEST = 4, "Test"
+
+    def __str__(self) -> str:
+        return self.value[1]
+
+
+class UnrealBuildTarget(Enum):
+    GAME = 0, "Game"
+    SERVER = 1, "Server"
+    CLIENT = 2, "Client"
+    EDITOR = 3, "Editor"
+    PROGRAM = 4, "Program"
+
+    def __str__(self) -> str:
+        return self.value[1]
+
+
 def walklevel(top, topdown=True, onerror=None, followlinks=False, level=1):
     """
     Copy of os.walk() with additional level parameter.
@@ -33,7 +55,8 @@ def walklevel(top, topdown=True, onerror=None, followlinks=False, level=1):
         if num_sep + level <= num_sep_this:
             del dirs[:]
 
-def walkparents(dir:str) -> Generator[str, None, None]:
+
+def walkparents(dir: str) -> Generator[str, None, None]:
     """Go through all parent directories of the given dir."""
     path = pathlib.Path(dir)
     while True:
