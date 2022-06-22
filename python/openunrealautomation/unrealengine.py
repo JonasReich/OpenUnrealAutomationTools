@@ -1,14 +1,17 @@
 import os
 import subprocess
 import winreg
+
 from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.version import UnrealVersion
 
 
 class UnrealEngine:
     """
     Interact with Unreal Engine executables (editor, build tools, etc) via this manager object.
+
+    This class should never cache any paths directly. All of that must be done in UnrealEnvironment.
+    If UnrealEnvironment changes, all functions should work as expected with the new environment.
     """
 
     environment: UnrealEnvironment = None
@@ -28,11 +31,30 @@ class UnrealEngine:
     def create_from_project_file(project_file: str) -> 'UnrealEngine':
         return UnrealEngine(UnrealEnvironment.create_from_project_file(project_file=project_file))
 
-    def run(self, program: UnrealProgram, arguments: list[str], raise_on_error: bool = True, add_default_parameters: bool = True) -> int:
-        optional_project_argument = [self.environment.project_name] if program in [
+    @staticmethod
+    def create_from_parent_tree(folder: str) -> 'UnrealEngine':
+        """Recursively search through parents in the directory tree until either a project or engine root is found (project root is preferred) to create the environment for UE."""
+        return UnrealEngine(UnrealEnvironment.create_from_parent_tree(folder=folder))
+
+    def run(self, program: UnrealProgram, arguments: "list[str]" = [], map: str = None, raise_on_error: bool = True, add_default_parameters: bool = True) -> int:
+        # project
+        project_arg = [self.environment.project_name] if program in [
             UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] else []
-        all_arguments = [self.environment.get_program_path(
-            program)] + optional_project_argument + arguments
+
+        # map
+        if not map is None:
+            map_arg = [map]
+        elif add_default_parameters and self.environment.has_open_unreal_utilities():
+            # Unreal does not come with a completely empty map we can use for unit tests, etc.
+            # so we use the OUU EmptyWorld map
+            map_arg = ["/OpenUnrealUtilities/Runtime/EmptyWorld"]
+        else:
+            map_arg = []
+
+        # combine
+        all_arguments = [self.environment.get_program_path(program)] +\
+            project_arg + map_arg + arguments
+
         if add_default_parameters:
             all_arguments += self.get_default_program_arguments(program)
 
@@ -44,7 +66,7 @@ class UnrealEngine:
                 f"Program {program} returned non-zero exit code: {exit_code}")
         return exit_code
 
-    def generate_project_files(self, engine_sln = False) -> None:
+    def generate_project_files(self, engine_sln=False) -> None:
         if not self.environment.is_source_engine and not self.environment.has_project:
             raise OUAException(
                 "Cannot generate project files for environments that are not source builds but also do not have a project")
@@ -55,7 +77,7 @@ class UnrealEngine:
         # Generate the project files
         generate_script = self.get_generate_script()
         project_args = ["-project=" + str(self.environment.project_file),
-                         "-game"] if not engine_sln else []
+                        "-game"] if not engine_sln else []
         generate_args = [generate_script] + project_args
         subprocess.call(generate_args,
                         cwd=os.path.dirname(self.environment.project_root))
@@ -79,9 +101,14 @@ class UnrealEngine:
         raise OUAException(
             "Failed to determine GenerateProjectFiles script/command")
 
-    def get_default_program_arguments(self, program: UnrealProgram) -> list[str]:
+    def get_default_program_arguments(self, program: UnrealProgram) -> "list[str]":
         if program == UnrealProgram.EDITOR:
             return []
         if program == UnrealProgram.EDITOR_CMD:
             return ["-unattended", "-buildmachine", "-stdout", "-nopause", "-nosplash"]
         return []
+
+
+if __name__ == "__main__":
+    module_path = os.path.realpath(os.path.dirname(__file__))
+    ue = UnrealEngine.create_from_parent_tree(module_path)

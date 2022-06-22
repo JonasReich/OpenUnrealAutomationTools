@@ -1,8 +1,8 @@
-from openunrealautomation.core import OUAException
-from openunrealautomation.descriptor import UnrealDescriptor
-
 from enum import Enum
 from re import search
+
+from openunrealautomation.core import OUAException
+from openunrealautomation.descriptor import UnrealDescriptor
 
 
 class UnrealVersionComparison(Enum):
@@ -102,20 +102,19 @@ class UnrealVersion():
             return UnrealVersionComparison.FIRST if first.changelist > second.changelist else UnrealVersionComparison.SECOND
         return UnrealVersionComparison.NEITHER
 
-# Check that version string conversion works at module startup
 
-
-def _test_version_string_conversion(test_string, expected_result):
+def _test_version_string_conversion(test_string, expected_result) -> None:
     result = str(UnrealVersion.create_from_string(test_string))
     if not expected_result == result:
         raise OUAException(
             f"Conversion of {test_string} to UnrealVersion returned invalid result {result}; expected {expected_result}")
 
 
-def _test_version_string_conversion_SAME(test_string):
+def _test_version_string_conversion_SAME(test_string) -> None:
     _test_version_string_conversion(test_string, test_string)
 
 
+# Check that version string conversion works at module startup
 _test_version_string_conversion_SAME("5.0.2-0+++UE5+Release-5.0")
 _test_version_string_conversion_SAME("5.0.2-0")
 _test_version_string_conversion("5.0.2", "5.0.2-0")
