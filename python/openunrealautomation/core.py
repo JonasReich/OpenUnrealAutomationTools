@@ -16,6 +16,7 @@ class UnrealProgram(Enum):
     UBT = 1
     EDITOR = 2
     EDITOR_CMD = 3
+    PROGRAM = 4
 
 
 class UnrealBuildConfiguration(Enum):
