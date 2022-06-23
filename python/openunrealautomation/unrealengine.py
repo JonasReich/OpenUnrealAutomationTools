@@ -51,14 +51,15 @@ class UnrealEngine:
         """
         Run an Unreal program.
 
-        @param program                      Which unreal program type to run. If program=UnrealProgram.PROGRAM, you must also set program_name
-        @param arguments                    List of arguments to pass to the application.
-        @param map                          If applicable (game/editor) use this as startup map
-        @param program_name                 If program=UnrealProgram.PROGRAM, this is the name of the program to start
-        @param raise_on_error               If true, non-zero exit codes will be raised as exceptions
-        @param add_default_parameters       If true a list of default parameters (including a default map) will be passed to the application
-        @param genearte_coverage_reports    For all targets other than UBT and UAT this will launch the application via opencppcoverage
-                                            if it's installed and generate a coverage report in the project Saved folder
+        program                     Which unreal program type to run. If program=UnrealProgram.PROGRAM, you must also set program_name.
+        arguments                   List of arguments to pass to the application.
+        map                         If applicable (game/editor) use this as startup map.
+        program_name                If program=UnrealProgram.PROGRAM, this is the name of the program to start.
+        raise_on_error              If true, non-zero exit codes will be raised as exceptions.
+        add_default_parameters      If true a list of default parameters (including a default map) will be passed to the application.
+        genearte_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
+
+        returns application exit code
         """
         all_arguments = []
 
@@ -118,7 +119,29 @@ class UnrealEngine:
                 f"Program {program} returned non-zero exit code: {exit_code}")
         return exit_code
 
-    def run_commandlet(self, commandlet_name: str,  arguments: "list[str]" = [], map: str = None, raise_on_error: bool = True, add_default_parameters: bool = True, allow_commandlet_rendering: bool = False) -> int:
+    def run_commandlet(self,
+                       commandlet_name: str,
+                       arguments: "list[str]" = [],
+                       map: str = None,
+                       raise_on_error: bool = True,
+                       add_default_parameters: bool = True,
+                       allow_commandlet_rendering: bool = False,
+                       genearte_coverage_reports: bool = False) -> int:
+        """
+        Run a commandlet in the UE editor.
+
+        commandlet_name             Name of the commandlet.
+        arguments                   Additional commandline arguments to pass to UE.
+        map                         Startup map for the editor. If left empty and OpenUnrealUtilities plugin is installed, an empty map is used by default.
+        raise_on_error              If true, non-zero exit codes will be raised as exceptions.
+        add_default_parameters      If true a list of default parameters (including a default map) will be passed to the application.
+        allow_commandlet_rendering  If true, an additonal commandline flag will be added to allow commandline rendering.
+                                    Otherwise no render commands via RHI can be used by the commandlet.
+                                    Required to be true for any commandlets that deal with textures/materials/render targets/etc.
+        genearte_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
+
+        returns UE's exit code
+        """
         rhi_arg = "-AllowCommandletRendering" if allow_commandlet_rendering else "-nullrhi"
         run_arg = f"-run={commandlet_name}"
         all_arguments = [rhi_arg, run_arg] + arguments
@@ -126,10 +149,10 @@ class UnrealEngine:
                         arguments=all_arguments,
                         map=map,
                         raise_on_error=raise_on_error,
-                        add_default_parameters=add_default_parameters)
+                        add_default_parameters=add_default_parameters,
+                        genearte_coverage_reports=genearte_coverage_reports)
 
     def run_tests(self, test_filter: str = None,
-                  report_export_path: str = None,
                   game_test_target: bool = True,
                   arguments: "list[str]" = [],
                   generate_report_file: bool = True,
@@ -138,21 +161,25 @@ class UnrealEngine:
         """
         Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
 
-        @param test_filter String that specifies which test categories shall be executed. Seprated by pluses. 
+        test_filter                 String that specifies which test categories shall be executed. Seprated by pluses.
+        game_test_target            If true, the editor is launched in game mode (significantly faster). If false in editor mode. The test selection is updated accordingly.
+        arguments                   Additional commandline arguments to pass to UE.
+        generate_report_file        If true, a test report (json + html) is saved by UE into the project's Saved directory.
+        extract_report_viewer       If true, a modified version of the test report html file to view the json is copied into the test report.
+                                    This is to replace UE's default html file, which cannot be used without installing js/css dependencies.
+        genearte_coverage_reports   If true, the application is launched via opencppcoverage to generate code coverage reports in the project's Saved directory.
         """
 
         if test_filter is None:
             optional_ouu_tests = "+OpenUnrealUtilities" if self.environment.has_open_unreal_utilities() else ""
             test_filter = f"{self.environment.project_name}+Project.Functional{optional_ouu_tests}"
-        if report_export_path is None:
-            timestamp = self.environment.creation_time_str
-            report_export_path = f"{self.environment.project_root}/Saved/Automation/Reports/TestReport-{timestamp}"
 
         all_args = ["-game", "-gametest"] if game_test_target \
             else ["-editor", "-editortest"]
         all_args.append(
             f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
         if generate_report_file:
+            report_export_path = f"{self.environment.project_root}/Saved/Automation/Reports/TestReport-{self.environment.creation_time_str}"
             all_args.append(f"-ReportExportPath={report_export_path}")
         all_args.append("-nullrhi")
         all_args += arguments
@@ -180,11 +207,11 @@ class UnrealEngine:
         """
         Run BuildGraph via UAT.
 
-        @param script BuildGraph XML script file
-        @param target The target defined in the script that should be built
-        @param variables (optional) Dictionary of additional variables to pass to buildgraph. Pass the raw variable name as key,
-        this function resolves the -set:key=value syntax.
-        @param arguments (optional) Additonal arguments to pass to UAT (like -buildmachine, -P4, etc.) Include the dash!
+        script          BuildGraph XML script file
+        target          The target defined in the script that should be built
+        variables       (optional) Dictionary of additional variables to pass to buildgraph. Pass the raw variable name as key,
+                        this function resolves the -set:key=value syntax.
+        arguments       (optional) Additonal arguments to pass to UAT (like -buildmachine, -P4, etc.) Include the dash!
         """
         all_arguments = ["BuildGraph",
                          f"-script={script}", f"-target={target}"] + arguments
@@ -193,6 +220,11 @@ class UnrealEngine:
         return self.run(UnrealProgram.UAT, arguments=all_arguments)
 
     def generate_project_files(self, engine_sln=False) -> None:
+        """
+        Generate project files (the C++/C# projects and .sln on Windows).
+
+        engine_sln      If true, the solution will be generated for the engine. If false, only a project solution will be generated.
+        """
         if not self.environment.is_source_engine and not self.environment.has_project:
             raise OUAException(
                 "Cannot generate project files for environments that are not source builds but also do not have a project")
@@ -209,6 +241,16 @@ class UnrealEngine:
                         cwd=os.path.dirname(self.environment.project_root))
 
     def build(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = "Win64", program_name: str = "") -> int:
+        """
+        Launch UBT to build the provided target.
+
+        target                  Which target to build. If this is PROGRAM, you must also set program_name.
+                                For other targets the default naming scheme ProjectName+Suffix is assumed.
+                                If your game uses other target names, build it as PROGRAM instead.
+        build_configuration     Which build configuration to use.
+        platform                Platform to build for. Default is Win64.
+        program_name            Only required for program targets: Name of the program to build.
+        """
         target_args = {
             UnrealBuildTarget.GAME: self.environment.project_name,
             UnrealBuildTarget.SERVER: self.environment.project_name + "Server",
@@ -232,6 +274,7 @@ class UnrealEngine:
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
 
     def _get_generate_script(self) -> str:
+        """Returns the path to a script file that can be used to generate project files."""
         if self.environment.is_source_engine:
             return self.environment.engine_root + \
                 "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat"
@@ -251,6 +294,12 @@ class UnrealEngine:
             "Failed to determine GenerateProjectFiles script/command")
 
     def _get_default_program_arguments(self, program: UnrealProgram) -> "list[str]":
+        """
+        Returns some reasonable default arguments for a given program.
+
+        This list does not include position sensitive command line arguments like project or startup map.
+        Those should be configured directly in UnrealEngine.run().
+        """
         if program == UnrealProgram.EDITOR:
             return []
         if program == UnrealProgram.EDITOR_CMD:
@@ -260,6 +309,13 @@ class UnrealEngine:
         return []
 
     def _get_opencppcoverage_arguments(self, program_name: str):
+        """
+        Returns commandline parameters for opencpppcoverage.
+
+        program_name        Name of the program you want to launch with opencppcoverage.
+                            This is not the application path, but a short name to identify your launch in saved directory.
+        """
+
         opencppcoverage_name = "opencppcoverage"
         if shutil.which(opencppcoverage_name) is None:
             raise OUAException(
