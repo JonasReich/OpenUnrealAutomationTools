@@ -8,11 +8,9 @@ The python tools don't have any dependencies to the Powershell tools.
 
 import argparse
 import os
-import sys
 
-# TODO: Find out why a normal include does not work for the interpreter and we have to resort to bullshit like this
-sys.path.append(os.path.realpath(f"{os.path.realpath(__file__)}/../../.."))
-from OpenUnrealAutomationTools.python.openunrealautomation import *  # noqa: E402
+# For some reason this import won't work (in VSCode) if the python package is installed in developer mode?
+from openunrealautomation import *
 
 step_num = 0
 
@@ -42,6 +40,8 @@ if __name__ == "__main__":
 
     step_header("Automation Tests")
     ue.run_tests()
+
+    exit()
 
     step_header("Blueprint Compile")
     # ue5 has a bp that fails to compile in this folder
