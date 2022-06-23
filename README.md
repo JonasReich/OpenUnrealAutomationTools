@@ -16,6 +16,8 @@ The tools are developed alongside with the [Open Unreal Utiltiies plugin](https:
 
 At this point of time, this project is not ready for contributions, but I'm planning to enable pull requests eventually.
 
+See also [Open Unreal Sample Project](https://github.com/JonasReich/OpenUnrealSampleProject).
+
 ## License
 
 This project is licensed under the [MIT license](./LICENSE.md).
