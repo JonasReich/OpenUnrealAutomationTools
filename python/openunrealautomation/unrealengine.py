@@ -1,5 +1,6 @@
 from ast import arg
 import os
+import shutil
 import subprocess
 import winreg
 
@@ -125,9 +126,11 @@ class UnrealEngine:
                              raise_on_error=True,
                              add_default_parameters=True)
 
-        # TODO: copy over test results viewer (html + js) from OUA source
-        # With the current installation of python files this is pretty hard to accomplish
-        # For the moment we could also just supply them as extra files and force users to do their own copying after executing tests?
+        # copy over test report viewer template
+        test_report_viewer_zip = os.path.realpath(f"{os.path.dirname(__file__)}/resources/TestReportViewer_Template.zip")
+        print(f"\nUnpacking {test_report_viewer_zip} to {report_export_path}/...")
+        shutil.unpack_archive(test_report_viewer_zip, report_export_path, "zip")
+
         return exit_code
 
     def run_buildgraph(self, script: str, target: str, variables: "dict[str, str]" = {}, arguments: "list[str]" = []) -> int:
