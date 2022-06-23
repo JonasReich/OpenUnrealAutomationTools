@@ -22,7 +22,7 @@ class UnrealEnvironment:
     """
 
     creation_time: datetime = None
-    creation_time_str :str = ""
+    creation_time_str: str = ""
 
     # Path to the engine root directory
     engine_root: str = ""
@@ -66,7 +66,8 @@ class UnrealEnvironment:
         # Cache the creation time once so it can be used by various processes as timestamp
         # The format string is adopted from the way UE formats the timestamps for log file backups.
         self.creation_time = datetime.now()
-        self.creation_time_str = datetime.strftime(self.creation_time, "%Y.%m.%d-%H.%M.%S")
+        self.creation_time_str = datetime.strftime(
+            self.creation_time, "%Y.%m.%d-%H.%M.%S")
 
         has_project_bool = self.has_project()
 
@@ -140,7 +141,7 @@ class UnrealEnvironment:
     def has_project(self) -> bool:
         return len(self.project_root) > 0
 
-    def is_native_project(self)-> bool:
+    def is_native_project(self) -> bool:
         return self.project_root.startswith(self.engine_root)
 
     def find_plugin(self, plugin_name) -> UnrealPluginDescriptor:
@@ -166,7 +167,7 @@ class UnrealEnvironment:
         """Is the OpenUnrealUtilities plugin installed?"""
         return bool(self.find_open_unreal_utilities())
 
-    def get_program_path(self, program: UnrealProgram) -> str:
+    def get_program_path(self, program: UnrealProgram, program_name: str = "") -> str:
         if program == UnrealProgram.UAT:
             return os.path.abspath(f"{self.engine_root}/Engine/Build/BatchFiles/RunUAT.bat")
         if program == UnrealProgram.UBT:
@@ -175,6 +176,8 @@ class UnrealEnvironment:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/UnrealEditor.exe")
         if program == UnrealProgram.EDITOR_CMD:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/UnrealEditor-Cmd.exe")
+        if program == UnrealProgram.PROGRAM:
+            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/{program_name}.exe")
 
     def get_native_projects(self) -> "list[str]":
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""

@@ -40,11 +40,42 @@ class UnrealEngine:
         """Recursively search through parents in the directory tree until either a project or engine root is found (project root is preferred) to create the environment for UE."""
         return UnrealEngine(UnrealEnvironment.create_from_parent_tree(folder=folder))
 
-    def run(self, program: UnrealProgram, arguments: "list[str]" = [], map: str = None, raise_on_error: bool = True, add_default_parameters: bool = True) -> int:
+    def run(self,
+            program: UnrealProgram,
+            arguments: "list[str]" = [],
+            map: str = None,
+            program_name: str = "",
+            raise_on_error: bool = True,
+            add_default_parameters: bool = True,
+            genearte_coverage_reports: bool = False) -> int:
+        """
+        Run an Unreal program.
+
+        @param program                      Which unreal program type to run. If program=UnrealProgram.PROGRAM, you must also set program_name
+        @param arguments                    List of arguments to pass to the application.
+        @param map                          If applicable (game/editor) use this as startup map
+        @param program_name                 If program=UnrealProgram.PROGRAM, this is the name of the program to start
+        @param raise_on_error               If true, non-zero exit codes will be raised as exceptions
+        @param add_default_parameters       If true a list of default parameters (including a default map) will be passed to the application
+        @param genearte_coverage_reports    For all targets other than UBT and UAT this will launch the application via opencppcoverage
+                                            if it's installed and generate a coverage report in the project Saved folder
+        """
         all_arguments = []
 
+        program_path = self.environment.get_program_path(
+            program=program, program_name=program_name)
+        program_exe_name = os.path.basename(program_path)
+
+        # opencppcoverage
+        if genearte_coverage_reports:
+            if not (program in [UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] and self.environment.has_project()):
+                raise OUAException(
+                    "opencppcoverage can currently only be used with EDITOR and EDITOR_CMD targets and a project")
+            all_arguments += self._get_opencppcoverage_arguments(
+                program_name=program_exe_name)
+
         # program
-        all_arguments += [self.environment.get_program_path(program)]
+        all_arguments += [program_path]
 
         # project
         if program in [UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] and self.environment.has_project():
@@ -97,7 +128,13 @@ class UnrealEngine:
                         raise_on_error=raise_on_error,
                         add_default_parameters=add_default_parameters)
 
-    def run_tests(self, test_filter: str = None, report_export_path: str = None, game_test_target: bool = True, arguments: "list[str]" = []):
+    def run_tests(self, test_filter: str = None,
+                  report_export_path: str = None,
+                  game_test_target: bool = True,
+                  arguments: "list[str]" = [],
+                  generate_report_file: bool = True,
+                  extract_report_viewer: bool = True,
+                  genearte_coverage_reports: bool = False):
         """
         Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
 
@@ -115,7 +152,8 @@ class UnrealEngine:
             else ["-editor", "-editortest"]
         all_args.append(
             f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
-        all_args.append(f"-ReportExportPath={report_export_path}")
+        if generate_report_file:
+            all_args.append(f"-ReportExportPath={report_export_path}")
         all_args.append("-nullrhi")
         all_args += arguments
 
@@ -124,12 +162,17 @@ class UnrealEngine:
                              arguments=all_args,
                              map=None,
                              raise_on_error=True,
-                             add_default_parameters=True)
+                             add_default_parameters=True,
+                             genearte_coverage_reports=genearte_coverage_reports)
 
-        # copy over test report viewer template
-        test_report_viewer_zip = os.path.realpath(f"{os.path.dirname(__file__)}/resources/TestReportViewer_Template.zip")
-        print(f"\nUnpacking {test_report_viewer_zip} to {report_export_path}/...")
-        shutil.unpack_archive(test_report_viewer_zip, report_export_path, "zip")
+        if generate_report_file and extract_report_viewer:
+            # copy over test report viewer template
+            test_report_viewer_zip = os.path.realpath(
+                f"{os.path.dirname(__file__)}/resources/TestReportViewer_Template.zip")
+            print(
+                f"\nUnpacking {test_report_viewer_zip} to {report_export_path}/...")
+            shutil.unpack_archive(test_report_viewer_zip,
+                                  report_export_path, "zip")
 
         return exit_code
 
@@ -215,6 +258,32 @@ class UnrealEngine:
         if program == UnrealProgram.UBT:
             return ["-utf8output"]
         return []
+
+    def _get_opencppcoverage_arguments(self, program_name: str):
+        opencppcoverage_name = "opencppcoverage"
+        if shutil.which(opencppcoverage_name) is None:
+            raise OUAException(
+                "opencppcoverage must be installed and available via PATH.")
+
+        result_args = []
+        # directory args
+        result_args += [opencppcoverage_name, "--modules",
+                        self.environment.project_root, "--sources", self.environment.project_root]
+        result_args += ["--excluded_sources", "*Engine*", "--excluded_sources",
+                        "*Intermediate*", "--excluded_sources", "*.gen.cpp"]
+        result_args += ["--cover_children"]
+        result_args += ["--working_dir", self.environment.project_root]
+
+        # export paths
+        coverage_report_root = os.path.abspath(
+            f"{self.environment.project_root}/Saved/CoverageReports/")
+        coverage_report_path = f"{coverage_report_root}/{program_name}_{self.environment.creation_time_str}"
+        result_args += [f"--export_type=cobertura:{coverage_report_path}/cobertura.xml",
+                        f"--export_type=html:{coverage_report_path}"]
+
+        # Always last argument before UE program commandline
+        result_args += ["--"]
+        return result_args
 
 
 if __name__ == "__main__":
