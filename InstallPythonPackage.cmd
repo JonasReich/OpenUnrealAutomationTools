@@ -12,7 +12,7 @@ if [%1]==[dev] (
 if [%2]==[] (
     set PYTHON=python
 ) else (
-    set "PYHTON=%2"
+    set "PYTHON=%2"
 )
 
 set PIP=%PYTHON% -m pip
