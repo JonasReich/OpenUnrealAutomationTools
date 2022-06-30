@@ -215,7 +215,7 @@ class UnrealEngine:
         """
         all_arguments = ["BuildGraph",
                          f"-script={script}", f"-target={target}"] + arguments
-        for key, value in variables:
+        for key, value in variables.items():
             all_arguments.append(f"-Set:{key}={value}")
         return self.run(UnrealProgram.UAT, arguments=all_arguments)
 
@@ -251,25 +251,37 @@ class UnrealEngine:
         platform                Platform to build for. Default is Win64.
         program_name            Only required for program targets: Name of the program to build.
         """
-        target_args = {
-            UnrealBuildTarget.GAME: self.environment.project_name,
-            UnrealBuildTarget.SERVER: self.environment.project_name + "Server",
-            UnrealBuildTarget.CLIENT: self.environment.project_name + "Client",
-            UnrealBuildTarget.EDITOR: self.environment.project_name + "Editor",
-            UnrealBuildTarget.PROGRAM: program_name,
-        }
 
-        all_arguments = [target_args[target],
-                         platform,
-                         str(build_configuration),
-                         f"-Project={self.environment.project_file}",
-                         "-NoHotReloadFromIDE",
-                         "-progress",
-                         "-noubtmakefiles"]
+        all_arguments = self._get_ubt_arguments(
+            target=target,
+            build_configuration=build_configuration,
+            platform=platform,
+            program_name=program_name)
+
+        all_arguments += [
+            "-NoHotReloadFromIDE",
+            "-progress",
+            "-noubtmakefiles"
+        ]
 
         if target == UnrealBuildTarget.EDITOR:
             # TODO: Is this really required??
             all_arguments.append("-editorrecompile")
+
+        return self.run(UnrealProgram.UBT, arguments=all_arguments)
+
+    def clean(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = "Win64", program_name: str = "") -> int:
+        """
+        Cleans the build files for a given target
+        """
+
+        all_arguments = self._get_ubt_arguments(
+            target=target,
+            build_configuration=build_configuration,
+            platform=platform,
+            program_name=program_name)
+
+        all_arguments += ["-clean"]
 
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
 
@@ -307,6 +319,22 @@ class UnrealEngine:
         if program == UnrealProgram.UBT:
             return ["-utf8output"]
         return []
+
+    def _get_ubt_arguments(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str, program_name: str):
+        target_args = {
+            UnrealBuildTarget.GAME: self.environment.project_name,
+            UnrealBuildTarget.SERVER: self.environment.project_name + "Server",
+            UnrealBuildTarget.CLIENT: self.environment.project_name + "Client",
+            UnrealBuildTarget.EDITOR: self.environment.project_name + "Editor",
+            UnrealBuildTarget.PROGRAM: program_name,
+        }
+
+        all_arguments = [target_args[target],
+                         platform,
+                         str(build_configuration),
+                         f"-Project={self.environment.project_file}",
+                         "-WaitMutex"]
+        return all_arguments
 
     def _get_opencppcoverage_arguments(self, program_name: str):
         """
