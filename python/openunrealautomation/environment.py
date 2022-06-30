@@ -1,6 +1,7 @@
 import glob
 import os
 import pathlib
+import platform
 import winreg
 from datetime import datetime
 
@@ -8,6 +9,7 @@ from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import *
 from openunrealautomation.descriptor import (UnrealPluginDescriptor,
                                              UnrealProjectDescriptor)
+from openunrealautomation.util import *
 from openunrealautomation.version import UnrealVersion
 
 
@@ -23,6 +25,9 @@ class UnrealEnvironment:
 
     creation_time: datetime = None
     creation_time_str: str = ""
+
+    # Unreal string for the platform that this script is running on
+    host_platform: str
 
     # Path to the engine root directory
     engine_root: str = ""
@@ -41,6 +46,17 @@ class UnrealEnvironment:
     project_name: str = ""
 
     def __init__(self, engine_root: str, project_root: str = "", project_file: UnrealProjectDescriptor = "") -> None:
+        # Cache the creation time once so it can be used by various processes as timestamp
+        # The format string is adopted from the way UE formats the timestamps for log file backups.
+        self.creation_time = datetime.now()
+        self.creation_time_str = datetime.strftime(
+            self.creation_time, "%Y.%m.%d-%H.%M.%S")
+
+        if platform.system() != "Windows":
+            raise NotImplementedError("UnrealEnvironment is only implemented on Windows")
+
+        self.host_platform = "Win64"
+
         self.engine_root = os.path.abspath(engine_root)
         if not os.path.exists(self.engine_root):
             raise OUAException(f"Invalid engine path at {self.engine_root}")
@@ -63,12 +79,6 @@ class UnrealEnvironment:
             print(f"Created Unreal Environment:\n{self}")
 
     def __str__(self) -> str:
-        # Cache the creation time once so it can be used by various processes as timestamp
-        # The format string is adopted from the way UE formats the timestamps for log file backups.
-        self.creation_time = datetime.now()
-        self.creation_time_str = datetime.strftime(
-            self.creation_time, "%Y.%m.%d-%H.%M.%S")
-
         has_project_bool = self.has_project()
 
         if self.is_source_engine:
@@ -173,11 +183,11 @@ class UnrealEnvironment:
         if program == UnrealProgram.UBT:
             return os.path.abspath(f"{self.engine_root}/Engine/Build/BatchFiles/Build.bat")
         if program == UnrealProgram.EDITOR:
-            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/UnrealEditor.exe")
+            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/UnrealEditor.exe")
         if program == UnrealProgram.EDITOR_CMD:
-            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/UnrealEditor-Cmd.exe")
+            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/UnrealEditor-Cmd.exe")
         if program == UnrealProgram.PROGRAM:
-            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/Win64/{program_name}.exe")
+            return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/{program_name}.exe")
 
     def get_native_projects(self) -> "list[str]":
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
@@ -249,6 +259,10 @@ class UnrealEnvironment:
         """
         Search the windows registry for an engine installation key
         """
+        if platform.system() != "Windows":
+            raise NotImplementedError(
+                "engine_root_from_association() is only implemented on Windows")
+
         # First check for entries of custom builds in HKEY_CURRENT_USER:
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,

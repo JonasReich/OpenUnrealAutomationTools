@@ -8,6 +8,8 @@ For writing to ini files, we recommend invoking UE commandlets written in UE C++
 """
 
 import configparser
+import os
+import winreg
 from platform import platform
 from typing import Any
 
@@ -148,3 +150,16 @@ class UnrealConfig():
             result_value.value = config[section][key]
 
         return result_value
+
+
+def set_shared_ddc_path(shared_ddc_path):
+    if platform.system() != "Windows":
+        raise NotImplementedError(
+            "set_shared_ddc_path is only implemented on Windows")
+
+    key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER,
+                             f"SOFTWARE\\Epic Games\\GlobalDataCachePath")
+    winreg.SetValueEx(key, "UE-SharedDataCachePath", 0,
+                      winreg.REG_SZ, shared_ddc_path)
+    print("Set Global Shared DDC to ", shared_ddc_path)
+    return

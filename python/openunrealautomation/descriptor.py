@@ -1,12 +1,11 @@
 import glob
 import json
 import os
-from abc import abstractmethod
 
 from openunrealautomation.core import OUAException
 
 
-class UnrealDescriptor:
+class UnrealDescriptor():
     """
     Base class for UE descriptor files.
     These files are always config files in json format.
@@ -69,7 +68,7 @@ class UnrealDescriptor:
 class UnrealProjectDescriptor(UnrealDescriptor):
     """Descriptor for Unreal project (uproject) files."""
 
-    @abstractmethod
+    @staticmethod
     def try_find(directory) -> 'UnrealProjectDescriptor':
         return UnrealProjectDescriptor(UnrealProjectDescriptor.try_find_file(directory))
 
@@ -81,7 +80,7 @@ class UnrealProjectDescriptor(UnrealDescriptor):
 class UnrealPluginDescriptor(UnrealDescriptor):
     """Descriptor for Unreal plugin (uplugin) files."""
 
-    @abstractmethod
+    @staticmethod
     def try_find(directory) -> 'UnrealPluginDescriptor':
         return UnrealPluginDescriptor(UnrealPluginDescriptor.try_find_file(directory))
 

@@ -1,4 +1,3 @@
-from ast import arg
 import os
 import shutil
 import subprocess
@@ -240,7 +239,7 @@ class UnrealEngine:
         subprocess.call(generate_args,
                         cwd=os.path.dirname(self.environment.project_root))
 
-    def build(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = "Win64", program_name: str = "") -> int:
+    def build(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = None, program_name: str = "") -> int:
         """
         Launch UBT to build the provided target.
 
@@ -248,9 +247,12 @@ class UnrealEngine:
                                 For other targets the default naming scheme ProjectName+Suffix is assumed.
                                 If your game uses other target names, build it as PROGRAM instead.
         build_configuration     Which build configuration to use.
-        platform                Platform to build for. Default is Win64.
+        platform                Platform to build for. Default is None which gets resolved to current host platform.
         program_name            Only required for program targets: Name of the program to build.
         """
+
+        if platform is None:
+            platform = self.environment.host_platform
 
         all_arguments = self._get_ubt_arguments(
             target=target,
@@ -270,10 +272,13 @@ class UnrealEngine:
 
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
 
-    def clean(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = "Win64", program_name: str = "") -> int:
+    def clean(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = None, program_name: str = "") -> int:
         """
         Cleans the build files for a given target
         """
+
+        if platform is None:
+            platform = self.environment.host_platform
 
         all_arguments = self._get_ubt_arguments(
             target=target,
