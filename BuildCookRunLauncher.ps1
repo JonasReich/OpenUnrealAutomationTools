@@ -30,28 +30,20 @@ Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Verbose -
 #--------------
 
 $UProject = Open-UEProject $ProjectPath
-$GameIni = Get-UEConfig Game
+$EditorIni = Get-UEConfig Editor
 $UECmdPath = Get-UEProgramPath EditorCmd
 
 $MainSectionName = "/Script/OUUDeveloper.OUUMapsToCookSettings"
 
 $MapIniSectionNames = New-Object System.Collections.ArrayList
 $MapIniSectionNames.Add("") | Out-Null
-if ($GameIni.ContainsKey($MainSectionName)) {
-    foreach ($item in $GameIni[$MainSectionName]["ConfigSections"]) {
-        $MapIniSectionNames.Add($item) | Out-Null
+$AllMapsToCook = @{}
+if ($EditorIni.ContainsKey($MainSectionName)) {
+    foreach ($MapIniSection in $EditorIni[$MainSectionName]["ConfigSections"]) {
+        $MapIniSectionNames.Add($MapIniSection) | Out-Null
+        $AllMapsToCook[$MapIniSection] = $EditorIni[$MapIniSection]["Map"]
     }
-    if ($GameIni[$MainSectionName].ContainsKey("DefaultConfigSection")) {
-        $DefaultMapIniSection = $GameIni[$MainSectionName]["DefaultConfigSection"]
-        $InitialMapIniSectionIdx = $MapIniSectionNames.IndexOf($DefaultMapIniSection)
-        if ($InitialMapIniSectionIdx -eq -1) {
-            $MapIniSectionNames.Add($DefaultMapIniSection)
-            $InitialMapIniSectionIdx = $MapIniSectionNames.IndexOf($DefaultMapIniSection)
-        }
-    }
-    else {
-        $InitialMapIniSectionIdx = 0
-    }
+    $InitialMapIniSectionIdx = 0
     $MapIniSection = $MapIniSectionNames[$InitialMapIniSectionIdx]
     Write-Verbose "Detected ConfigSections: $MapIniSectionNames."
     Write-Verbose "Detected DefaultConfigSection: $MapIniSection"
@@ -82,6 +74,7 @@ $ToolTip.InitialDelay = 1;
 $ToolTip.ReshowDelay = 1;
 $ToolTip.ShowAlways = $true;
 
+$Width = 400
 $VerticalPadding = 15
 $HorizontalPadding = 10
 $AccumulatedHeight = $VerticalPadding
@@ -113,7 +106,9 @@ function AddLabel {
     $Label = New-Object System.Windows.Forms.Label
     $Label.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight)
     $script:AccumulatedHeight += 20
-    $Label.Size = New-Object System.Drawing.Size(200, 20)
+    $Label.Size = New-Object System.Drawing.Size($Width, 20)
+    #$Label.AutoSize = $true
+    $Label.AutoEllipsis = $true
     $Label.Text = $LabelText
     $Label.Font = if ($IsHeader) { $Font_Header } else { $Font_Regular }
     $WinForm.Controls.Add($Label) | Out-Null
@@ -134,7 +129,7 @@ function AddCombobox {
 
     $Combobox = New-Object System.Windows.Forms.Combobox
     $Combobox.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight)
-    $Combobox.Size = New-Object System.Drawing.Size(200, 20)
+    $Combobox.Size = New-Object System.Drawing.Size($Width, 20)
     $Combobox.Height = 70
     $script:AccumulatedHeight += 20 + $VerticalPadding
     $Combobox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList;
@@ -156,7 +151,7 @@ function AddCheckBox {
     )
     $Checkbox = New-Object System.Windows.Forms.Checkbox 
     $Checkbox.Location = New-Object System.Drawing.Size($HorizontalPadding, $script:AccumulatedHeight) 
-    $Checkbox.Size = New-Object System.Drawing.Size(200, 20)
+    $Checkbox.Size = New-Object System.Drawing.Size($Width, 20)
     $script:AccumulatedHeight += 20 + $VerticalPadding
     $Checkbox.Text = $LabelText
     $Checkbox.TabIndex = 4
@@ -185,11 +180,21 @@ $ConfigurationCombobox.Add_SelectedIndexChanged({
 
 AddLabel -LabelText "Cook" -IsHeader $true | Out-Null
 
+function UpdateMapsToCookLabel() {
+    $MapsToCook = $AllMapsToCook[$script:MapIniSection] -join "`n"
+    $script:MapsToCookLabel.Text = "Maps: $MapsToCook"
+    SetTooltip $script:MapsToCookLabel $MapsToCook
+}
+
 # Maps to cook combobox
 $IniSectionCombobox = AddCombobox -LabelText "MapsToCook config section" -Items ($MapIniSectionNames) -Index $InitialMapIniSectionIdx -TooltipText "Name of the map list to use for the build. Changes cooked maps and startup map."
 $IniSectionCombobox.Add_SelectedIndexChanged({
     $script:MapIniSection = $IniSectionCombobox.Text
+    UpdateMapsToCookLabel
 })
+
+$MapsToCookLabel = AddLabel -LabelText "TEMP" -IsHeader $false -TooltipText "TEMP"
+UpdateMapsToCookLabel
 
 $PakCheckbox = AddCheckBox -LabelText "pak" -DefaultCheckedState $False -TooltipText "Combine assets into a few .pak files"
 
@@ -220,7 +225,7 @@ $WinForm.Controls.Add($LaunchButton)
 
 # Adjust size based on content (no scrolling / fixed size)
 $TitleBarHeight = 40
-$WinForm.Size = New-Object System.Drawing.Size(350, ($AccumulatedHeight + $TitleBarHeight))
+$WinForm.Size = New-Object System.Drawing.Size(($Width + $HorizontalPadding*2 + 20), ($AccumulatedHeight + $TitleBarHeight))
 $WinForm.FormBorderStyle = 'Fixed3D'
 $WinForm.MaximizeBox = $false
 
@@ -235,7 +240,7 @@ if (-not $LaunchClicked) {
 #--------------
 # GENERAL SETTINGS
 #--------------
-$ExecutableArg = if ($script:UEMajorVersion -gt 4) { "-unrealexe=$UECmdPath" } else { "-ue4exe=$UECmdPath" }
+$ExecutableArg = if ($UEMajorVersion -gt 4) { "-unrealexe=$UECmdPath" } else { "-ue4exe=$UECmdPath" }
 $GENERAL_ARGS = @(
     "-project=\`"$ProjectPath\`"",
     $ExecutableArg,
@@ -253,7 +258,7 @@ $InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
 
 $COMPILE_ARGS = @(
     $ConfigurationArgs,      # see above
-    "-nocompile",            # do not compile engine binaries from source
+    "-nocompile",            # do not compile automation tool / script binaries from source
     "-nocompileeditor",      # do not compile editor binaries
     $InstalledArg,           # see above
     "-platform=Win64",       # current platform
@@ -265,8 +270,9 @@ $COMPILE_ARGS = @(
 # COOK
 #--------------
 $MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`"" } else { $null }
+$DefaultMapArg = if ($DefaultMap.Length -gt 0) { "-map=$DefaultMap"} else { $null }
 $PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
-$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
+$COOK_ARGS = @("-cook", $MapIniSectionArgs, $DefaultMapArg, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
 
 #--------------
 # STAGE
