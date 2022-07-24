@@ -60,14 +60,23 @@ function Open-UEProject {
     $script:CurrentUProject = ConvertFrom-Json -InputObject (Get-Content -raw $ProjectPath)
     
     $script:CurrentEngineAssociation = $CurrentUProject.EngineAssociation
-    try {
-        $CustomBuildEnginePath = (Get-ItemProperty "Registry::HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds")."$CurrentEngineAssociation"
-        Test-Path $CustomBuildEnginePath
-        $script:EngineInstallRoot = Resolve-Path $CustomBuildEnginePath
+    if ($script:CurrentEngineAssociation -eq "") {
+        $EngineInstallCheckDir = $script:CurrentProjectDirectory
+        while (-not (Test-Path "$EngineInstallCheckDir/Engine") -and -not ($null -eq $EngineInstallCheckDir.Parent)) {
+            $EngineInstallCheckDir = $EngineInstallCheckDir.Parent.FullName
+        }
+        $script:EngineInstallRoot = Resolve-Path -Path "$EngineInstallCheckDir"
     }
-    catch {
-        $InstalledEnginePath = (Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\EpicGames\Unreal Engine\$CurrentEngineAssociation" -Name "InstalledDirectory").InstalledDirectory
-        $script:EngineInstallRoot = Resolve-Path ($InstalledEnginePath)
+    else {
+        try {
+            $CustomBuildEnginePath = (Get-ItemProperty "Registry::HKEY_CURRENT_USER\SOFTWARE\Epic Games\Unreal Engine\Builds")."$CurrentEngineAssociation"
+            Test-Path $CustomBuildEnginePath
+            $script:EngineInstallRoot = Resolve-Path $CustomBuildEnginePath
+        }
+        catch {
+            $InstalledEnginePath = (Get-ItemProperty "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\EpicGames\Unreal Engine\$CurrentEngineAssociation" -Name "InstalledDirectory").InstalledDirectory
+            $script:EngineInstallRoot = Resolve-Path ($InstalledEnginePath)
+        }
     }
 
     $script:UEIsInstalledBuild = if (Test-Path "$EngineInstallRoot\Engine\Build\InstalledBuild.txt") { $true } else { $false }
