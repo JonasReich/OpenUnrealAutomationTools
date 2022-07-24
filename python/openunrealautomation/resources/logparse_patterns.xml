@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    XML Escape characters:
+    "   &quot;
+    '   &apos;
+    <   &lt;
+    >   &gt;
+    &   &amp;
+-->
+<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <Template Name="UAT">
+        <Patterns Name="UAT Errors" Severity="Error">
+            <Include Style="Regex">ERROR: </Include>
+        </Patterns>
+        <Patterns Name="UAT Warnings" Severity="Warning">
+            <Include Style="Regex">WARNING: </Include>
+        </Patterns>
+    </Template>
+
+    <Template Name="ExitCodes">
+        <Patterns Name="Exit Codes">
+            <Include>Took \d+,\d+s to run .+, ExitCode=\d+</Include>
+        </Patterns>
+    </Template>
+
+    <Template Name="Unreal">
+        <Patterns Name="Load Errors + Warnings" Tags="Code" Severity="Error">
+            <Include Style="Literal">LogLinker: Warning: Unable to load</Include>
+            <Include Style="Regex">Failed to load '.*': Can't find file</Include>
+            <Include Style="Literal">LogLinker: Warning: VerifyImport: Failed to load</Include>
+        </Patterns>
+
+        <Patterns Name="Material Errors" Tags="Art;Code" Severity="Error">
+            <Include Style="Literal">Failed to compile Material</Include>
+            <Include Style="Literal">LogMaterial: Error</Include>
+            <Include Style="Regex">.ush(.*):  err0r</Include>
+        </Patterns>
+        <Patterns Name="Material Warnings" Tags="Art" Severity="Warning">
+            <Include Style="Literal">LogMaterial: Warning</Include>
+        </Patterns>
+        <Patterns Name="Skeleton Issues" Tags="Art" Severity="Warning">
+            <Include Style="Regex">LogScript: Warning: Script Msg:.*Unable to (find|retrieve) bone index</Include>
+        </Patterns>
+
+        <Patterns Name="Collision Issues" Tags="Art" Severity="Warning">
+            <Include Style="Regex">LogPhysics: Warning: Scale for .* has a component set to zero</Include>
+        </Patterns>
+
+        <Patterns Name="Errors" Tags="Code" Severity="Error">
+            <Include>Error:</Include>
+            <Include>Error compiling pin</Include>
+        </Patterns>
+        <Patterns Name="Warnings" Tags="Code" Severity="Warning">
+            <Include>Warning:</Include>
+        </Patterns>
+    </Template>
+
+    <Target Name="BuildCookRun">
+        <Scope Name="🧱 Build">
+            <Start Style="Literal">********** BUILD COMMAND STARTED **********</Start>
+            <End Style="Literal">********** BUILD COMMAND COMPLETED **********</End>
+            <Link Template="UAT" />
+        </Scope>
+        <Scope Name="🔥 Cook">
+            <Start Style="Literal">********** COOK COMMAND STARTED **********</Start>
+            <End Style="Literal">********** COOK COMMAND COMPLETED **********</End>
+            <Link Template="Unreal" />
+        </Scope>
+        <Scope Name="📁 Stage">
+            <Start Style="Literal">********** STAGE COMMAND STARTED **********</Start>
+            <End Style="Literal">********** STAGE COMMAND COMPLETED **********</End>
+            <Link Template="UAT" />
+        </Scope>
+        <Scope Name="📦 Package">
+            <Start Style="Literal">********** PACKAGE COMMAND STARTED **********</Start>
+            <End Style="Literal">********** PACKAGE COMMAND COMPLETED **********</End>
+            <Link Template="UAT" />
+        </Scope>
+        <Link Template="UAT" />
+    </Target>
+</Root>
