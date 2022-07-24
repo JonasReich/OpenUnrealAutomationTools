@@ -10,7 +10,7 @@ For writing to ini files, we recommend invoking UE commandlets written in UE C++
 import configparser
 import os
 import winreg
-from platform import platform
+import platform
 from typing import Any
 
 from openunrealautomation.core import *
