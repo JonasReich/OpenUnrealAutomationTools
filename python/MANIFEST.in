@@ -1,1 +1,2 @@
 include openunrealautomation/resources/TestReportViewer_Template.zip
+include openunrealautomation/resources/logparse_patterns.xml
