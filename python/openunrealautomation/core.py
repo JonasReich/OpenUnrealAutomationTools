@@ -3,6 +3,7 @@ Small core types (esp. Enums)
 """
 
 from enum import Enum
+from datetime import datetime
 
 
 class OUAException(Exception):
@@ -40,3 +41,12 @@ class UnrealBuildTarget(Enum):
 
     def __str__(self) -> str:
         return self.value[1]
+
+def get_ue_time_format() -> str:
+    return "%Y.%m.%d-%H.%I.%S"
+
+def ue_time_to_string(time: datetime) -> str:
+    return time.strftime(get_ue_time_format())
+
+def ue_string_to_time(time_string: str) -> datetime:
+    return datetime.strptime(time_string, get_ue_time_format())
