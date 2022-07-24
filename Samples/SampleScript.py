@@ -39,7 +39,7 @@ if __name__ == "__main__":
              build_configuration=UnrealBuildConfiguration.DEVELOPMENT)
 
     step_header("Automation Tests")
-    ue.run_tests(genearte_coverage_reports=True)
+    ue.run_tests(generate_coverage_reports=True)
 
     exit()
 
