@@ -2,9 +2,11 @@ import os
 import shutil
 import subprocess
 import winreg
+from xml.etree.ElementTree import ElementTree as XmlTree
 
 from openunrealautomation.core import *
 from openunrealautomation.environment import UnrealEnvironment
+from openunrealautomation.util import walk_level, which_checked, run_subprocess
 
 
 class UnrealEngine:
@@ -46,7 +48,7 @@ class UnrealEngine:
             program_name: str = "",
             raise_on_error: bool = True,
             add_default_parameters: bool = True,
-            genearte_coverage_reports: bool = False) -> int:
+            generate_coverage_reports: bool = False) -> int:
         """
         Run an Unreal program.
 
@@ -56,7 +58,7 @@ class UnrealEngine:
         program_name                If program=UnrealProgram.PROGRAM, this is the name of the program to start.
         raise_on_error              If true, non-zero exit codes will be raised as exceptions.
         add_default_parameters      If true a list of default parameters (including a default map) will be passed to the application.
-        genearte_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
+        generate_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
 
         returns application exit code
         """
@@ -67,7 +69,7 @@ class UnrealEngine:
         program_exe_name = os.path.basename(program_path)
 
         # opencppcoverage
-        if genearte_coverage_reports:
+        if generate_coverage_reports:
             if not (program in [UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] and self.environment.has_project()):
                 raise OUAException(
                     "opencppcoverage can currently only be used with EDITOR and EDITOR_CMD targets and a project")
@@ -84,7 +86,7 @@ class UnrealEngine:
                 all_arguments += [self.environment.project_name]
             else:
                 # Need the fully qualified project file path for foreign projects
-                all_arguments += [self.environment.project_file]
+                all_arguments += [self.environment.project_file.file_path]
         else:
             pass
 
@@ -112,10 +114,7 @@ class UnrealEngine:
             return 0
 
         # TODO: Expose working directory?
-        exit_code = subprocess.call(all_arguments)
-        if raise_on_error == True and exit_code != 0:
-            raise OUAException(
-                f"Program {program} returned non-zero exit code: {exit_code}")
+        exit_code = run_subprocess(all_arguments, check=raise_on_error)
         return exit_code
 
     def run_commandlet(self,
@@ -125,7 +124,7 @@ class UnrealEngine:
                        raise_on_error: bool = True,
                        add_default_parameters: bool = True,
                        allow_commandlet_rendering: bool = False,
-                       genearte_coverage_reports: bool = False) -> int:
+                       generate_coverage_reports: bool = False) -> int:
         """
         Run a commandlet in the UE editor.
 
@@ -137,7 +136,7 @@ class UnrealEngine:
         allow_commandlet_rendering  If true, an additonal commandline flag will be added to allow commandline rendering.
                                     Otherwise no render commands via RHI can be used by the commandlet.
                                     Required to be true for any commandlets that deal with textures/materials/render targets/etc.
-        genearte_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
+        generate_coverage_reports   If true and the target is either EDITOR or EDITOR_CMD, opencppcoverage is used to generate a coverage report in the project Saved folder.
 
         returns UE's exit code
         """
@@ -149,14 +148,14 @@ class UnrealEngine:
                         map=map,
                         raise_on_error=raise_on_error,
                         add_default_parameters=add_default_parameters,
-                        genearte_coverage_reports=genearte_coverage_reports)
+                        generate_coverage_reports=generate_coverage_reports)
 
     def run_tests(self, test_filter: str = None,
                   game_test_target: bool = True,
                   arguments: "list[str]" = [],
                   generate_report_file: bool = True,
                   extract_report_viewer: bool = True,
-                  genearte_coverage_reports: bool = False):
+                  generate_coverage_reports: bool = False):
         """
         Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
 
@@ -166,7 +165,7 @@ class UnrealEngine:
         generate_report_file        If true, a test report (json + html) is saved by UE into the project's Saved directory.
         extract_report_viewer       If true, a modified version of the test report html file to view the json is copied into the test report.
                                     This is to replace UE's default html file, which cannot be used without installing js/css dependencies.
-        genearte_coverage_reports   If true, the application is launched via opencppcoverage to generate code coverage reports in the project's Saved directory.
+        generate_coverage_reports   If true, the application is launched via opencppcoverage to generate code coverage reports in the project's Saved directory.
         """
 
         if test_filter is None:
@@ -189,7 +188,7 @@ class UnrealEngine:
                              map=None,
                              raise_on_error=True,
                              add_default_parameters=True,
-                             genearte_coverage_reports=genearte_coverage_reports)
+                             generate_coverage_reports=generate_coverage_reports)
 
         if generate_report_file and extract_report_viewer:
             # copy over test report viewer template
@@ -197,12 +196,18 @@ class UnrealEngine:
                 f"{os.path.dirname(__file__)}/resources/TestReportViewer_Template.zip")
             print(
                 f"\nUnpacking {test_report_viewer_zip} to {report_export_path}/...")
-            shutil.unpack_archive(test_report_viewer_zip,
-                                  report_export_path, "zip")
+
+            if not self.dry_run:
+                shutil.unpack_archive(test_report_viewer_zip,
+                                      report_export_path, "zip")
 
         return exit_code
 
-    def run_buildgraph(self, script: str, target: str, variables: "dict[str, str]" = {}, arguments: "list[str]" = []) -> int:
+    def run_buildgraph(self,
+                       script: str,
+                       target: str,
+                       variables: "dict[str, str]" = {},
+                       arguments: "list[str]" = []) -> int:
         """
         Run BuildGraph via UAT.
 
@@ -217,6 +222,34 @@ class UnrealEngine:
         for key, value in variables.items():
             all_arguments.append(f"-Set:{key}={value}")
         return self.run(UnrealProgram.UAT, arguments=all_arguments)
+
+    def get_buildgraph_files(self, tag: str) -> set[str]:
+        """
+        Get tagged file list from last buildgraph execution.
+        """
+        xml_files = []
+        buildgraph_saved_dir = os.path.join(
+            self.environment.engine_root, "Engine/Saved/BuildGraph")
+        for root, dirs, files in walk_level(buildgraph_saved_dir, level=1):
+            for filename in files:
+                if filename == f"Tag-{tag}.xml":
+                    xml_files.append(os.path.join(root, filename))
+        if len(xml_files) == 0:
+            raise OUAException(f"No valid xml file found for tag {tag}")
+            return set()
+        elif len(xml_files) > 1:
+            print("WARNING: More than 1 xml file found for tag",
+                  tag, ":", len(xml_files))
+
+        xml_file = xml_files[0]
+        xml_tree = XmlTree(file=xml_file)
+        local_files = xml_tree.findall(
+            "./LocalFiles/LocalFile")
+
+        tagged_files = set()
+        for file_node in local_files:
+            tagged_files.add(file_node.text)
+        return tagged_files
 
     def generate_project_files(self, engine_sln=False) -> None:
         """
@@ -233,13 +266,17 @@ class UnrealEngine:
 
         # Generate the project files
         generate_script = self._get_generate_script()
-        project_args = ["-project=" + str(self.environment.project_file),
+        project_args = ["-project=" + str(self.environment.project_file.file_path),
                         "-game"] if not engine_sln else []
         generate_args = [generate_script] + project_args
-        subprocess.call(generate_args,
-                        cwd=os.path.dirname(self.environment.project_root))
+        run_subprocess(generate_args, cwd=os.path.dirname(self.environment.project_root))
 
-    def build(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = None, program_name: str = "") -> int:
+    def build(self,
+              target: UnrealBuildTarget,
+              build_configuration:
+              UnrealBuildConfiguration,
+              platform: str = None,
+              program_name: str = "") -> int:
         """
         Launch UBT to build the provided target.
 
@@ -272,7 +309,11 @@ class UnrealEngine:
 
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
 
-    def clean(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str = None, program_name: str = "") -> int:
+    def clean(self,
+              target: UnrealBuildTarget,
+              build_configuration: UnrealBuildConfiguration,
+              platform: str = None,
+              program_name: str = "") -> int:
         """
         Cleans the build files for a given target
         """
@@ -317,15 +358,23 @@ class UnrealEngine:
         This list does not include position sensitive command line arguments like project or startup map.
         Those should be configured directly in UnrealEngine.run().
         """
+        project_arg = f"-project={self.environment.project_file.file_path}"
+
         if program == UnrealProgram.EDITOR:
             return []
         if program == UnrealProgram.EDITOR_CMD:
             return ["-unattended", "-buildmachine", "-stdout", "-nopause", "-nosplash"]
         if program == UnrealProgram.UBT:
-            return ["-utf8output"]
+            return ["-utf8output", project_arg]
+        if program == UnrealProgram.UAT:
+            return ["-utf8output", "-unattended", project_arg]
         return []
 
-    def _get_ubt_arguments(self, target: UnrealBuildTarget, build_configuration: UnrealBuildConfiguration, platform: str, program_name: str):
+    def _get_ubt_arguments(self,
+                           target: UnrealBuildTarget,
+                           build_configuration: UnrealBuildConfiguration,
+                           platform: str,
+                           program_name: str):
         target_args = {
             UnrealBuildTarget.GAME: self.environment.project_name,
             UnrealBuildTarget.SERVER: self.environment.project_name + "Server",
@@ -337,7 +386,6 @@ class UnrealEngine:
         all_arguments = [target_args[target],
                          platform,
                          str(build_configuration),
-                         f"-Project={self.environment.project_file}",
                          "-WaitMutex"]
         return all_arguments
 
@@ -350,9 +398,7 @@ class UnrealEngine:
         """
 
         opencppcoverage_name = "opencppcoverage"
-        if shutil.which(opencppcoverage_name) is None:
-            raise OUAException(
-                "opencppcoverage must be installed and available via PATH.")
+        which_checked(opencppcoverage_name)
 
         result_args = []
         # directory args
