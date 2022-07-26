@@ -125,15 +125,20 @@ class VisualStudio:
         print("Installing", os.path.basename(vsix_path), "...")
         return subprocess.run([vsix_installer, "/quiet", vsix_path], check=True)
 
-    def download_and_install_extension(self, name: str, download_url: str, retries: int = 3) -> int:
-        downloads_dir = os.path.join(
-            str(Path.home()), "Downloads/VSExtensions", self.product_line_version)
+    def get_extension_cache_path(self, name: str, cache_root: str) -> str:
+        downloads_dir = os.path.join(cache_root, self.product_line_version)
         os.makedirs(downloads_dir, exist_ok=True)
+        return os.path.join(downloads_dir, name)
 
+    def download_and_install_extension(self, name: str, download_url: str, retries: int = 3, download_cache: str = None) -> int:
         # to get content after redirection
         download_src = requests.get(
             download_url, allow_redirects=True).url
-        download_target = os.path.join(downloads_dir, name)
+
+        if download_cache is None:
+            download_cache = os.path.join(
+                str(Path.home()), "Downloads/VSExtensions")
+        download_target = self.get_extension_cache_path(name, download_cache)
 
         # Assume that a file with matching name is already the right extension.
         # That's what I would do as a user anyways.
@@ -150,12 +155,13 @@ class VisualStudio:
                     download_success = False
                     print("Received HTTPError: ", str(http_error))
                     if http_error.code == 429:
+                        retry_delay = 30
                         if num_retries > retries:
                             raise OUAException(
                                 f"Ran out of retries to download {download_src}")
                         print(
-                            "HTTP Error 429 (Too many requests) received. Trying again 3 seconds...")
-                        time.sleep(3)
+                            f"HTTP Error 429 (Too many requests) received. Trying again {retry_delay} seconds...")
+                        time.sleep(retry_delay)
                     else:
                         raise http_error
                 if download_success:
