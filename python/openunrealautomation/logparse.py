@@ -158,7 +158,8 @@ class UnrealLogFilePatternList:
 
         result_list.severity = UnrealLogSeverity.from_string(
             xml_node.get("Severity", default=""))
-        result_list.tags = set(xml_node.get("Tags", default="").split(";"))
+        result_list.tags = set(tag.upper()
+                               for tag in xml_node.get("Tags", default="").split(";"))
 
         for pattern in xml_node.findall("Include"):
             result_list.include_patterns.append(
@@ -172,6 +173,11 @@ class UnrealLogFilePatternList:
         return any(pattern.match(line) for pattern in self.include_patterns) and \
             not any(pattern.match(line)
                     for pattern in self.exclude_patterns)
+
+    def match_tags(self, tags: list[str]) -> bool:
+        if len(tags) == 0:
+            return True
+        return any(tag is None or tag == "" or tag.upper() in self.tags for tag in tags)
 
     def check_and_add(self, line: str) -> bool:
         if self.match(line):
@@ -273,7 +279,7 @@ class UnrealLogFilePatternScope:
         self.pattern_lists = [pattern_list for pattern_list in self.pattern_lists if
                               len(pattern_list.matching_lines) >= min_matches and
                               pattern_list.severity.value >= min_severity.value and
-                              (len(tags) == 0 or any(tag is None or tag == "" or tag in pattern_list.tags for tag in tags))]
+                              pattern_list.match_tags(tags)]
 
         for child_scope in self.child_scopes:
             child_scope.filter_inline(tags, min_severity)
@@ -376,5 +382,6 @@ if __name__ == "__main__":
     patterns_xml = os.path.join(
         Path(__file__).parent, "resources/logparse_patterns.xml")
 
-    parse_file = cli_args.File if not cli_args.File is None else UnrealLogFile.UAT.find_latest(env)
+    parse_file = cli_args.File if not cli_args.File is None else UnrealLogFile.UAT.find_latest(
+        env)
     print_parsed_log(parse_file, patterns_xml, "BuildCookRun", max_lines=0)
