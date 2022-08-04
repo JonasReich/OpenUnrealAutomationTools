@@ -10,7 +10,7 @@ from openunrealautomation.core import *
 from openunrealautomation.descriptor import (UnrealPluginDescriptor,
                                              UnrealProjectDescriptor)
 from openunrealautomation.util import *
-from openunrealautomation.version import UnrealVersion
+from openunrealautomation.version import *
 
 
 class UnrealEnvironment:
@@ -36,6 +36,7 @@ class UnrealEnvironment:
     is_installed_engine: bool = False
 
     engine_version: UnrealVersion = None
+    compatible_version: UnrealVersion = None
 
     # Path to the project root directory
     project_root: str = ""
@@ -68,8 +69,8 @@ class UnrealEnvironment:
             self.is_installed_engine = os.path.exists(
                 f"{engine_root}/Engine/Build/InstalledBuild.txt")
 
-            self.engine_version = UnrealVersion.create_from_file(
-                f"{self.engine_root}/Engine/Build/Build.version")
+            self.engine_version = UnrealVersionDescriptor(
+                f"{self.engine_root}/Engine/Build/Build.version").get_current()
 
             self.project_root = os.path.abspath(project_root)
             self.project_file = project_file
@@ -321,4 +322,5 @@ class UnrealEnvironment:
 
 if __name__ == "__main__":
     module_path = os.path.realpath(os.path.dirname(__file__))
-    enviroment = UnrealEnvironment.create_from_parent_tree(module_path)
+    environment = UnrealEnvironment.create_from_parent_tree(module_path)
+    print(str(environment))
