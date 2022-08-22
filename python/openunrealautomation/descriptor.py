@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import os.path
 
 from openunrealautomation.core import OUAException
 
@@ -18,7 +19,7 @@ class UnrealDescriptor():
     file_path: str = ""
 
     def __init__(self, file_path) -> None:
-        self.file_path = file_path
+        self.file_path = os.path.normpath(file_path)
 
     def __str__(self) -> str:
         return self.file_path
@@ -63,6 +64,14 @@ class UnrealDescriptor():
         """
         with open(self.file_path, "r") as file:
             return json.load(file)
+
+    def write(self, values: dict) -> None:
+        """
+        Write the dictionary back into the json file.
+        """
+        with open(self.file_path, "w") as file:
+            json.dump(values, file, indent=4)
+            print("Wrote", self.file_path)
 
 
 class UnrealProjectDescriptor(UnrealDescriptor):

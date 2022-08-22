@@ -35,8 +35,7 @@ class UnrealEnvironment:
     is_source_engine: bool = False
     is_installed_engine: bool = False
 
-    engine_version: UnrealVersion = None
-    compatible_version: UnrealVersion = None
+    build_version: UnrealVersionDescriptor = None
 
     # Path to the project root directory
     project_root: str = ""
@@ -69,8 +68,8 @@ class UnrealEnvironment:
             self.is_installed_engine = os.path.exists(
                 f"{engine_root}/Engine/Build/InstalledBuild.txt")
 
-            self.engine_version = UnrealVersionDescriptor(
-                f"{self.engine_root}/Engine/Build/Build.version").get_current()
+            self.build_version = UnrealVersionDescriptor(
+                f"{self.engine_root}/Engine/Build/Build.version")
 
             self.project_root = os.path.abspath(project_root)
             self.project_file = project_file
@@ -155,6 +154,11 @@ class UnrealEnvironment:
 
     def is_native_project(self) -> bool:
         return self.project_root.startswith(self.engine_root)
+
+    @property
+    def engine_version(self) -> str:
+        """For backwards compatibility"""
+        return self.build_version.get_current()
 
     def find_plugin(self, plugin_name) -> UnrealPluginDescriptor:
         engine_plugin = self.find_plugin_in_dir(

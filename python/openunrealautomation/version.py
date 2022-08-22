@@ -1,9 +1,11 @@
+import argparse
 from enum import Enum
 from locale import atoi
 from re import search
 
 from openunrealautomation.core import OUAException
 from openunrealautomation.descriptor import UnrealDescriptor
+from openunrealautomation.p4 import UnrealPerforce
 
 
 def _try_atoi(str) -> int:
@@ -91,6 +93,44 @@ class UnrealVersionDescriptor(UnrealDescriptor):
     def get_extension(cls) -> str:
         return ".version"
 
+    def update_local_version(self,
+                             cl: int = None,
+                             compatible_cl: int = None,
+                             build_id: str = None,
+                             promoted: bool = False,
+                             branch: str = None,
+                             licensee: bool = True) -> None:
+        """
+        Update the local version file (equivalent to UpdateLocalVersion UAT script).
+        """
+        if cl is None:
+            cl = UnrealPerforce.get_current_cl()
+
+        UnrealPerforce.sync(self.file_path, cl=cl, force=True)
+        version_json = self.read()
+        version_json["Changelist"] = cl
+        if compatible_cl:
+            version_json["CompatibleChangelist"] = compatible_cl
+        elif licensee != bool(
+                version_json["IsLicenseeVersion"]):
+            # Clear out the compatible changelist number; it corresponds to a different P4 server.
+            version_json["CompatibleChangelist"] = 0
+
+        # The boolean fields must be encoded as integers
+        version_json["IsLicenseeVersion"] = int(licensee)
+        version_json["IsPromotedBuild"] = int(promoted)
+
+        if branch is None:
+            branch = UnrealPerforce.get_current_stream()
+        branch = branch.replace("/", "+")
+        version_json["BranchName"] = branch
+
+        if build_id:
+            version_json["BuildId"] = build_id
+
+        UnrealPerforce.sync(self.file_path, cl=0)
+        self.write(version_json)
+
     def get_current(self) -> UnrealVersion:
         version_json = self.read()
         current_version = UnrealVersion()
@@ -150,7 +190,7 @@ def _test_version_compatibility(matching_licensee, version_a, version_b, expecte
             False, True, version_a, version_b, expected_result)
 
 
-if __name__ == "__main__":
+def _run_tests():
     # Check that version string conversion works at module startup
     _test_version_string_conversion_SAME("5.0.2-0+++UE5+Release-5.0")
     _test_version_string_conversion_SAME("5.0.2-0")
@@ -178,3 +218,7 @@ if __name__ == "__main__":
     _test_version_compatibility(False, "1.2.3-10", "1.2.4-10", False)
     _test_version_compatibility(False, "1.3.3-10", "1.2.3-10", True)
     _test_version_compatibility(False, "1.2.3-10", "1.3.3-10", False)
+
+
+if __name__ == "__main__":
+    _run_tests()
