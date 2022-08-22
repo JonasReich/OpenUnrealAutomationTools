@@ -7,4 +7,3 @@ from .setuptools import *
 from .unrealengine import *
 from .util import *
 from .version import *
-from .zip import *
