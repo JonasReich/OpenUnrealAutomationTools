@@ -19,7 +19,7 @@ set PIP=%PYTHON% -m pip
 set SOURCE_PATH=%~dp0python
 
 echo Packing TestReportViewer_Template...
-set "ZIP_SCRIPT=%~dp0python/openunrealautomation/zip.py"
+set "ZIP_SCRIPT=%~dp0python/scripts/zip.py"
 set "ARCHIVE_SOURCE=%~dp0TestReportViewer_Template"
 set "ARCHIVE_FILE=%~dp0python/openunrealautomation/resources/TestReportViewer_Template"
 %PYTHON% %ZIP_SCRIPT% pack "%ARCHIVE_SOURCE%" "%ARCHIVE_FILE%"
