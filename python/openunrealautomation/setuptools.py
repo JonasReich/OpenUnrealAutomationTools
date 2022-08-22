@@ -32,6 +32,7 @@ class VisualStudioCode:
         self.exe_path = which_checked(
             "code", "Visual Studio Code")
         self.config_dir = os.path.join(self.workspace_root, ".vscode")
+        os.makedirs(self.config_dir, exist_ok=True)
 
     def get_settings(self) -> dict:
         """
