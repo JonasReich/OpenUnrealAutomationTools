@@ -11,7 +11,7 @@ import re
 import shutil
 import stat
 import subprocess
-from typing import Any, Generator
+from typing import Any, Generator, Dict, MutableSet, List, Tuple
 
 from openunrealautomation.core import *
 
@@ -56,7 +56,7 @@ def force_rmtree(path: str, no_file_ok: bool = False) -> None:
     shutil.rmtree(path, onerror=_on_rm_error)
 
 
-def rmtree_empty(root) -> set[str]:
+def rmtree_empty(root) -> MutableSet[str]:
     """
     Delete empty directories in tree.
     Returns set of deleted directories.
@@ -82,7 +82,7 @@ def rmtree_empty(root) -> set[str]:
     return deleted
 
 
-def mirror_files(source_root: str, target_root: str, relative_paths: set[str], ignore_patterns: list[str] = []) -> int:
+def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[str], ignore_patterns: List[str] = []) -> int:
     """
     Take a list of relative file paths (e.g. from buildgraph) and copy them from source to target.
     Existing files in target that are not in source will be deleted.
@@ -177,7 +177,7 @@ def set_system_env_var(name, value) -> None:
     return
 
 
-def add_startup(name: str, program: str, args: list[str]) -> None:
+def add_startup(name: str, program: str, args: List[str]) -> None:
     """
     Add a batch file to startup/autostart that launches a program with arguments.
     This writes a batchfile to the user startup files.
@@ -201,7 +201,7 @@ def add_startup(name: str, program: str, args: list[str]) -> None:
         bat_file.write(f"start {program} {' '.join(args)}")
 
 
-def list_attrs(obj: object, class_filter: type) -> Generator[tuple[str, Any], None, None]:
+def list_attrs(obj: object, class_filter: type) -> Generator[Tuple[str, Any], None, None]:
     """
     List attributes of a specific type.
     Returns generator with tuple of attribute name and value.

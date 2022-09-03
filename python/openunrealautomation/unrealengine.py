@@ -2,11 +2,12 @@ import os
 import shutil
 import subprocess
 import winreg
+from typing import Set, List
 from xml.etree.ElementTree import ElementTree as XmlTree
 
 from openunrealautomation.core import *
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import walk_level, which_checked, run_subprocess
+from openunrealautomation.util import run_subprocess, walk_level, which_checked
 
 
 class UnrealEngine:
@@ -223,7 +224,7 @@ class UnrealEngine:
             all_arguments.append(f"-Set:{key}={value}")
         return self.run(UnrealProgram.UAT, arguments=all_arguments)
 
-    def get_buildgraph_files(self, tag: str) -> set[str]:
+    def get_buildgraph_files(self, tag: str) -> Set[str]:
         """
         Get tagged file list from last buildgraph execution.
         """
@@ -269,7 +270,8 @@ class UnrealEngine:
         project_args = ["-project=" + str(self.environment.project_file.file_path),
                         "-game"] if not engine_sln else []
         generate_args = [generate_script] + project_args
-        run_subprocess(generate_args, cwd=os.path.dirname(self.environment.project_root))
+        run_subprocess(generate_args, cwd=os.path.dirname(
+            self.environment.project_root))
 
     def build(self,
               target: UnrealBuildTarget,
@@ -351,7 +353,7 @@ class UnrealEngine:
         raise OUAException(
             "Failed to determine GenerateProjectFiles script/command")
 
-    def _get_default_program_arguments(self, program: UnrealProgram) -> "list[str]":
+    def _get_default_program_arguments(self, program: UnrealProgram) -> List[str]:
         """
         Returns some reasonable default arguments for a given program.
 
