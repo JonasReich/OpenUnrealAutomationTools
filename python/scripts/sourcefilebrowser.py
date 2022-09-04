@@ -59,52 +59,23 @@ class DirectoryType(enum.Enum):
 
 
 class KeyBindings:
-    file_browser: "FileBrowser" = None
-
     def __init__(self, master, file_browser: "FileBrowser"):
-
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
-        self.aMenu.add_command(label="Delete", command=self.delete)
-        self.aMenu.add_command(label="New", command=self.new)
+        self.aMenu.add_command(label="Delete", command=file_browser.delete_selected)
+        self.aMenu.add_command(label="New", command=file_browser.new_file)
 
-        master.bind("<Delete>", self.delete_hotkey)
-        master.bind("<Control-d>", self.delete_hotkey)
-        master.bind("<Control-n>", self.new_hotkey)
-        master.bind("<Control-r>", self.refresh_roots_hotkey)
+        # Global hotkeys
+        master.bind("<Delete>", lambda event: file_browser.delete_selected())
+        master.bind("<Control-d>", lambda event: file_browser.delete_selected())
+        master.bind("<Control-n>", lambda event: file_browser.new_file())
+        master.bind("<Control-r>", lambda event: file_browser.refresh_roots())
 
-        self.tree_item = ""
-        self.tree = file_browser.tree
-        self.file_browser = file_browser
+        # Right click only on tree
         file_browser.tree.bind("<Button-3>", self.popup)
 
     def popup(self, event):
         self.aMenu.post(event.x_root, event.y_root)
-        self.refresh_tree_item()
-
-    def refresh_tree_item(self):
-        self.tree_item = self.tree.focus()
-
-    def delete(self):
-        self.refresh_tree_item()
-        if self.tree_item:
-            self.tree.delete(self.tree_item)
-
-    def new(self):
-        self.refresh_tree_item()
-        print("new")
-
-    # HOTKEY FUNCS
-
-    def delete_hotkey(self, event):
-        self.file_browser.delete_selected()
-
-    def new_hotkey(self, event):
-        self.new()
-
-    def refresh_roots_hotkey(self, event):
-        self.file_browser.refresh_roots()
-
 
 class Selection_DragDrop(object):
     def __init__(self, root: tk.Tk, file_browser: "FileBrowser"):
@@ -295,6 +266,9 @@ class FileBrowser(object):
                 else:
                     os.remove(abspath)
                 self.refresh_node_children(parent)
+
+    def new_file(self):
+        print("TODO: new file")
 
     def open_node(self, event):
         node = self.tree.focus()
