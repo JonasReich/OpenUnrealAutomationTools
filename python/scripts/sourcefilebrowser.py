@@ -91,6 +91,7 @@ class PathType(enum.Enum):
         for case in PathType:
             tree.tag_configure(str(case), background=case.get_color())
 
+
 def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child):
     for child in tv.get_children(suspected_parent):
         if child == suspected_child:
@@ -105,8 +106,14 @@ class KeyBindings:
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
         self.aMenu.add_command(
-            label="Delete", command=file_browser.delete_selected)
-        self.aMenu.add_command(label="New", command=file_browser.new_file)
+            label="Delete",
+            command=file_browser.delete_selected)
+        self.aMenu.add_command(
+            label="New",
+            command=file_browser.new_file)
+        self.aMenu.add_command(
+            label="Open",
+            command=file_browser.open_explorer)
 
         # Global hotkeys
         master.bind("<Delete>", lambda event: file_browser.delete_selected())
@@ -114,6 +121,7 @@ class KeyBindings:
                     lambda event: file_browser.delete_selected())
         master.bind("<Control-n>", lambda event: file_browser.new_file())
         master.bind("<Control-r>", lambda event: file_browser.refresh_roots())
+        master.bind("<Control-o>", lambda event: file_browser.open_explorer())
 
         # Right click only on tree
         file_browser.tree.bind("<Button-3>", self.popup)
@@ -346,16 +354,20 @@ class FileBrowser(object):
         print("TODO: new file")
 
     def open_node(self, event):
+        # This implements open / double-click, so use focus instead of selection -> maybe change?
         node = self.tree.focus()
         path = self.get_node_path(node)
         if path:
             if os.path.isfile(path):
-                # Open files in default application
                 os.startfile(path)
                 return
 
             # Clear and refresh children for folders
             self.refresh_node_children(node)
+
+    def open_explorer(self):
+        for node in self.tree.selection():
+            os.startfile(self.get_node_path(node))
 
     def insert_node_path(self, path, parent_node):
         abspath = os.path.abspath(path)
