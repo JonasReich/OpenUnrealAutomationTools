@@ -91,6 +91,14 @@ class PathType(enum.Enum):
         for case in PathType:
             tree.tag_configure(str(case), background=case.get_color())
 
+def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child):
+    for child in tv.get_children(suspected_parent):
+        if child == suspected_child:
+            return True
+        elif is_parent(tv, child, suspected_child):
+            return True
+    return False
+
 
 class KeyBindings:
     def __init__(self, master, file_browser: "FileBrowser"):
@@ -129,12 +137,17 @@ class Selection_DragDrop(object):
         self.ctrl_down = False
         pass
 
-    def is_selectable(self, node) -> bool:
+    def is_movable(self, node) -> bool:
         node_path = self.file_browser.get_node_path(node)
         if node_path is None:
-            return
+            return False
         # Only allow moving files and folders inside the source folders
-        return os.path.isfile(node_path) or "\\Source\\" in node_path
+        if os.path.isfile(node_path):
+            return True
+        path_type = PathType.get_from_path(node_path, self.file_browser)
+        if path_type == PathType.SOURCE_SUB or path_type == PathType.MODULE:
+            return True
+        return False
 
     def is_multiselectable(self, node) -> bool:
         node_path = self.file_browser.get_node_path(node)
@@ -150,8 +163,10 @@ class Selection_DragDrop(object):
     def bDown_Control(self, event):
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
-        if self.is_selectable(row) and self.is_multiselectable(row):
+        if self.is_multiselectable(row):
             tv.selection_add(row)
+        else:
+            tv.selection_set(row)
         self.ctrl_down = True
 
     def bDown(self, event):
@@ -159,8 +174,7 @@ class Selection_DragDrop(object):
         row = tv.identify_row(event.y)
         if row is None:
             return
-        if self.is_selectable(row):
-            tv.selection_set(row)
+        tv.selection_set(row)
 
     def bUp(self, event):
         tv: ttk.Treeview = event.widget
@@ -180,10 +194,20 @@ class Selection_DragDrop(object):
                 or self.moveto_row is None or self.moveto_row not in file_browser.paths_by_node:
             return
 
+        for item in selection:
+            if not self.is_movable(item):
+                return
+
         # Use parent directory for files
         path = file_browser.paths_by_node[self.moveto_row]
         moveto_row = self.moveto_row if os.path.isdir(
             path) else self.tree.parent(self.moveto_row)
+
+        # prevent moving parent into child
+        for node in selection:
+            if is_parent(tv, node, moveto_row):
+                print("Prevented moving into child node")
+                return
 
         moveto_idx = tv.index(moveto_row)
         selection.sort(key=lambda item: self.tree.item(item)[
