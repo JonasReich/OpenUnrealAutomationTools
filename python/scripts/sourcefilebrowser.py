@@ -222,6 +222,12 @@ class Selection_DragDrop(object):
             self.tooltip.geometry(geometry_str)
 
 
+def ttk_grid_fill(widget: tk.Widget, column: int, row: int):
+    widget.grid(row=row, column=column, sticky="nesw")
+    widget.columnconfigure(column, weight=1)
+    widget.rowconfigure(row, weight=1)
+
+
 class FileBrowser(object):
     def __init__(self, root: tk.Tk, ue: UnrealEngine):
         self.paths_by_node = dict()
@@ -229,20 +235,16 @@ class FileBrowser(object):
         self.nodes_by_path = dict()
 
         frame = tk.Frame(root)
+        ttk_grid_fill(frame, 0, 0)
+
         self.tree = ttk.Treeview(frame, selectmode="none")
         ysb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
         xsb = ttk.Scrollbar(frame, orient="horizontal",
                             command=self.tree.xview)
         self.tree.configure(yscroll=ysb.set, xscroll=xsb.set)
-
-        self.tree.grid(row=0, column=0, sticky="nesw")
-        self.tree.columnconfigure(0, weight=1)
-        self.tree.rowconfigure(0, weight=1)
+        ttk_grid_fill(self.tree, 0, 0)
         ysb.grid(row=0, column=1, sticky="ns")
         xsb.grid(row=1, column=0, sticky="ew")
-        frame.grid(row=0, column=0, sticky="nesw")
-        frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(0, weight=1)
 
         self.tree.bind("<<TreeviewOpen>>", self.open_node)
 
