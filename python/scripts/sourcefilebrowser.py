@@ -44,30 +44,66 @@ class FileTreeIcons(enum.Enum):
         return str(FileTreeIcons.DIR if os.path.isdir(path) else FileTreeIcons.FILE)
 
 
-class DirectoryType(enum.Enum):
-    ROOT = 0, "rootdir"
-    PLUGIN_ORG = 1, "pluginorg_dir"
-    PLUGIN = 2, "plugin_dir"
-    MODULE = 3, "module_dir"
-    SOURCE = 4, "source_dir"  # The actual "Source" directory
+class PathType(enum.Enum):
+    ROOT = 0, "rootdir", "#aaa"
+    PLUGIN_ORG = 1, "pluginorg_dir", "#bbb"
+    PLUGIN = 2, "plugin_dir", "#ccc"
+    MODULE = 3, "module_dir", "#ddd"
+    # The actual "Source" directory
+    SOURCE = 4, "source_dir", "#eee"
     # Directories in the Private/Public folder (incl. "Public", "Private")
-    SOURCE_SUB = 5, "source_sub_dir"
+    SOURCE_SUB = 5, "source_sub_dir", "#fff"
+    FILE = 6, "file", "#ffd"
 
-    # TODO
-    # tree.insert('', 'end', text = 'your text', tags = ('rootdir',))
-    # tree.tag_configure('rootdir', background='orange')
+    @staticmethod
+    def get_from_path(path: str, file_browser: "FileBrowser") -> "PathType":
+        if os.path.isfile(path):
+            return PathType.FILE
+        if path in file_browser.root_paths:
+            return PathType.ROOT
+        elif Path(path).name == "Source":
+            return PathType.SOURCE
+        elif "\\Source\\" in path:
+            # module or source_sub
+            if Path(path).parent.name == "Source":
+                return PathType.MODULE
+            else:
+                return PathType.SOURCE_SUB
+        elif "\\Plugins\\" in path:
+            # plugin or plugin org dir
+            if glob.glob(path + "\\*.uplugin"):
+                return PathType.PLUGIN
+            else:
+                return PathType.PLUGIN_ORG
+        assert False, "This point must never be reached"
+
+    def __int__(self) -> int:
+        return self.value[0]
+
+    def __str__(self) -> str:
+        return self.value[1]
+
+    def get_color(self) -> str:
+        return self.value[2]
+
+    @staticmethod
+    def configure_tags(tree: ttk.Treeview):
+        for case in PathType:
+            tree.tag_configure(str(case), background=case.get_color())
 
 
 class KeyBindings:
     def __init__(self, master, file_browser: "FileBrowser"):
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
-        self.aMenu.add_command(label="Delete", command=file_browser.delete_selected)
+        self.aMenu.add_command(
+            label="Delete", command=file_browser.delete_selected)
         self.aMenu.add_command(label="New", command=file_browser.new_file)
 
         # Global hotkeys
         master.bind("<Delete>", lambda event: file_browser.delete_selected())
-        master.bind("<Control-d>", lambda event: file_browser.delete_selected())
+        master.bind("<Control-d>",
+                    lambda event: file_browser.delete_selected())
         master.bind("<Control-n>", lambda event: file_browser.new_file())
         master.bind("<Control-r>", lambda event: file_browser.refresh_roots())
 
@@ -76,6 +112,7 @@ class KeyBindings:
 
     def popup(self, event):
         self.aMenu.post(event.x_root, event.y_root)
+
 
 class Selection_DragDrop(object):
     def __init__(self, root: tk.Tk, file_browser: "FileBrowser"):
@@ -139,7 +176,8 @@ class Selection_DragDrop(object):
 
     def _try_move(self, tv):
         selection = list(tv.selection())
-        if len(selection) == 0 or self.moveto_row in selection:
+        if len(selection) == 0 or self.moveto_row in selection \
+                or self.moveto_row is None or self.moveto_row not in file_browser.paths_by_node:
             return
 
         # Use parent directory for files
@@ -205,6 +243,15 @@ class FileBrowser(object):
         self.root_paths = set()
         self.nodes_by_path = dict()
 
+        # Fix for tag rows not working
+        # https://stackoverflow.com/a/67846091/7486318
+        style = ttk.Style(root)
+        aktualTheme = style.theme_use()
+        style.theme_create("dummy", parent=aktualTheme)
+        style.theme_use("dummy")
+        # make sure the selected items still show up properly. Otherwise only the tag colors show up.
+        style.map('Treeview', background=[("selected", "#aaf")])
+
         frame = tk.Frame(root)
         ttk_grid_fill(frame, 0, 0)
 
@@ -226,6 +273,8 @@ class FileBrowser(object):
         self.key_binds = KeyBindings(root, self)
         self.drag_drop = Selection_DragDrop(root, self)
 
+        PathType.configure_tags(self.tree)
+
     def register_node(self, path, node):
         # TODO HACK
         path_as_src_path = os.path.normpath(os.path.join(path, "Source"))
@@ -238,8 +287,10 @@ class FileBrowser(object):
         return self.paths_by_node.get(node, None)
 
     def insert_node(self, parent, text, abspath):
+        path_type = PathType.get_from_path(abspath, self)
+        tags = (str(path_type),)
         node = self.tree.insert(
-            parent, "end", text=f"{FileTreeIcons.get_by_path(abspath)} {text}", open=False)
+            parent, "end", text=f"{FileTreeIcons.get_by_path(abspath)} {text}", open=False, tags=tags)
         self.register_node(abspath, node)
         if os.path.isdir(abspath):
             # insert an empty dummy node so graph shows the expand icon
