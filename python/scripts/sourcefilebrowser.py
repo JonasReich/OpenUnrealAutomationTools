@@ -198,8 +198,10 @@ class Selection_DragDrop(object):
 
     def _try_move(self, tv) -> None:
         selection = list(tv.selection())
-        if len(selection) == 0 or self.moveto_row in selection \
-                or self.moveto_row is None or self.moveto_row not in file_browser.paths_by_node:
+        if len(selection) == 0 \
+                or self.moveto_row in selection \
+                or self.moveto_row is None \
+                or self.moveto_row not in self.file_browser.paths_by_node:
             return
 
         for item in selection:
@@ -207,7 +209,7 @@ class Selection_DragDrop(object):
                 return
 
         # Use parent directory for files
-        path = file_browser.paths_by_node[self.moveto_row]
+        path = self.file_browser.paths_by_node[self.moveto_row]
         moveto_row = self.moveto_row if os.path.isdir(
             path) else self.tree.parent(self.moveto_row)
 
@@ -357,11 +359,7 @@ class FileBrowser(object):
         # This implements open / double-click, so use focus instead of selection -> maybe change?
         node = self.tree.focus()
         path = self.get_node_path(node)
-        if path:
-            if os.path.isfile(path):
-                os.startfile(path)
-                return
-
+        if path and os.path.isdir(path):
             # Clear and refresh children for folders
             self.refresh_node_children(node)
 
