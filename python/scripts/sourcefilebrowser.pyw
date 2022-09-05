@@ -34,11 +34,13 @@ from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.unrealengine import UnrealEngine
 
 # TODO clean
-_p4:UnrealPerforce = None
+_p4: UnrealPerforce = None
 
-def get_p4() ->UnrealPerforce:
+
+def get_p4() -> UnrealPerforce:
     global _p4
     return _p4
+
 
 def set_p4(cwd) -> None:
     global _p4
@@ -54,7 +56,13 @@ class FileTreeIcons(enum.Enum):
         return self.value[1]
 
     def get_by_path(path: str) -> str:
-        return str(FileTreeIcons.DIR if os.path.isdir(path) else FileTreeIcons.FILE)
+        if not os.path.exists(path):
+            return str(FileTreeIcons.MISSING)
+        if os.path.isfile(path):
+            return SourceFileType.get_for_file(path).get_icon()
+        if PathType.get_from_path(path) == PathType.PLUGIN:
+            return "🧩"
+        return str(FileTreeIcons.DIR)
 
 
 class PathType(enum.Enum):
@@ -69,10 +77,10 @@ class PathType(enum.Enum):
     FILE = 6, "file", "#ffd"
 
     @staticmethod
-    def get_from_path(path: str, file_browser: "FileBrowser") -> "PathType":
+    def get_from_path(path: str, file_browser: "FileBrowser" = None) -> "PathType":
         if os.path.isfile(path):
             return PathType.FILE
-        if path in file_browser.root_paths:
+        if (not file_browser is None) and path in file_browser.root_paths:
             return PathType.ROOT
         elif Path(path).name == "Source":
             return PathType.SOURCE
@@ -88,7 +96,7 @@ class PathType(enum.Enum):
                 return PathType.PLUGIN
             else:
                 return PathType.PLUGIN_ORG
-        assert False, f"This point must never be reached. Path: {path}"
+        return PathType.ROOT
 
     def __int__(self) -> int:
         return self.value[0]
@@ -103,6 +111,31 @@ class PathType(enum.Enum):
     def configure_tags(tree: ttk.Treeview) -> None:
         for case in PathType:
             tree.tag_configure(str(case), background=case.get_color())
+
+
+class SourceFileType(enum.Enum):
+    CPP_HEADER = 0, "h", "📄"
+    CPP_SOURCE = 1, "cpp", "📄"
+    CPP_INL = 2, "inl", "📄"
+    BUILD_CS = 10, "Build.cs", "⚙️"
+    TARGET_CS = 11, "Target.cs", "⚙️"
+    OTHER_CS = 12, "cs", "📄"
+    PLUGIN = 20, "uplugin", "🧩"
+    TEXT = 50, "txt", "📄"
+    OTHER = TEXT
+
+    def __str__(self) -> str:
+        return self.value[1]
+
+    @staticmethod
+    def get_for_file(path: str):
+        for file_type in SourceFileType:
+            if path.endswith(str(file_type)):
+                return file_type
+        return SourceFileType.OTHER
+
+    def get_icon(self) -> str:
+        return self.value[2]
 
 
 def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
