@@ -20,9 +20,11 @@ TODO:
 
 import os
 import shutil
+import re
 import tkinter as tk
 import tkinter.ttk as ttk
 
+from locale import atoi
 from typing import Tuple
 from pathlib import Path
 
@@ -75,7 +77,7 @@ class PathType(enum.Enum):
                 return PathType.PLUGIN
             else:
                 return PathType.PLUGIN_ORG
-        assert False, "This point must never be reached"
+        assert False, f"This point must never be reached. Path: {path}"
 
     def __int__(self) -> int:
         return self.value[0]
@@ -99,6 +101,56 @@ def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
         elif is_parent(tv, child, suspected_child):
             return True
     return False
+
+
+def _try_atoi(str) -> int:
+    if not str is None:
+        return atoi(str)
+    else:
+        return 0
+
+
+class TtkGeometry():
+    def __init__(self, width, height, x=0, y=0) -> None:
+        self.width = width
+        self.height = height
+        self.x = x
+        self.y = y
+
+    def __str__(self) -> str:
+        result = ""
+        if self.width != 0 or self.height != 0:
+            result += f"{self.width}x{self.height}"
+        if not self.x is None:
+            result += f"+{self.x}"
+            if not self.y is None:
+                result += f"+{self.y}"
+        return result
+
+    @staticmethod
+    def from_string(string: str) -> "TtkGeometry":
+        match = re.match(
+            "(?P<width>\\d+)x(?P<height>\\d+)(\\+(?P<x>\\d+)(\\+(?P<y>\\d+))?)?", string)
+        if match is None:
+            return None
+        return TtkGeometry(_try_atoi(match.group("width")),
+                           _try_atoi(match.group("height")),
+                           _try_atoi(match.group("x")),
+                           _try_atoi(match.group("y")))
+
+
+def ttk_grid_fill(widget: tk.Widget, column: int, row: int, columnspan=1, rowspan=1, sticky="nesw", column_weight: int = 1, row_weight: int = 1) -> None:
+    padding = 3
+    widget.grid(row=row,
+                column=column,
+                columnspan=columnspan,
+                rowspan=rowspan,
+                sticky=sticky,
+                padx=padding,
+                pady=padding)
+    parent = widget.nametowidget(widget.winfo_parent())
+    parent.columnconfigure(column, weight=column_weight)
+    parent.rowconfigure(row, weight=row_weight)
 
 
 class KeyBindings:
@@ -253,7 +305,7 @@ class Selection_DragDrop(object):
         selection = tv.selection()
         text = self.file_browser.paths_by_node[selection[0]] if len(
             selection) == 1 else f"{len(selection)} items"
-        geometry_str = f'+{event.x_root+15}+{event.y_root+10}'
+        geometry_str = str(TtkGeometry(0, 0, event.x_root+15, event.y_root+10))
         if self.tooltip is None:
             self.tooltip = tk.Toplevel()
             self.tooltip.overrideredirect(True)
@@ -265,13 +317,61 @@ class Selection_DragDrop(object):
             self.tooltip.geometry(geometry_str)
 
 
-def ttk_grid_fill(widget: tk.Widget, column: int, row: int) -> None:
-    widget.grid(row=row, column=column, sticky="nesw")
-    widget.columnconfigure(column, weight=1)
-    widget.rowconfigure(row, weight=1)
+class NewFileDialog(object):
+    new_classname = ""
+
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str) -> None:
+        self.file_browser = file_browser
+        self.dir = dir
+
+        self.popup = popup = tk.Toplevel(root)
+        popup.wm_title("New File")
+        # This just tells the message to be on top of the root window.
+        popup.tkraise(root)
+        root_geo = TtkGeometry.from_string(root.winfo_geometry())
+        root_geo.width = 300
+        root_geo.height = 200
+        root_geo.x += 90
+        root_geo.y += 90
+        popup.geometry(str(root_geo))
+
+        popup.resizable(True, True)
+
+        frame = ttk.Frame(popup)
+        ttk_grid_fill(frame, 0, 0, sticky="nwe")
+
+        label = ttk.Label(frame, text="Create new source/header file...")
+        ttk_grid_fill(label, 0, 0, columnspan=2, sticky="ew")
+
+        label = ttk.Label(frame, text="File Name")
+        ttk_grid_fill(label, 0, 1, sticky="w")
+        self.filename_entry = ttk.Entry(frame, textvariable=self.new_classname)
+        self.filename_entry.bind("<Return>", lambda event: self.submit())
+        self.filename_entry.focus_set()
+        ttk_grid_fill(self.filename_entry, 1, 1)
+
+        submit_button = ttk.Button(frame, text="OK", command=self.submit)
+        ttk_grid_fill(submit_button, 0, 2, columnspan=2)
+
+    def submit(self) -> None:
+        # TODO validate file / class names
+        filename = self.filename_entry.get()
+        full_path = os.path.join(self.dir, filename)
+        if not os.path.exists(full_path):
+            # create file
+            with open(full_path, "w"):
+                # TODO file templates
+                pass
+            # create node
+            parent_node = self.file_browser.nodes_by_path[self.dir]
+            self.file_browser.insert_node(parent_node, filename, full_path)
+
+        self.popup.destroy()
 
 
 class FileBrowser(object):
+    new_file_dialog: NewFileDialog = None
+
     def __init__(self, root: tk.Tk, ue: UnrealEngine) -> None:
         self.paths_by_node = dict()
         self.root_paths = set()
@@ -286,6 +386,7 @@ class FileBrowser(object):
         # make sure the selected items still show up properly. Otherwise only the tag colors show up.
         style.map('Treeview', background=[("selected", "#aaf")])
 
+        self.root = root
         frame = tk.Frame(root)
         ttk_grid_fill(frame, 0, 0)
 
@@ -353,7 +454,10 @@ class FileBrowser(object):
                 self.refresh_node_children(parent)
 
     def new_file(self) -> None:
-        print("TODO: new file")
+        path = self.get_node_path(self.tree.focus())
+        if os.path.isfile(path):
+            path = str(Path(path).parent)
+        self.new_file_dialog = NewFileDialog(self.root, self, path)
 
     def open_node(self, event) -> None:
         # This implements open / double-click, so use focus instead of selection -> maybe change?
@@ -410,7 +514,7 @@ class FileBrowser(object):
 
 def create_tkroot(sizex, sizey) -> tk.Tk:
     root = tk.Tk()
-    root.geometry(f"{sizex}x{sizey}")
+    root.geometry(str(TtkGeometry(sizex, sizey)))
     root.resizable(True, True)
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
