@@ -18,20 +18,31 @@ TODO:
 - Activate/deactivate plugins
 """
 
-import os
-import shutil
-import re
-import tkinter as tk
-import tkinter.ttk as ttk
-
-from locale import atoi
-from typing import Tuple
-from pathlib import Path
-
+import argparse
+from ast import arg
 import enum
 import glob
+import os
+import re
+import shutil
+import tkinter as tk
+import tkinter.ttk as ttk
+from locale import atoi
+from pathlib import Path
 
+from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.unrealengine import UnrealEngine
+
+# TODO clean
+_p4:UnrealPerforce = None
+
+def get_p4() ->UnrealPerforce:
+    global _p4
+    return _p4
+
+def set_p4(cwd) -> None:
+    global _p4
+    _p4 = UnrealPerforce(cwd=cwd, check=False)
 
 
 class FileTreeIcons(enum.Enum):
@@ -293,6 +304,8 @@ class Selection_DragDrop(object):
 
             # Move file
             shutil.move(move_src, moveto)
+            get_p4().reconcile(move_src)
+            get_p4().reconcile(moveto)
 
     def bUp_Control(self, event) -> None:
         self.ctrl_down = False
@@ -362,6 +375,7 @@ class NewFileDialog(object):
             with open(full_path, "w"):
                 # TODO file templates
                 pass
+            get_p4().add(full_path)
             # create node
             parent_node = self.file_browser.nodes_by_path[self.dir]
             self.file_browser.insert_node(parent_node, filename, full_path)
@@ -377,18 +391,8 @@ class FileBrowser(object):
         self.root_paths = set()
         self.nodes_by_path = dict()
 
-        # Fix for tag rows not working
-        # https://stackoverflow.com/a/67846091/7486318
-        style = ttk.Style(root)
-        aktualTheme = style.theme_use()
-        style.theme_create("dummy", parent=aktualTheme)
-        style.theme_use("dummy")
-        # make sure the selected items still show up properly. Otherwise only the tag colors show up.
-        style.map('Treeview', background=[("selected", "#aaf")])
-
         self.root = root
-        frame = tk.Frame(root)
-        ttk_grid_fill(frame, 0, 0)
+        self.frame = frame = tk.Frame(root)
 
         self.tree = ttk.Treeview(frame, selectmode="none")
         ysb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
@@ -409,6 +413,9 @@ class FileBrowser(object):
         self.drag_drop = Selection_DragDrop(root, self)
 
         PathType.configure_tags(self.tree)
+
+    def destroy(self) -> None:
+        self.frame.destroy()
 
     def register_node(self, path, node) -> None:
         # TODO HACK
@@ -447,10 +454,12 @@ class FileBrowser(object):
                 return
             abspath = self.get_node_path(node)
             if abspath:
+                get_p4().edit(abspath)
                 if os.path.isdir(abspath):
                     shutil.rmtree(abspath)
                 else:
                     os.remove(abspath)
+                get_p4().reconcile(abspath)
                 self.refresh_node_children(parent)
 
     def new_file(self) -> None:
@@ -512,30 +521,79 @@ class FileBrowser(object):
             self.register_node(normpath, node)
 
 
-def create_tkroot(sizex, sizey) -> tk.Tk:
-    root = tk.Tk()
-    root.geometry(str(TtkGeometry(sizex, sizey)))
-    root.resizable(True, True)
-    root.columnconfigure(0, weight=1)
-    root.rowconfigure(0, weight=1)
-    return root
+class App():
+    rootdir: str = ""
+    file_browser: FileBrowser = None
 
+    def __init__(self, root) -> None:
+        self.rootdir = os.path.abspath(root)
+        print("rootdir ctor", self.rootdir)
 
-def main() -> None:
-    tkroot = create_tkroot(800, 500)
+        self.tkroot = self.create_tkroot(800, 500)
 
-    ue = UnrealEngine.create_from_parent_tree("./")
-    root_dir = ue.environment.project_root
-    tkroot.title(
-        f"openunrealautomation Source Browser - {ue.environment.project_name}")
+        rootdir_label = ttk.Label(self.tkroot, text="Project Root")
+        ttk_grid_fill(rootdir_label, 0, 0, column_weight=0, row_weight=0)
 
-    file_browser = FileBrowser(tkroot, ue)
-    file_browser.set_heading(ue.environment.project_name)
-    file_browser.insert_root(f"{root_dir}\\Source\\")
-    file_browser.insert_root(f"{root_dir}\\Plugins\\")
+        self.root_entry = ttk.Entry(self.tkroot, textvariable=self.rootdir)
+        self.root_entry.insert(0, self.rootdir)
+        ttk_grid_fill(self.root_entry, 1, 0, sticky="new", row_weight=0)
+        self.root_entry.focus_set()
+        self.root_entry.bind("<Return>", lambda event: self.init_browser())
 
-    tkroot.mainloop()
+        self.init_browser()
+
+    @staticmethod
+    def create_tkroot(sizex, sizey) -> tk.Tk:
+        root = tk.Tk()
+        root.geometry(str(TtkGeometry(sizex, sizey)))
+        root.resizable(True, True)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=0)
+        root.rowconfigure(1, weight=1)
+
+        # Fix for tag rows not working
+        # https://stackoverflow.com/a/67846091/7486318
+        style = ttk.Style(root)
+        aktualTheme = style.theme_use()
+        style.theme_create("dummy", parent=aktualTheme)
+        style.theme_use("dummy")
+        # make sure the selected items still show up properly. Otherwise only the tag colors show up.
+        style.map('Treeview', background=[("selected", "#aaf")])
+
+        return root
+
+    def init_browser(self) -> None:
+        entry_str = self.root_entry.get()
+        if entry_str != "":
+            self.rootdir = self.root_entry.get()
+
+        set_p4(self.rootdir)
+        print("root", self.rootdir)
+        ue = UnrealEngine.create_from_parent_tree(self.rootdir)
+
+        if not self.file_browser is None:
+            self.file_browser.destroy()
+
+        self.file_browser = FileBrowser(self.tkroot, ue)
+        self.file_browser.set_heading(ue.environment.project_name)
+        root_dir = ue.environment.project_root
+        print("root_dir", root_dir)
+        self.file_browser.insert_root(f"{root_dir}\\Source\\")
+        self.file_browser.insert_root(f"{root_dir}\\Plugins\\")
+        self.tkroot.title(
+            f"openunrealautomation Source Browser - {ue.environment.project_name}")
+
+        ttk_grid_fill(self.file_browser.frame, 0, 1,
+                      columnspan=2, column_weight=0)
+
+    def mainloop(self):
+        self.tkroot.mainloop()
 
 
 if __name__ == "__main__":
-    main()
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--root", default="./")
+    args = argparser.parse_args()
+
+    app = App(root=args.root)
+    app.mainloop()
