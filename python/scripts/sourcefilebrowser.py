@@ -37,7 +37,7 @@ class FileTreeIcons(enum.Enum):
     FILE = 1, "📄"
     MISSING = 2, "💔"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value[1]
 
     def get_by_path(path: str) -> str:
@@ -87,12 +87,12 @@ class PathType(enum.Enum):
         return self.value[2]
 
     @staticmethod
-    def configure_tags(tree: ttk.Treeview):
+    def configure_tags(tree: ttk.Treeview) -> None:
         for case in PathType:
             tree.tag_configure(str(case), background=case.get_color())
 
 
-def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child):
+def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
     for child in tv.get_children(suspected_parent):
         if child == suspected_child:
             return True
@@ -102,7 +102,7 @@ def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child):
 
 
 class KeyBindings:
-    def __init__(self, master, file_browser: "FileBrowser"):
+    def __init__(self, master, file_browser: "FileBrowser") -> None:
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
         self.aMenu.add_command(
@@ -126,12 +126,12 @@ class KeyBindings:
         # Right click only on tree
         file_browser.tree.bind("<Button-3>", self.popup)
 
-    def popup(self, event):
+    def popup(self, event) -> None:
         self.aMenu.post(event.x_root, event.y_root)
 
 
 class Selection_DragDrop(object):
-    def __init__(self, root: tk.Tk, file_browser: "FileBrowser"):
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser") -> None:
         self.file_browser = file_browser
         self.tree = file_browser.tree
         self.tree.bind("<ButtonPress-1>", self.bDown)
@@ -168,7 +168,7 @@ class Selection_DragDrop(object):
             return False
         return True
 
-    def bDown_Control(self, event):
+    def bDown_Control(self, event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if self.is_multiselectable(row):
@@ -177,14 +177,14 @@ class Selection_DragDrop(object):
             tv.selection_set(row)
         self.ctrl_down = True
 
-    def bDown(self, event):
+    def bDown(self, event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if row is None:
             return
         tv.selection_set(row)
 
-    def bUp(self, event):
+    def bUp(self, event) -> None:
         tv: ttk.Treeview = event.widget
         if not self.tooltip is None:
             self.tooltip.destroy()
@@ -196,7 +196,7 @@ class Selection_DragDrop(object):
         self._try_move(tv)
         self.moveto_row = None
 
-    def _try_move(self, tv):
+    def _try_move(self, tv) -> None:
         selection = list(tv.selection())
         if len(selection) == 0 or self.moveto_row in selection \
                 or self.moveto_row is None or self.moveto_row not in file_browser.paths_by_node:
@@ -240,11 +240,11 @@ class Selection_DragDrop(object):
             # Move file
             shutil.move(move_src, moveto)
 
-    def bUp_Control(self, event):
+    def bUp_Control(self, event) -> None:
         self.ctrl_down = False
         self.bUp(event)
 
-    def bMove(self, event):
+    def bMove(self, event) -> None:
         tv: ttk.Treeview = event.widget
         self.moveto_row = tv.identify_row(event.y)
 
@@ -263,14 +263,14 @@ class Selection_DragDrop(object):
             self.tooltip.geometry(geometry_str)
 
 
-def ttk_grid_fill(widget: tk.Widget, column: int, row: int):
+def ttk_grid_fill(widget: tk.Widget, column: int, row: int) -> None:
     widget.grid(row=row, column=column, sticky="nesw")
     widget.columnconfigure(column, weight=1)
     widget.rowconfigure(row, weight=1)
 
 
 class FileBrowser(object):
-    def __init__(self, root: tk.Tk, ue: UnrealEngine):
+    def __init__(self, root: tk.Tk, ue: UnrealEngine) -> None:
         self.paths_by_node = dict()
         self.root_paths = set()
         self.nodes_by_path = dict()
@@ -307,7 +307,7 @@ class FileBrowser(object):
 
         PathType.configure_tags(self.tree)
 
-    def register_node(self, path, node):
+    def register_node(self, path, node) -> None:
         # TODO HACK
         path_as_src_path = os.path.normpath(os.path.join(path, "Source"))
         if os.path.exists(path_as_src_path):
@@ -318,7 +318,7 @@ class FileBrowser(object):
     def get_node_path(self, node) -> str:
         return self.paths_by_node.get(node, None)
 
-    def insert_node(self, parent, text, abspath):
+    def insert_node(self, parent, text, abspath) -> str:
         path_type = PathType.get_from_path(abspath, self)
         tags = (str(path_type),)
         node = self.tree.insert(
@@ -329,14 +329,14 @@ class FileBrowser(object):
             self.tree.insert(node, "end")
         return node
 
-    def refresh_node_children(self, node):
+    def refresh_node_children(self, node) -> None:
         abspath = self.get_node_path(node)
         children = self.tree.get_children(node)
         for child in children:
             self.tree.delete(child)
         self.insert_node_path(abspath, node)
 
-    def delete_selected(self):
+    def delete_selected(self) -> None:
         for node in self.tree.selection():
             parent = self.tree.parent(node)
             if not parent:
@@ -350,10 +350,10 @@ class FileBrowser(object):
                     os.remove(abspath)
                 self.refresh_node_children(parent)
 
-    def new_file(self):
+    def new_file(self) -> None:
         print("TODO: new file")
 
-    def open_node(self, event):
+    def open_node(self, event) -> None:
         # This implements open / double-click, so use focus instead of selection -> maybe change?
         node = self.tree.focus()
         path = self.get_node_path(node)
@@ -365,11 +365,11 @@ class FileBrowser(object):
             # Clear and refresh children for folders
             self.refresh_node_children(node)
 
-    def open_explorer(self):
+    def open_explorer(self) -> None:
         for node in self.tree.selection():
             os.startfile(self.get_node_path(node))
 
-    def insert_node_path(self, path, parent_node):
+    def insert_node_path(self, path, parent_node) -> None:
         abspath = os.path.abspath(path)
         for element in os.listdir(abspath):
             nested_abspath = os.path.normpath(os.path.join(abspath, element))
@@ -384,21 +384,21 @@ class FileBrowser(object):
             ):
                 self.insert_node(parent_node, element, nested_abspath)
 
-    def set_heading(self, heading):
+    def set_heading(self, heading) -> None:
         self.tree.heading("#0", text=heading, anchor="w")
 
-    def insert_root(self, root):
+    def insert_root(self, root) -> None:
         normpath = os.path.normpath(root)
         self.add_root_node(normpath)
 
-    def refresh_roots(self):
+    def refresh_roots(self) -> None:
         for path in self.root_paths:
             node = self.nodes_by_path[path]
             # Easy way out: Just collapse all -> Opening will refresh automatically
             # self.refresh_node_children(node)
             self.tree.item(node, open=False)
 
-    def add_root_node(self, normpath):
+    def add_root_node(self, normpath) -> None:
         self.root_paths.add(normpath)
         root_node_name = ""
         if os.path.exists(normpath):
@@ -410,7 +410,7 @@ class FileBrowser(object):
             self.register_node(normpath, node)
 
 
-def create_tkroot(sizex, sizey):
+def create_tkroot(sizex, sizey) -> tk.Tk:
     root = tk.Tk()
     root.geometry(f"{sizex}x{sizey}")
     root.resizable(True, True)
@@ -419,7 +419,7 @@ def create_tkroot(sizex, sizey):
     return root
 
 
-if __name__ == "__main__":
+def main() -> None:
     tkroot = create_tkroot(800, 500)
 
     ue = UnrealEngine.create_from_parent_tree("./")
@@ -433,3 +433,7 @@ if __name__ == "__main__":
     file_browser.insert_root(f"{root_dir}\\Plugins\\")
 
     tkroot.mainloop()
+
+
+if __name__ == "__main__":
+    main()
