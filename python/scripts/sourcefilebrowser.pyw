@@ -19,8 +19,6 @@ TODO:
 """
 
 import argparse
-from ast import arg
-import asyncio
 import enum
 import glob
 import os
@@ -518,7 +516,7 @@ class FileBrowser(object):
         PathType.configure_tags(self.tree)
 
     def async_generate_project_files(self):
-        threading.Thread(target=self.ue.generate_project_files).start()
+        threading.Thread(target=self.ue.generate_project_files, kwargs={"extra_shell": True}).start()
 
     def destroy(self) -> None:
         self.frame.destroy()

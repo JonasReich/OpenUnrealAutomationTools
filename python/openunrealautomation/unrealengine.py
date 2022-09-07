@@ -2,12 +2,12 @@ import os
 import shutil
 import subprocess
 import winreg
-from typing import Set, List
+from typing import Set, List, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
 from openunrealautomation.core import *
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import run_subprocess, walk_level, which_checked
+from openunrealautomation.util import run_subprocess, walk_level, which_checked, args_str
 
 
 class UnrealEngine:
@@ -252,7 +252,7 @@ class UnrealEngine:
             tagged_files.add(file_node.text)
         return tagged_files
 
-    def generate_project_files(self, engine_sln=False) -> None:
+    def generate_project_files(self, engine_sln=False, extra_shell=False) -> None:
         """
         Generate project files (the C++/C# projects and .sln on Windows).
 
@@ -266,12 +266,30 @@ class UnrealEngine:
                 "Cannot generate project files for projects that do not have source files")
 
         # Generate the project files
-        generate_script = self._get_generate_script()
-        project_args = ["-project=" + str(self.environment.project_file.file_path),
-                        "-game"] if not engine_sln else []
-        generate_args = [generate_script] + project_args
-        run_subprocess(generate_args, cwd=os.path.dirname(
-            self.environment.project_root))
+        (generator_path, is_script) = self._get_generate_project_files_path()
+        if is_script:
+            # via a GenerateProjectFiles.bat script
+            generate_args = [generator_path]
+            if not engine_sln:
+                generate_args += [
+                    "-project=" + str(self.environment.project_file.file_path),
+                    "-game"
+                ]
+        else:
+            # via UnrealVersionSelector.exe
+            generate_args = [generator_path, "/projectfiles",
+                             str(self.environment.project_file.file_path)]
+
+        if extra_shell:
+            cmd = args_str(generate_args)
+            print(cmd)
+            # This creates an extra shell window that will remain open if the project file generation fails for the user to see.
+            subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            generate_directory = os.path.dirname(self.environment.project_root)
+            run_subprocess(generate_args,
+                           cwd=generate_directory,
+                           print_args=True)
 
     def build(self,
               target: UnrealBuildTarget,
@@ -333,11 +351,15 @@ class UnrealEngine:
 
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
 
-    def _get_generate_script(self) -> str:
-        """Returns the path to a script file that can be used to generate project files."""
+    def _get_generate_project_files_path(self) -> Tuple[str, bool]:
+        """
+        Returns a tuple of
+        - A) the path to a script file/application that can be used to generate project files.
+        - B) bool: whether A) is a generate script or the version selector executable.
+        """
         if self.environment.is_source_engine:
-            return self.environment.engine_root + \
-                "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat"
+            return (self.environment.engine_root +
+                    "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat", True)
 
         # For versions of the engine installed using the launcher, we need to query the shell integration
         # to determine the location of the Unreal Version Selector executable, which generates VS project files
@@ -347,7 +369,7 @@ class UnrealEngine:
             if key:
                 command = winreg.QueryValue(key, None)
                 command = command.replace(' /projectfiles "%1"', "")
-                return command.replace('"', '')
+                return (command.replace('"', ''), False)
         except:
             pass
         raise OUAException(
