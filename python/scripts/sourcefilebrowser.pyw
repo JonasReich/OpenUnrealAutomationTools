@@ -20,11 +20,13 @@ TODO:
 
 import argparse
 from ast import arg
+import asyncio
 import enum
 import glob
 import os
 import re
 import shutil
+import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 from locale import atoi
@@ -198,6 +200,8 @@ def ttk_grid_fill(widget: tk.Widget, column: int, row: int, columnspan=1, rowspa
 
 
 class KeyBindings:
+    """Key bindings and right click context menu"""
+
     def __init__(self, master, file_browser: "FileBrowser") -> None:
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
@@ -205,8 +209,14 @@ class KeyBindings:
             label="Delete",
             command=file_browser.delete_selected)
         self.aMenu.add_command(
-            label="New",
+            label="New File",
             command=file_browser.new_file)
+        self.aMenu.add_command(
+            label="New Folder",
+            command=file_browser.new_folder)
+        self.aMenu.add_command(
+            label="Rename",
+            command=file_browser.rename_selected)
         self.aMenu.add_command(
             label="Open",
             command=file_browser.open_explorer)
@@ -216,6 +226,9 @@ class KeyBindings:
         master.bind("<Control-d>",
                     lambda event: file_browser.delete_selected())
         master.bind("<Control-n>", lambda event: file_browser.new_file())
+        master.bind("<Control-Shift-n>",
+                    lambda event: file_browser.new_folder())
+        master.bind("<F2>", lambda event: file_browser.rename_selected())
         master.bind("<Control-r>", lambda event: file_browser.refresh_roots())
         master.bind("<Control-o>", lambda event: file_browser.open_explorer())
 
@@ -363,46 +376,67 @@ class Selection_DragDrop(object):
             self.tooltip.geometry(geometry_str)
 
 
-class NewFileDialog(object):
-    new_classname = ""
+class Popup(tk.Toplevel):
+    def __init__(self, root: tk.Tk, title: str, width: int, height: int, resizable: bool = True):
+        super(Popup, self).__init__(root)
+        self.wm_title(title)
+        # This just tells the message to be on top of the root window.
+        self.tkraise(root)
 
-    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str) -> None:
+        root_geo = TtkGeometry.from_string(root.winfo_geometry())
+        root_geo.x += int(root_geo.width / 2 - width / 2)
+        root_geo.y += int(root_geo.height / 2 - height / 2)
+        root_geo.width = width
+        root_geo.height = height
+        self.geometry(str(root_geo))
+        self.resizable(resizable, resizable)
+
+
+class NamePathElementDialog_Base(object):
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str, element_name: str, title: str, prompt: str) -> None:
         self.file_browser = file_browser
         self.dir = dir
+        self.element_name = element_name
 
-        self.popup = popup = tk.Toplevel(root)
-        popup.wm_title("New File")
-        # This just tells the message to be on top of the root window.
-        popup.tkraise(root)
-        root_geo = TtkGeometry.from_string(root.winfo_geometry())
-        root_geo.width = 300
-        root_geo.height = 200
-        root_geo.x += 90
-        root_geo.y += 90
-        popup.geometry(str(root_geo))
-
-        popup.resizable(True, True)
-
+        self.popup = popup = Popup(
+            root, title, width=300, height=90, resizable=False)
         frame = ttk.Frame(popup)
         ttk_grid_fill(frame, 0, 0, sticky="nwe")
 
-        label = ttk.Label(frame, text="Create new source/header file...")
+        label = ttk.Label(frame, text=prompt)
         ttk_grid_fill(label, 0, 0, columnspan=2, sticky="ew")
 
         label = ttk.Label(frame, text="File Name")
         ttk_grid_fill(label, 0, 1, sticky="w")
-        self.filename_entry = ttk.Entry(frame, textvariable=self.new_classname)
-        self.filename_entry.bind("<Return>", lambda event: self.submit())
-        self.filename_entry.focus_set()
-        ttk_grid_fill(self.filename_entry, 1, 1)
+        self.name_entry = ttk.Entry(frame, textvariable=element_name)
+        self.name_entry.bind("<Return>", lambda event: self.submit())
+        self.name_entry.insert(0, element_name)
+        self.name_entry.focus_set()
+        ttk_grid_fill(self.name_entry, 1, 1)
 
         submit_button = ttk.Button(frame, text="OK", command=self.submit)
         ttk_grid_fill(submit_button, 0, 2, columnspan=2)
 
     def submit(self) -> None:
-        # TODO validate file / class names
-        filename = self.filename_entry.get()
-        full_path = os.path.join(self.dir, filename)
+        # TODO validate names
+        element_name = self.name_entry.get()
+        full_path = os.path.join(self.dir, element_name)
+        self.submit_impl(element_name, full_path)
+
+        self.popup.destroy()
+
+    def submit_impl(self, element_name, full_path) -> None:
+        raise NotImplementedError()
+
+
+class NewFileDialog(NamePathElementDialog_Base):
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str) -> None:
+        super(NewFileDialog, self).__init__(root, file_browser, dir,
+                                            element_name="NewFile.txt",
+                                            title="New File",
+                                            prompt="Create new file...")
+
+    def submit_impl(self, filename, full_path) -> None:
         if not os.path.exists(full_path):
             # create file
             with open(full_path, "w"):
@@ -413,18 +447,54 @@ class NewFileDialog(object):
             parent_node = self.file_browser.nodes_by_path[self.dir]
             self.file_browser.insert_node(parent_node, filename, full_path)
 
-        self.popup.destroy()
+
+class NewFolderDialog(NamePathElementDialog_Base):
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str) -> None:
+        super(NewFolderDialog, self).__init__(root, file_browser, dir,
+                                              element_name="NewFolder",
+                                              title="New Folder",
+                                              prompt="Create new folder...")
+
+    def submit_impl(self, folder_name, full_path) -> None:
+        if not os.path.exists(full_path):
+            os.makedirs(full_path)
+            # create node
+            parent_node = self.file_browser.nodes_by_path[self.dir]
+            self.file_browser.insert_node(parent_node, folder_name, full_path)
+
+
+class RenamePathElementDialog(NamePathElementDialog_Base):
+    old_path: str = ""
+
+    def __init__(self, root: tk.Tk, file_browser: "FileBrowser", dir: str, element_name: str) -> None:
+        self.old_path = os.path.join(dir, element_name)
+        super(RenamePathElementDialog, self).__init__(root, file_browser, dir,
+                                                      element_name=element_name,
+                                                      title="Rename",
+                                                      prompt="Rename file/directory...")
+
+    def submit_impl(self, filename, full_path) -> None:
+        # Update file on disk
+        get_p4().edit(self.old_path)
+        os.rename(self.old_path, full_path)
+        get_p4().reconcile(self.old_path)
+        get_p4().reconcile(full_path)
+
+        # Update node
+        node = self.file_browser.nodes_by_path.pop(self.old_path)
+        self.file_browser.register_node(full_path, node)
+        self.file_browser.tree.item(node, text=filename)
 
 
 class FileBrowser(object):
-    new_file_dialog: NewFileDialog = None
-
     def __init__(self, root: tk.Tk, ue: UnrealEngine) -> None:
         self.paths_by_node = dict()
         self.root_paths = set()
         self.nodes_by_path = dict()
 
         self.root = root
+        self.ue = ue
+
         self.frame = frame = tk.Frame(root)
 
         self.tree = ttk.Treeview(frame, selectmode="none")
@@ -439,13 +509,16 @@ class FileBrowser(object):
         self.tree.bind("<<TreeviewOpen>>", self.open_node)
 
         refresh_button = ttk.Button(
-            frame, text="Generate Project Files", command=ue.generate_project_files)
+            frame, text="Generate Project Files", command=self.async_generate_project_files)
         refresh_button.grid(row=1, column=0, sticky="nesw")
 
         self.key_binds = KeyBindings(root, self)
         self.drag_drop = Selection_DragDrop(root, self)
 
         PathType.configure_tags(self.tree)
+
+    def async_generate_project_files(self):
+        threading.Thread(target=self.ue.generate_project_files).start()
 
     def destroy(self) -> None:
         self.frame.destroy()
@@ -499,7 +572,18 @@ class FileBrowser(object):
         path = self.get_node_path(self.tree.focus())
         if os.path.isfile(path):
             path = str(Path(path).parent)
-        self.new_file_dialog = NewFileDialog(self.root, self, path)
+        NewFileDialog(self.root, self, path)
+
+    def new_folder(self) -> None:
+        path = self.get_node_path(self.tree.focus())
+        if os.path.isfile(path):
+            path = str(Path(path).parent)
+        NewFolderDialog(self.root, self, path)
+
+    def rename_selected(self) -> None:
+        path = Path(self.get_node_path(self.tree.focus()))
+        RenamePathElementDialog(
+            self.root, self, dir=path.parent, element_name=path.name)
 
     def open_node(self, event) -> None:
         # This implements open / double-click, so use focus instead of selection -> maybe change?
