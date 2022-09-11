@@ -58,23 +58,24 @@ class FileTreeIcons(enum.Enum):
     def get_by_path(path: str) -> str:
         if not os.path.exists(path):
             return str(FileTreeIcons.MISSING)
-        if os.path.isfile(path):
+        if os.path.isdir(path):
+            return PathType.get_from_path(path).get_icon()
+        else:
             return SourceFileType.get_for_file(path).get_icon()
-        if PathType.get_from_path(path) == PathType.PLUGIN:
-            return "🧩"
-        return str(FileTreeIcons.DIR)
 
 
 class PathType(enum.Enum):
-    ROOT = 0, "rootdir", "#aaa"
-    PLUGIN_ORG = 1, "pluginorg_dir", "#bbb"
-    PLUGIN = 2, "plugin_dir", "#ccc"
-    MODULE = 3, "module_dir", "#ddd"
+    ROOT = 0, "rootdir", "#aaa", "📁"
+    PLUGIN_ORG = 1, "pluginorg_dir", "#bbb", "📁"
+    PLUGIN = 2, "plugin_dir", "#ccc", "📁"
+    MODULE = 3, "module_dir", "#ddd", "📁"
     # The actual "Source" directory
-    SOURCE = 4, "source_dir", "#eee"
+    SOURCE = 4, "source_dir", "#eee", "📁"
     # Directories in the Private/Public folder (incl. "Public", "Private")
-    SOURCE_SUB = 5, "source_sub_dir", "#fff"
-    FILE = 6, "file", "#ffd"
+    SOURCE_SUB = 5, "source_sub_dir", "#fff", "📁"
+    ANGELSCRIPT_ROOT = 6, "script_root", "#bbb", "📁"
+    ANGELSCRIPT_SUB = 7, "script_sub", "#fff", "📁"
+    FILE = 100, "file", "#ffd", "📄"
 
     @staticmethod
     def get_from_path(path: str, file_browser: "FileBrowser" = None) -> "PathType":
@@ -96,6 +97,10 @@ class PathType(enum.Enum):
                 return PathType.PLUGIN
             else:
                 return PathType.PLUGIN_ORG
+        elif Path(path).name == "Script":
+            return PathType.ANGELSCRIPT_ROOT
+        elif "\\Script\\" in path:
+            return PathType.ANGELSCRIPT_SUB
         return PathType.ROOT
 
     def __int__(self) -> int:
@@ -106,6 +111,9 @@ class PathType(enum.Enum):
 
     def get_color(self) -> str:
         return self.value[2]
+
+    def get_icon(self) -> str:
+        return self.value[3]
 
     @staticmethod
     def configure_tags(tree: ttk.Treeview) -> None:
@@ -120,7 +128,9 @@ class SourceFileType(enum.Enum):
     BUILD_CS = 10, "Build.cs", "⚙️"
     TARGET_CS = 11, "Target.cs", "⚙️"
     OTHER_CS = 12, "cs", "📄"
-    PLUGIN = 20, "uplugin", "🧩"
+    PROJECT = 20, "uproject", "🎮"
+    PLUGIN = 21, "uplugin", "🧩"
+    ANGELSCRIPT = 30, "as", "📄"
     TEXT = 50, "txt", "📄"
     OTHER = TEXT
 
@@ -258,7 +268,12 @@ class Selection_DragDrop(object):
             return False
         # Only allow moving files and folders inside the source folders
         if os.path.isfile(node_path):
-            return True
+            file_type = SourceFileType.get_for_file(node_path)
+            immovable_file_types = (
+                SourceFileType.PLUGIN,
+                SourceFileType.PROJECT
+            )
+            return file_type not in immovable_file_types
         path_type = PathType.get_from_path(node_path, self.file_browser)
         if path_type == PathType.SOURCE_SUB or path_type == PathType.MODULE:
             return True
@@ -360,8 +375,15 @@ class Selection_DragDrop(object):
         self.moveto_row = tv.identify_row(event.y)
 
         selection = tv.selection()
-        text = self.file_browser.paths_by_node[selection[0]] if len(
-            selection) == 1 else f"{len(selection)} items"
+        immovable_item = next(
+            (item for item in selection if self.is_movable(item) == False), None)
+
+        if immovable_item is None:
+            text = Path(self.file_browser.get_node_path(selection[0])).name if len(
+                selection) == 1 else f"{len(selection)} items"
+        else:
+            text = f"🚫 can't move {Path(self.file_browser.get_node_path(immovable_item)).name} 🚫"
+
         geometry_str = str(TtkGeometry(0, 0, event.x_root+15, event.y_root+10))
         if self.tooltip is None:
             self.tooltip = tk.Toplevel()
@@ -516,16 +538,17 @@ class FileBrowser(object):
         PathType.configure_tags(self.tree)
 
     def async_generate_project_files(self):
-        threading.Thread(target=self.ue.generate_project_files, kwargs={"extra_shell": True}).start()
+        threading.Thread(target=self.ue.generate_project_files,
+                         kwargs={"extra_shell": True}).start()
 
     def destroy(self) -> None:
         self.frame.destroy()
 
     def register_node(self, path, node) -> None:
         # TODO HACK
-        path_as_src_path = os.path.normpath(os.path.join(path, "Source"))
-        if os.path.exists(path_as_src_path):
-            path = path_as_src_path
+        #path_as_src_path = os.path.normpath(os.path.join(path, "Source"))
+        # if os.path.exists(path_as_src_path):
+        #    path = path_as_src_path
         self.nodes_by_path[path] = node
         self.paths_by_node[node] = path
 
@@ -599,14 +622,18 @@ class FileBrowser(object):
         abspath = os.path.abspath(path)
         for element in os.listdir(abspath):
             nested_abspath = os.path.normpath(os.path.join(abspath, element))
-            # Skip the Source folder itself -> recurse
             if element == "Source":
+                # Skip the Source folder itself -> recurse
                 self.insert_node_path(nested_abspath, parent_node)
             elif (
                 # Add paths that are inside Source folders
                 "\\Source" in nested_abspath or
                 # Add folders that contain Source folders -> HACK
-                len(glob.glob(f"{nested_abspath}\\Source\\")) > 0
+                len(glob.glob(f"{nested_abspath}\\Source\\")) > 0 or
+                # Add uplugin files
+                element.endswith("uplugin") or
+                # Angelscript script support
+                element == "Script" or "\\Script" in nested_abspath
             ):
                 self.insert_node(parent_node, element, nested_abspath)
 
@@ -628,7 +655,7 @@ class FileBrowser(object):
         self.root_paths.add(normpath)
         root_node_name = ""
         if os.path.exists(normpath):
-            node = self.insert_node(root_node_name, normpath, normpath)
+            node = self.insert_node(root_node_name, Path(normpath).name, normpath)
         else:
             node = self.tree.insert(
                 "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
@@ -695,6 +722,9 @@ class App():
         print("root_dir", root_dir)
         self.file_browser.insert_root(f"{root_dir}\\Source\\")
         self.file_browser.insert_root(f"{root_dir}\\Plugins\\")
+        if os.path.exists(f"{root_dir}\\Script\\"):
+            self.file_browser.insert_root(f"{root_dir}\\Script\\")
+        self.file_browser.insert_root(ue.environment.project_file.file_path)
         self.tkroot.title(
             f"openunrealautomation Source Browser - {ue.environment.project_name}")
 
