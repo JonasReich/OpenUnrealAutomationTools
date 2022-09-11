@@ -138,6 +138,13 @@ class SourceFileType(enum.Enum):
         return self.value[1]
 
     @staticmethod
+    def from_string(string: str) -> "SourceFileType":
+        for file_type in SourceFileType:
+            if file_type.value[1] == string:
+                return file_type
+        return SourceFileType.OTHER
+
+    @staticmethod
     def get_for_file(path: str):
         for file_type in SourceFileType:
             if path.endswith(str(file_type)):
@@ -428,14 +435,20 @@ class NamePathElementDialog_Base(object):
 
         label = ttk.Label(frame, text="File Name")
         ttk_grid_fill(label, 0, 1, sticky="w")
-        self.name_entry = ttk.Entry(frame, textvariable=element_name)
+        self.name_var = tk.StringVar(root, element_name)
+        self.name_var.trace_add(
+            "write", lambda name, index, mode, sv=self.name_var: self.name_changed())
+        self.name_entry = ttk.Entry(frame, textvariable=self.name_var)
         self.name_entry.bind("<Return>", lambda event: self.submit())
-        self.name_entry.insert(0, element_name)
+        #self.name_entry.insert(0, element_name)
         self.name_entry.focus_set()
         ttk_grid_fill(self.name_entry, 1, 1)
 
+        self.extension_point = ttk.Frame(frame)
+        ttk_grid_fill(self.extension_point, 0, 2, columnspan=2)
+
         submit_button = ttk.Button(frame, text="OK", command=self.submit)
-        ttk_grid_fill(submit_button, 0, 2, columnspan=2)
+        ttk_grid_fill(submit_button, 0, 3, columnspan=2)
 
     def submit(self) -> None:
         # TODO validate names
@@ -444,6 +457,10 @@ class NamePathElementDialog_Base(object):
         self.submit_impl(element_name, full_path)
 
         self.popup.destroy()
+
+    def name_changed(self):
+        # Implement in child classes if you want to react to name changes
+        pass
 
     def submit_impl(self, element_name, full_path) -> None:
         raise NotImplementedError()
@@ -456,12 +473,68 @@ class NewFileDialog(NamePathElementDialog_Base):
                                             title="New File",
                                             prompt="Create new file...")
 
+        preset_label = ttk.Label(self.extension_point,
+                                 text="File Type / Preset")
+        ttk_grid_fill(preset_label, 0, 0)
+        options = [str(entry) for entry in SourceFileType]
+        self.preset_var = tk.StringVar(root)
+        self.preset_var.set(options[0])
+        preset_opt = ttk.OptionMenu(
+            self.extension_point, self.preset_var, None, *options, command=self.preset_changed)
+        self.name_changed()
+        ttk_grid_fill(preset_opt, 1, 0)
+        geo = TtkGeometry.from_string(self.popup.winfo_geometry())
+        geo.height += 20
+        self.popup.geometry(str(geo))
+
+    def apply_extension_setting(self):
+        extension = self.preset_var.get()
+        current_name = self.name_entry.get()
+        if "." in current_name and not current_name.endswith(f".{extension}"):
+            new_name = current_name.split(".")[0] + "." + extension
+            self.name_var.set(new_name)
+
+    def name_changed(self):
+        current_name = self.name_var.get()
+        extension = ".".join(current_name.split(".")[1:])
+        # Automatically set the preset from the name:
+        self.preset_var.set(SourceFileType.from_string(extension))
+
+    def preset_changed(self, event):
+        self.apply_extension_setting()
+
+    def create_file(self, full_path):
+        extension = self.preset_var.get()
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        template_path = os.path.join(
+            script_dir, "sourcefilebrowser", f"template.{extension}")
+        template_text = ""
+        # TODO replace with template selection (multiple templates -> select from new popup / dropdown)
+        if os.path.exists(template_path):
+            with open(template_path, "r") as file:
+                template_text = file.read()
+                filename = str(os.path.basename(full_path)).split(".")[0]
+                template_text = template_text.replace("%FILENAME%", filename)
+                template_text = template_text.replace(
+                    "%FILENAME%", filename)
+                # TODO replace with copyright from project settings
+                ue_config = self.file_browser.ue.environment.config()
+                template_text = template_text.replace(
+                    "%COPYRIGHT%",
+                    ue_config.read(
+                        "Game", "/Script/EngineSettings.GeneralProjectSettings", "CopyrightNotice").value
+                )
+
+                module_name = re.search("\\\\Source\\\\(?P<module>.+?)\\\\", full_path).group("module")
+                template_text = template_text.replace("%API_MACRO%", f"{module_name.upper()}_API")
+
+        with open(full_path, "w") as file:
+            file.write(template_text)
+            pass
+
     def submit_impl(self, filename, full_path) -> None:
         if not os.path.exists(full_path):
-            # create file
-            with open(full_path, "w"):
-                # TODO file templates
-                pass
+            self.create_file(full_path)
             get_p4().add(full_path)
             # create node
             parent_node = self.file_browser.nodes_by_path[self.dir]
@@ -655,7 +728,8 @@ class FileBrowser(object):
         self.root_paths.add(normpath)
         root_node_name = ""
         if os.path.exists(normpath):
-            node = self.insert_node(root_node_name, Path(normpath).name, normpath)
+            node = self.insert_node(
+                root_node_name, Path(normpath).name, normpath)
         else:
             node = self.tree.insert(
                 "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
