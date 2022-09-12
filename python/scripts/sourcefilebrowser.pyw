@@ -4,11 +4,6 @@ Extension tool for VS users, because integrating this all in the solution explor
 Does not rely on UCLASS metadata, so no automatic inheritance / header includes outside of the provided templates.
 
 TODO:
-- Add/Delete files
-- Move/Rename files
-- File templates
-
-- Update project files button
 
 - Add/remove module
 
@@ -24,7 +19,6 @@ import glob
 import os
 import re
 import shutil
-import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 from locale import atoi
@@ -352,8 +346,8 @@ class Selection_DragDrop(object):
         self._try_move(tv)
         self.moveto_row = None
 
-    def _try_move(self, tv) -> None:
-        selection = list(tv.selection())
+    def _try_move(self, tree: ttk.Treeview) -> None:
+        selection = list(tree.selection())
         if len(selection) == 0 \
                 or self.moveto_row in selection \
                 or self.moveto_row is None \
@@ -371,13 +365,14 @@ class Selection_DragDrop(object):
 
         # prevent moving parent into child
         for node in selection:
-            if is_parent(tv, node, moveto_row):
-                print("Prevented moving into child node")
+            if is_parent(tree, node, moveto_row):
+                self.file_browser.set_status(
+                    f"Prevented moving parent ({node}) into child ({moveto_row})")
                 return
 
-        moveto_idx = tv.index(moveto_row)
+        moveto_idx = tree.index(moveto_row)
         selection.sort(key=lambda item: self.tree.item(item)[
-                       "text"], reverse=moveto_idx < tv.index(selection[0]))
+                       "text"], reverse=moveto_idx < tree.index(selection[0]))
         for node in selection:
             move_src = self.file_browser.get_node_path(node)
             moveto_dir = self.file_browser.get_node_path(moveto_row)
@@ -393,7 +388,7 @@ class Selection_DragDrop(object):
             self.file_browser.nodes_by_path[moveto] = node
 
             # Move node
-            tv.move(node, moveto_row, moveto_idx)
+            tree.move(node, moveto_row, moveto_idx)
 
             # Move file
             shutil.move(move_src, moveto)
@@ -596,9 +591,13 @@ class FileBrowser(object):
 
         self.tree.bind("<<TreeviewOpen>>", self.open_node)
 
+        self.status_text = tk.StringVar(root, "")
+        status_label = tk.Label(frame, textvariable=self.status_text)
+        ttk_grid_fill(status_label, 0, 1, row_weight=0)
+
         refresh_button = ttk.Button(
             frame, text="Generate Project Files", command=self.async_generate_project_files)
-        refresh_button.grid(row=1, column=0, sticky="nesw")
+        ttk_grid_fill(refresh_button, 0, 2, row_weight=0)
 
         self.key_binds = KeyBindings(root, self)
         self.drag_drop = Selection_DragDrop(root, self)
@@ -606,17 +605,17 @@ class FileBrowser(object):
         PathType.configure_tags(self.tree)
 
     def async_generate_project_files(self):
-        threading.Thread(target=self.ue.generate_project_files,
-                         kwargs={"extra_shell": True}).start()
+        self.set_status("Generating project files...")
+        self.ue.generate_project_files(extra_shell=True)
 
     def destroy(self) -> None:
         self.frame.destroy()
 
+    def set_status(self, status: str) -> None:
+        self.status_text.set(status)
+        print("Status message:", status)
+
     def register_node(self, path, node) -> None:
-        # TODO HACK
-        #path_as_src_path = os.path.normpath(os.path.join(path, "Source"))
-        # if os.path.exists(path_as_src_path):
-        #    path = path_as_src_path
         self.nodes_by_path[path] = node
         self.paths_by_node[node] = path
 
@@ -642,10 +641,11 @@ class FileBrowser(object):
         self.insert_node_path(abspath, node)
 
     def delete_selected(self) -> None:
+        num_items_deleted = 0
         for node in self.tree.selection():
             parent = self.tree.parent(node)
             if not parent:
-                print("Root elements cannot be deleted")
+                self.set_status("Root elements cannot be deleted")
                 return
             abspath = self.get_node_path(node)
             if abspath:
@@ -656,6 +656,8 @@ class FileBrowser(object):
                     os.remove(abspath)
                 get_p4().reconcile(abspath)
                 self.refresh_node_children(parent)
+                num_items_deleted += 1
+        self.set_status(f"Deleted {num_items_deleted} items")
 
     def new_file(self) -> None:
         """Open create file dialog"""
@@ -669,10 +671,21 @@ class FileBrowser(object):
         if os.path.isfile(path):
             file_type = SourceFileType.get_for_file(path)
             sibling_path = file_type.get_sibling_path(path)
-            self.create_file(sibling_path)
+            if sibling_path is not None:
+                self.create_file(sibling_path)
+            else:
+                self.set_status(
+                    "Cannot create sibling file (b/c of extension or location)")
+        else:
+            self.set_status("Cannot create sibling files for folders")
 
-    def create_file(self, full_path: str):
+    def create_file(self, full_path: str) -> None:
         """Actually create a file from template"""
+
+        if os.path.exists(full_path):
+            self.set_status(f"File {Path(full_path).name} already exists")
+            return
+
         extension = ".".join(full_path.split(".")[1:])
         script_dir = os.path.dirname(os.path.realpath(__file__))
         template_path = os.path.join(
@@ -686,7 +699,7 @@ class FileBrowser(object):
                 template_text = template_text.replace("%FILENAME%", filename)
                 template_text = template_text.replace(
                     "%FILENAME%", filename)
-                # TODO replace with copyright from project settings
+
                 ue_config = self.ue.environment.config()
                 template_text = template_text.replace(
                     "%COPYRIGHT%",
@@ -702,10 +715,11 @@ class FileBrowser(object):
         with open(full_path, "w") as file:
             file.write(template_text)
             pass
-        
+
         # create node
         parent_node = self.nodes_by_path[Path(full_path).parent]
         self.insert_node(parent_node, filename, full_path)
+        self.set_status(f"Created file {Path(full_path).name}")
 
     def new_folder(self) -> None:
         path = self.get_node_path(self.tree.focus())
@@ -823,7 +837,7 @@ class App():
             self.rootdir = self.root_entry.get()
 
         set_p4(self.rootdir)
-        print("root", self.rootdir)
+        print("Set new root directory:", self.rootdir)
         ue = UnrealEngine.create_from_parent_tree(self.rootdir)
 
         if not self.file_browser is None:
@@ -832,7 +846,6 @@ class App():
         self.file_browser = FileBrowser(self.tkroot, ue)
         self.file_browser.set_heading(ue.environment.project_name)
         root_dir = ue.environment.project_root
-        print("root_dir", root_dir)
         self.file_browser.insert_root(f"{root_dir}\\Source\\")
         self.file_browser.insert_root(f"{root_dir}\\Plugins\\")
         if os.path.exists(f"{root_dir}\\Script\\"):
@@ -844,13 +857,16 @@ class App():
         ttk_grid_fill(self.file_browser.frame, 0, 1,
                       columnspan=2, column_weight=0)
 
+        self.file_browser.set_status(
+            f"Loaded project {ue.environment.project_name}")
+
     def mainloop(self):
         self.tkroot.mainloop()
 
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--root", default="./")
+    argparser.add_argument("-r", "--root", default="./")
     args = argparser.parse_args()
 
     app = App(root=args.root)
