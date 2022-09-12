@@ -53,9 +53,9 @@ class FileTreeIcons(enum.Enum):
         if not os.path.exists(path):
             return str(FileTreeIcons.MISSING)
         if os.path.isdir(path):
-            return PathType.get_from_path(path).get_icon()
+            return PathType.get_by_path(path).get_icon()
         else:
-            return SourceFileType.get_for_file(path).get_icon()
+            return SourceFileType.get_by_path(path).get_icon()
 
 
 class PathType(enum.Enum):
@@ -72,7 +72,7 @@ class PathType(enum.Enum):
     FILE = 100, "file", "#ffd", "📄"
 
     @staticmethod
-    def get_from_path(path: str, file_browser: "FileBrowser" = None) -> "PathType":
+    def get_by_path(path: str, file_browser: "FileBrowser" = None) -> "PathType":
         if os.path.isfile(path):
             return PathType.FILE
         if (not file_browser is None) and path in file_browser.root_paths:
@@ -139,7 +139,7 @@ class SourceFileType(enum.Enum):
         return SourceFileType.OTHER
 
     @staticmethod
-    def get_for_file(path: str):
+    def get_by_path(path: str):
         for file_type in SourceFileType:
             if path.endswith(str(file_type)):
                 return file_type
@@ -227,7 +227,7 @@ def ttk_grid_fill(widget: tk.Widget, column: int, row: int, columnspan=1, rowspa
                 sticky=sticky,
                 padx=padding,
                 pady=padding)
-    parent = widget.nametowidget(widget.winfo_parent())
+    parent:tk.Widget = widget.nametowidget(widget.winfo_parent())
     parent.columnconfigure(column, weight=column_weight)
     parent.rowconfigure(row, weight=row_weight)
 
@@ -237,53 +237,55 @@ class KeyBindings:
 
     def __init__(self, master, file_browser: "FileBrowser") -> None:
         # create a popup menu
-        self.aMenu = tk.Menu(master, tearoff=0)
-        self.aMenu.add_command(
+        self.context_menu = tk.Menu(master, tearoff=0)
+        self.context_menu.add_command(
             label="Open",
-            command=file_browser.open_explorer)
-        self.aMenu.add_command(
+            command=file_browser.action_open_explorer)
+        self.context_menu.add_command(
             label="Rename",
-            command=file_browser.rename_selected)
-        self.aMenu.add_command(
+            command=file_browser.action_rename)
+        self.context_menu.add_command(
             label="Delete",
-            command=file_browser.delete_selected)
-        self.aMenu.add_command(
+            command=file_browser.action_delete)
+        self.context_menu.add_command(
             label="New File",
-            command=file_browser.new_file)
-        self.aMenu.add_command(
+            command=file_browser.action_new_file)
+        self.context_menu.add_command(
             label="New Sibling (h/cpp)",
-            command=file_browser.new_sibling_file)
-        self.aMenu.add_command(
+            command=file_browser.action_new_sibling_file)
+        self.context_menu.add_command(
             label="New Folder",
-            command=file_browser.new_folder)
+            command=file_browser.action_new_folder)
 
         # Global hotkeys
-        master.bind("<Delete>", lambda event: file_browser.delete_selected())
+        master.bind("<Delete>", lambda event: file_browser.action_delete())
         master.bind("<Control-d>",
-                    lambda event: file_browser.delete_selected())
-        master.bind("<Control-n>", lambda event: file_browser.new_file())
+                    lambda event: file_browser.action_delete())
+        master.bind("<Control-n>",
+                    lambda event: file_browser.action_new_file())
         master.bind("<Control-Shift-n>",
-                    lambda event: file_browser.new_folder())
-        master.bind("<F2>", lambda event: file_browser.rename_selected())
+                    lambda event: file_browser.action_new_folder())
+        master.bind("<F2>", lambda event: file_browser.action_rename())
         master.bind("<Control-r>", lambda event: file_browser.refresh_roots())
-        master.bind("<Control-o>", lambda event: file_browser.open_explorer())
+        master.bind("<Control-o>",
+                    lambda event: file_browser.action_open_explorer())
 
         # Right click only on tree
-        file_browser.tree.bind("<Button-3>", self.popup)
+        file_browser.tree.bind("<Button-3>", self.open_context_popup)
 
-    def popup(self, event) -> None:
-        self.aMenu.post(event.x_root, event.y_root)
+    def open_context_popup(self, event) -> None:
+        self.context_menu.post(event.x_root, event.y_root)
 
 
 class Selection_DragDrop(object):
     def __init__(self, root: tk.Tk, file_browser: "FileBrowser") -> None:
         self.file_browser = file_browser
         self.tree = file_browser.tree
-        self.tree.bind("<ButtonPress-1>", self.bDown)
-        self.tree.bind("<ButtonRelease-1>", self.bUp, add='+')
-        self.tree.bind("<B1-Motion>", self.bMove, add='+')
-        self.tree.bind("<Control-ButtonPress-1>", self.bDown_Control, add='+')
-        self.tree.bind("<Control-ButtonRelease-1>", self.bUp_Control, add='+')
+        self.tree.bind("<ButtonPress-1>", self.handle_mouse_down)
+        self.tree.bind("<ButtonRelease-1>", self.handle_mouse_up, add='+')
+        self.tree.bind("<B1-Motion>", self.handle_mouse_move, add='+')
+        self.tree.bind("<Control-ButtonPress-1>", self.handle_mouse_down_ctrl, add='+')
+        self.tree.bind("<Control-ButtonRelease-1>", self.handle_ctrl_up, add='+')
         self.moveto_row = None
         self.tooltip = None
         self.tooltip_label = None
@@ -296,13 +298,13 @@ class Selection_DragDrop(object):
             return False
         # Only allow moving files and folders inside the source folders
         if os.path.isfile(node_path):
-            file_type = SourceFileType.get_for_file(node_path)
+            file_type = SourceFileType.get_by_path(node_path)
             immovable_file_types = (
                 SourceFileType.PLUGIN,
                 SourceFileType.PROJECT
             )
             return file_type not in immovable_file_types
-        path_type = PathType.get_from_path(node_path, self.file_browser)
+        path_type = PathType.get_by_path(node_path, self.file_browser)
         if path_type == PathType.SOURCE_SUB or path_type == PathType.MODULE:
             return True
         return False
@@ -318,7 +320,7 @@ class Selection_DragDrop(object):
             return False
         return True
 
-    def bDown_Control(self, event) -> None:
+    def handle_mouse_down_ctrl(self, event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if self.is_multiselectable(row):
@@ -327,14 +329,14 @@ class Selection_DragDrop(object):
             tv.selection_set(row)
         self.ctrl_down = True
 
-    def bDown(self, event) -> None:
+    def handle_mouse_down(self, event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if row is None:
             return
         tv.selection_set(row)
 
-    def bUp(self, event) -> None:
+    def handle_mouse_up(self, event) -> None:
         tv: ttk.Treeview = event.widget
         if not self.tooltip is None:
             self.tooltip.destroy()
@@ -343,10 +345,40 @@ class Selection_DragDrop(object):
 
         if self.moveto_row is None:
             return
-        self._try_move(tv)
+        self.try_move_file(tv)
         self.moveto_row = None
 
-    def _try_move(self, tree: ttk.Treeview) -> None:
+    def handle_ctrl_up(self, event) -> None:
+        self.ctrl_down = False
+        self.handle_mouse_up(event)
+
+    def handle_mouse_move(self, event) -> None:
+        tv: ttk.Treeview = event.widget
+        self.moveto_row = tv.identify_row(event.y)
+
+        selection = tv.selection()
+        immovable_item = next(
+            (item for item in selection if self.is_movable(item) == False), None)
+
+        if immovable_item is None:
+            text = Path(self.file_browser.get_node_path(selection[0])).name if len(
+                selection) == 1 else f"{len(selection)} items"
+        else:
+            text = f"🚫 can't move {Path(self.file_browser.get_node_path(immovable_item)).name} 🚫"
+
+        geometry_str = str(TtkGeometry(0, 0, event.x_root+15, event.y_root+10))
+        if self.tooltip is None:
+            self.tooltip = tk.Toplevel()
+            self.tooltip.overrideredirect(True)
+            self.tooltip.geometry(geometry_str)
+            self.tooltip_label = tk.Label(self.tooltip, text=text)
+            self.tooltip_label.pack()
+        else:
+            self.tooltip_label.config(text=text)
+            self.tooltip.geometry(geometry_str)
+
+    # TODO move to FileBrowser
+    def try_move_file(self, tree: ttk.Treeview) -> None:
         selection = list(tree.selection())
         if len(selection) == 0 \
                 or self.moveto_row in selection \
@@ -395,35 +427,6 @@ class Selection_DragDrop(object):
             get_p4().reconcile(move_src)
             get_p4().reconcile(moveto)
 
-    def bUp_Control(self, event) -> None:
-        self.ctrl_down = False
-        self.bUp(event)
-
-    def bMove(self, event) -> None:
-        tv: ttk.Treeview = event.widget
-        self.moveto_row = tv.identify_row(event.y)
-
-        selection = tv.selection()
-        immovable_item = next(
-            (item for item in selection if self.is_movable(item) == False), None)
-
-        if immovable_item is None:
-            text = Path(self.file_browser.get_node_path(selection[0])).name if len(
-                selection) == 1 else f"{len(selection)} items"
-        else:
-            text = f"🚫 can't move {Path(self.file_browser.get_node_path(immovable_item)).name} 🚫"
-
-        geometry_str = str(TtkGeometry(0, 0, event.x_root+15, event.y_root+10))
-        if self.tooltip is None:
-            self.tooltip = tk.Toplevel()
-            self.tooltip.overrideredirect(True)
-            self.tooltip.geometry(geometry_str)
-            self.tooltip_label = tk.Label(self.tooltip, text=text)
-            self.tooltip_label.pack()
-        else:
-            self.tooltip_label.config(text=text)
-            self.tooltip.geometry(geometry_str)
-
 
 class Popup(tk.Toplevel):
     def __init__(self, root: tk.Tk, title: str, width: int, height: int, resizable: bool = True):
@@ -459,7 +462,7 @@ class NamePathElementDialog_Base(object):
         ttk_grid_fill(label, 0, 1, sticky="w")
         self.name_var = tk.StringVar(root, element_name)
         self.name_var.trace_add(
-            "write", lambda name, index, mode, sv=self.name_var: self.name_changed())
+            "write", lambda name, index, mode, sv=self.name_var: self.handle_name_changed())
         self.name_entry = ttk.Entry(frame, textvariable=self.name_var)
         self.name_entry.bind("<Return>", lambda event: self.submit())
         #self.name_entry.insert(0, element_name)
@@ -480,7 +483,7 @@ class NamePathElementDialog_Base(object):
 
         self.popup.destroy()
 
-    def name_changed(self):
+    def handle_name_changed(self):
         # Implement in child classes if you want to react to name changes
         pass
 
@@ -502,8 +505,8 @@ class NewFileDialog(NamePathElementDialog_Base):
         self.preset_var = tk.StringVar(root)
         self.preset_var.set(options[0])
         preset_opt = ttk.OptionMenu(
-            self.extension_point, self.preset_var, None, *options, command=self.preset_changed)
-        self.name_changed()
+            self.extension_point, self.preset_var, None, *options, command=self.handle_preset_changed)
+        self.handle_name_changed()
         ttk_grid_fill(preset_opt, 1, 0)
         geo = TtkGeometry.from_string(self.popup.winfo_geometry())
         geo.height += 20
@@ -516,13 +519,13 @@ class NewFileDialog(NamePathElementDialog_Base):
             new_name = current_name.split(".")[0] + "." + extension
             self.name_var.set(new_name)
 
-    def name_changed(self):
+    def handle_name_changed(self):
         current_name = self.name_var.get()
         extension = ".".join(current_name.split(".")[1:])
         # Automatically set the preset from the name:
         self.preset_var.set(SourceFileType.from_string(extension))
 
-    def preset_changed(self, event):
+    def handle_preset_changed(self, event):
         self.apply_extension_setting()
 
     def submit_impl(self, filename, full_path) -> None:
@@ -570,6 +573,8 @@ class RenamePathElementDialog(NamePathElementDialog_Base):
 
 
 class FileBrowser(object):
+    # Life cycle
+
     def __init__(self, root: tk.Tk, ue: UnrealEngine) -> None:
         self.paths_by_node = dict()
         self.root_paths = set()
@@ -604,16 +609,31 @@ class FileBrowser(object):
 
         PathType.configure_tags(self.tree)
 
-    def async_generate_project_files(self):
-        self.set_status("Generating project files...")
-        self.ue.generate_project_files(extra_shell=True)
-
     def destroy(self) -> None:
         self.frame.destroy()
+
+    # misc UI / util
+
+    def set_heading(self, heading) -> None:
+        self.tree.heading("#0", text=heading, anchor="w")
 
     def set_status(self, status: str) -> None:
         self.status_text.set(status)
         print("Status message:", status)
+
+    # Node operations (internal)
+
+    def add_root_node(self, normpath) -> None:
+        self.root_paths.add(normpath)
+        root_node_name = ""
+        if os.path.exists(normpath):
+            node = self.insert_node(
+                root_node_name, Path(normpath).name, normpath)
+        else:
+            node = self.tree.insert(
+                "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
+        if not (node is None):
+            self.register_node(normpath, node)
 
     def register_node(self, path, node) -> None:
         self.nodes_by_path[path] = node
@@ -622,8 +642,12 @@ class FileBrowser(object):
     def get_node_path(self, node) -> str:
         return self.paths_by_node.get(node, None)
 
+    def insert_root(self, root) -> None:
+        normpath = os.path.normpath(root)
+        self.add_root_node(normpath)
+
     def insert_node(self, parent, text, abspath) -> str:
-        path_type = PathType.get_from_path(abspath, self)
+        path_type = PathType.get_by_path(abspath, self)
         tags = (str(path_type),)
         node = self.tree.insert(
             parent, "end", text=f"{FileTreeIcons.get_by_path(abspath)} {text}", open=False, tags=tags)
@@ -640,7 +664,40 @@ class FileBrowser(object):
             self.tree.delete(child)
         self.insert_node_path(abspath, node)
 
-    def delete_selected(self) -> None:
+    def open_node(self, event) -> None:
+        # This implements open / double-click, so use focus instead of selection -> maybe change?
+        node = self.tree.focus()
+        path = self.get_node_path(node)
+        if path and os.path.isdir(path):
+            # Clear and refresh children for folders
+            self.refresh_node_children(node)
+
+    def action_open_explorer(self) -> None:
+        for node in self.tree.selection():
+            os.startfile(self.get_node_path(node))
+
+    def insert_node_path(self, path, parent_node) -> None:
+        abspath = os.path.abspath(path)
+        for element in os.listdir(abspath):
+            nested_abspath = os.path.normpath(os.path.join(abspath, element))
+            if element == "Source":
+                # Skip the Source folder itself -> recurse
+                self.insert_node_path(nested_abspath, parent_node)
+            elif (
+                # Add paths that are inside Source folders
+                "\\Source" in nested_abspath or
+                # Add folders that contain Source folders -> HACK
+                len(glob.glob(f"{nested_abspath}\\Source\\")) > 0 or
+                # Add uplugin files
+                element.endswith("uplugin") or
+                # Angelscript script support
+                element == "Script" or "\\Script" in nested_abspath
+            ):
+                self.insert_node(parent_node, element, nested_abspath)
+
+    # User actions
+
+    def action_delete(self) -> None:
         num_items_deleted = 0
         for node in self.tree.selection():
             parent = self.tree.parent(node)
@@ -659,17 +716,17 @@ class FileBrowser(object):
                 num_items_deleted += 1
         self.set_status(f"Deleted {num_items_deleted} items")
 
-    def new_file(self) -> None:
+    def action_new_file(self) -> None:
         """Open create file dialog"""
         path = self.get_node_path(self.tree.focus())
         if os.path.isfile(path):
             path = str(Path(path).parent)
         NewFileDialog(self.root, self, path)
 
-    def new_sibling_file(self) -> None:
+    def action_new_sibling_file(self) -> None:
         path = self.get_node_path(self.tree.focus())
         if os.path.isfile(path):
-            file_type = SourceFileType.get_for_file(path)
+            file_type = SourceFileType.get_by_path(path)
             sibling_path = file_type.get_sibling_path(path)
             if sibling_path is not None:
                 self.create_file(sibling_path)
@@ -678,6 +735,19 @@ class FileBrowser(object):
                     "Cannot create sibling file (b/c of extension or location)")
         else:
             self.set_status("Cannot create sibling files for folders")
+
+    def action_new_folder(self) -> None:
+        path = self.get_node_path(self.tree.focus())
+        if os.path.isfile(path):
+            path = str(Path(path).parent)
+        NewFolderDialog(self.root, self, path)
+
+    def action_rename(self) -> None:
+        path = Path(self.get_node_path(self.tree.focus()))
+        RenamePathElementDialog(
+            self.root, self, dir=path.parent, element_name=path.name)
+
+    # User action implementation -> file handling, etc
 
     def create_file(self, full_path: str) -> None:
         """Actually create a file from template"""
@@ -721,55 +791,6 @@ class FileBrowser(object):
         self.insert_node(parent_node, filename, full_path)
         self.set_status(f"Created file {Path(full_path).name}")
 
-    def new_folder(self) -> None:
-        path = self.get_node_path(self.tree.focus())
-        if os.path.isfile(path):
-            path = str(Path(path).parent)
-        NewFolderDialog(self.root, self, path)
-
-    def rename_selected(self) -> None:
-        path = Path(self.get_node_path(self.tree.focus()))
-        RenamePathElementDialog(
-            self.root, self, dir=path.parent, element_name=path.name)
-
-    def open_node(self, event) -> None:
-        # This implements open / double-click, so use focus instead of selection -> maybe change?
-        node = self.tree.focus()
-        path = self.get_node_path(node)
-        if path and os.path.isdir(path):
-            # Clear and refresh children for folders
-            self.refresh_node_children(node)
-
-    def open_explorer(self) -> None:
-        for node in self.tree.selection():
-            os.startfile(self.get_node_path(node))
-
-    def insert_node_path(self, path, parent_node) -> None:
-        abspath = os.path.abspath(path)
-        for element in os.listdir(abspath):
-            nested_abspath = os.path.normpath(os.path.join(abspath, element))
-            if element == "Source":
-                # Skip the Source folder itself -> recurse
-                self.insert_node_path(nested_abspath, parent_node)
-            elif (
-                # Add paths that are inside Source folders
-                "\\Source" in nested_abspath or
-                # Add folders that contain Source folders -> HACK
-                len(glob.glob(f"{nested_abspath}\\Source\\")) > 0 or
-                # Add uplugin files
-                element.endswith("uplugin") or
-                # Angelscript script support
-                element == "Script" or "\\Script" in nested_abspath
-            ):
-                self.insert_node(parent_node, element, nested_abspath)
-
-    def set_heading(self, heading) -> None:
-        self.tree.heading("#0", text=heading, anchor="w")
-
-    def insert_root(self, root) -> None:
-        normpath = os.path.normpath(root)
-        self.add_root_node(normpath)
-
     def refresh_roots(self) -> None:
         for path in self.root_paths:
             node = self.nodes_by_path[path]
@@ -777,17 +798,9 @@ class FileBrowser(object):
             # self.refresh_node_children(node)
             self.tree.item(node, open=False)
 
-    def add_root_node(self, normpath) -> None:
-        self.root_paths.add(normpath)
-        root_node_name = ""
-        if os.path.exists(normpath):
-            node = self.insert_node(
-                root_node_name, Path(normpath).name, normpath)
-        else:
-            node = self.tree.insert(
-                "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
-        if not (node is None):
-            self.register_node(normpath, node)
+    def async_generate_project_files(self):
+        self.set_status("Generating project files...")
+        self.ue.generate_project_files(extra_shell=True)
 
 
 class App():
