@@ -154,6 +154,30 @@ class SourceFileType(enum.Enum):
     def get_icon(self) -> str:
         return self.value[2]
 
+    def get_sibling_path(self, path: str):
+        def get_scope_and_ext(public: bool):
+            scope = "Public" if public else "Private"
+            extension = "h" if public else "cpp"
+            return scope, extension
+
+        def get_sibling_path_impl(source_public: bool):
+            source_scope, source_extension = get_scope_and_ext(source_public)
+            target_scope, target_extension = get_scope_and_ext(
+                not source_public)
+            match = re.search(
+                f"(?P<root>.+?)\\\\{source_scope}\\\\(?P<relative_path>.*)\\.{source_extension}", path)
+            if match:
+                root = match.group("root")
+                relative_path = match.group("relative_path")
+                return os.path.join(root, target_scope, f"{relative_path}.{target_extension}")
+            return None
+
+        if self == SourceFileType.CPP_HEADER:
+            return get_sibling_path_impl(True)
+        elif self == SourceFileType.CPP_SOURCE:
+            return get_sibling_path_impl(False)
+        return None
+
 
 def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
     for child in tv.get_children(suspected_parent):
@@ -221,20 +245,23 @@ class KeyBindings:
         # create a popup menu
         self.aMenu = tk.Menu(master, tearoff=0)
         self.aMenu.add_command(
+            label="Open",
+            command=file_browser.open_explorer)
+        self.aMenu.add_command(
+            label="Rename",
+            command=file_browser.rename_selected)
+        self.aMenu.add_command(
             label="Delete",
             command=file_browser.delete_selected)
         self.aMenu.add_command(
             label="New File",
             command=file_browser.new_file)
         self.aMenu.add_command(
+            label="New Sibling (h/cpp)",
+            command=file_browser.new_sibling_file)
+        self.aMenu.add_command(
             label="New Folder",
             command=file_browser.new_folder)
-        self.aMenu.add_command(
-            label="Rename",
-            command=file_browser.rename_selected)
-        self.aMenu.add_command(
-            label="Open",
-            command=file_browser.open_explorer)
 
         # Global hotkeys
         master.bind("<Delete>", lambda event: file_browser.delete_selected())
@@ -503,42 +530,10 @@ class NewFileDialog(NamePathElementDialog_Base):
     def preset_changed(self, event):
         self.apply_extension_setting()
 
-    def create_file(self, full_path):
-        extension = self.preset_var.get()
-        script_dir = os.path.dirname(os.path.realpath(__file__))
-        template_path = os.path.join(
-            script_dir, "sourcefilebrowser", f"template.{extension}")
-        template_text = ""
-        # TODO replace with template selection (multiple templates -> select from new popup / dropdown)
-        if os.path.exists(template_path):
-            with open(template_path, "r") as file:
-                template_text = file.read()
-                filename = str(os.path.basename(full_path)).split(".")[0]
-                template_text = template_text.replace("%FILENAME%", filename)
-                template_text = template_text.replace(
-                    "%FILENAME%", filename)
-                # TODO replace with copyright from project settings
-                ue_config = self.file_browser.ue.environment.config()
-                template_text = template_text.replace(
-                    "%COPYRIGHT%",
-                    ue_config.read(
-                        "Game", "/Script/EngineSettings.GeneralProjectSettings", "CopyrightNotice").value
-                )
-
-                module_name = re.search("\\\\Source\\\\(?P<module>.+?)\\\\", full_path).group("module")
-                template_text = template_text.replace("%API_MACRO%", f"{module_name.upper()}_API")
-
-        with open(full_path, "w") as file:
-            file.write(template_text)
-            pass
-
     def submit_impl(self, filename, full_path) -> None:
         if not os.path.exists(full_path):
-            self.create_file(full_path)
+            self.file_browser.create_file(full_path)
             get_p4().add(full_path)
-            # create node
-            parent_node = self.file_browser.nodes_by_path[self.dir]
-            self.file_browser.insert_node(parent_node, filename, full_path)
 
 
 class NewFolderDialog(NamePathElementDialog_Base):
@@ -663,10 +658,54 @@ class FileBrowser(object):
                 self.refresh_node_children(parent)
 
     def new_file(self) -> None:
+        """Open create file dialog"""
         path = self.get_node_path(self.tree.focus())
         if os.path.isfile(path):
             path = str(Path(path).parent)
         NewFileDialog(self.root, self, path)
+
+    def new_sibling_file(self) -> None:
+        path = self.get_node_path(self.tree.focus())
+        if os.path.isfile(path):
+            file_type = SourceFileType.get_for_file(path)
+            sibling_path = file_type.get_sibling_path(path)
+            self.create_file(sibling_path)
+
+    def create_file(self, full_path: str):
+        """Actually create a file from template"""
+        extension = ".".join(full_path.split(".")[1:])
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        template_path = os.path.join(
+            script_dir, "sourcefilebrowser", f"template.{extension}")
+        template_text = ""
+        # TODO replace with template selection (multiple templates -> select from new popup / dropdown)
+        if os.path.exists(template_path):
+            with open(template_path, "r") as file:
+                template_text = file.read()
+                filename = str(os.path.basename(full_path)).split(".")[0]
+                template_text = template_text.replace("%FILENAME%", filename)
+                template_text = template_text.replace(
+                    "%FILENAME%", filename)
+                # TODO replace with copyright from project settings
+                ue_config = self.ue.environment.config()
+                template_text = template_text.replace(
+                    "%COPYRIGHT%",
+                    ue_config.read(
+                        "Game", "/Script/EngineSettings.GeneralProjectSettings", "CopyrightNotice").value
+                )
+
+                module_name = re.search(
+                    "\\\\Source\\\\(?P<module>.+?)\\\\", full_path).group("module")
+                template_text = template_text.replace(
+                    "%API_MACRO%", f"{module_name.upper()}_API")
+
+        with open(full_path, "w") as file:
+            file.write(template_text)
+            pass
+        
+        # create node
+        parent_node = self.nodes_by_path[Path(full_path).parent]
+        self.insert_node(parent_node, filename, full_path)
 
     def new_folder(self) -> None:
         path = self.get_node_path(self.tree.focus())
