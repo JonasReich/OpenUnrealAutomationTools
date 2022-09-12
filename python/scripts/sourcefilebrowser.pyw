@@ -23,6 +23,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from locale import atoi
 from pathlib import Path
+from typing import List, Tuple
 
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.unrealengine import UnrealEngine
@@ -72,12 +73,10 @@ class PathType(enum.Enum):
     FILE = 100, "file", "#ffd", "📄"
 
     @staticmethod
-    def get_by_path(path: str, file_browser: "FileBrowser" = None) -> "PathType":
+    def get_by_path(path: str) -> "PathType":
         if os.path.isfile(path):
             return PathType.FILE
-        if (not file_browser is None) and path in file_browser.root_paths:
-            return PathType.ROOT
-        elif Path(path).name == "Source":
+        if Path(path).name == "Source":
             return PathType.SOURCE
         elif "\\Source\\" in path:
             # module or source_sub
@@ -95,6 +94,7 @@ class PathType(enum.Enum):
             return PathType.ANGELSCRIPT_ROOT
         elif "\\Script\\" in path:
             return PathType.ANGELSCRIPT_SUB
+        # TODO find a better way to determine root paths that ALSO does not rely on the file browser itself
         return PathType.ROOT
 
     def __int__(self) -> int:
@@ -113,6 +113,25 @@ class PathType(enum.Enum):
     def configure_tags(tree: ttk.Treeview) -> None:
         for case in PathType:
             tree.tag_configure(str(case), background=case.get_color())
+
+
+class PathAttributes(object):
+    @staticmethod
+    def is_movable(path: str) -> bool:
+        if path is None:
+            return False
+        # Only allow moving files and folders inside the source folders
+        if os.path.isfile(path):
+            file_type = SourceFileType.get_by_path(path)
+            immovable_file_types = (
+                SourceFileType.PLUGIN,
+                SourceFileType.PROJECT
+            )
+            return file_type not in immovable_file_types
+        path_type = PathType.get_by_path(path)
+        if path_type == PathType.SOURCE_SUB or path_type == PathType.MODULE:
+            return True
+        return False
 
 
 class SourceFileType(enum.Enum):
@@ -148,13 +167,13 @@ class SourceFileType(enum.Enum):
     def get_icon(self) -> str:
         return self.value[2]
 
-    def get_sibling_path(self, path: str):
-        def get_scope_and_ext(public: bool):
+    def get_sibling_path(self, path: str) -> str:
+        def get_scope_and_ext(public: bool) -> Tuple[str, str]:
             scope = "Public" if public else "Private"
             extension = "h" if public else "cpp"
             return scope, extension
 
-        def get_sibling_path_impl(source_public: bool):
+        def get_sibling_path_impl(source_public: bool) -> str:
             source_scope, source_extension = get_scope_and_ext(source_public)
             target_scope, target_extension = get_scope_and_ext(
                 not source_public)
@@ -173,7 +192,7 @@ class SourceFileType(enum.Enum):
         return None
 
 
-def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
+def is_parent(tv: ttk.Treeview, suspected_parent: str, suspected_child: str) -> bool:
     for child in tv.get_children(suspected_parent):
         if child == suspected_child:
             return True
@@ -182,15 +201,15 @@ def is_parent(tv: ttk.Treeview, suspected_parent, suspected_child) -> bool:
     return False
 
 
-def _try_atoi(str) -> int:
-    if not str is None:
-        return atoi(str)
+def _try_atoi(string: str) -> int:
+    if not string is None:
+        return atoi(string)
     else:
         return 0
 
 
 class TtkGeometry():
-    def __init__(self, width, height, x=0, y=0) -> None:
+    def __init__(self, width: int, height: int, x: int = 0, y: int = 0) -> None:
         self.width = width
         self.height = height
         self.x = x
@@ -227,7 +246,7 @@ def ttk_grid_fill(widget: tk.Widget, column: int, row: int, columnspan=1, rowspa
                 sticky=sticky,
                 padx=padding,
                 pady=padding)
-    parent:tk.Widget = widget.nametowidget(widget.winfo_parent())
+    parent: tk.Widget = widget.nametowidget(widget.winfo_parent())
     parent.columnconfigure(column, weight=column_weight)
     parent.rowconfigure(row, weight=row_weight)
 
@@ -235,7 +254,7 @@ def ttk_grid_fill(widget: tk.Widget, column: int, row: int, columnspan=1, rowspa
 class KeyBindings:
     """Key bindings and right click context menu"""
 
-    def __init__(self, master, file_browser: "FileBrowser") -> None:
+    def __init__(self, master: tk.Tk, file_browser: "FileBrowser") -> None:
         # create a popup menu
         self.context_menu = tk.Menu(master, tearoff=0)
         self.context_menu.add_command(
@@ -273,7 +292,7 @@ class KeyBindings:
         # Right click only on tree
         file_browser.tree.bind("<Button-3>", self.open_context_popup)
 
-    def open_context_popup(self, event) -> None:
+    def open_context_popup(self, event: tk.Event) -> None:
         self.context_menu.post(event.x_root, event.y_root)
 
 
@@ -284,32 +303,21 @@ class Selection_DragDrop(object):
         self.tree.bind("<ButtonPress-1>", self.handle_mouse_down)
         self.tree.bind("<ButtonRelease-1>", self.handle_mouse_up, add='+')
         self.tree.bind("<B1-Motion>", self.handle_mouse_move, add='+')
-        self.tree.bind("<Control-ButtonPress-1>", self.handle_mouse_down_ctrl, add='+')
-        self.tree.bind("<Control-ButtonRelease-1>", self.handle_ctrl_up, add='+')
+        self.tree.bind("<Control-ButtonPress-1>",
+                       self.handle_mouse_down_ctrl, add='+')
+        self.tree.bind("<Control-ButtonRelease-1>",
+                       self.handle_ctrl_up, add='+')
         self.moveto_row = None
         self.tooltip = None
         self.tooltip_label = None
         self.ctrl_down = False
         pass
 
-    def is_movable(self, node) -> bool:
+    def is_movable(self, node: str) -> bool:
         node_path = self.file_browser.get_node_path(node)
-        if node_path is None:
-            return False
-        # Only allow moving files and folders inside the source folders
-        if os.path.isfile(node_path):
-            file_type = SourceFileType.get_by_path(node_path)
-            immovable_file_types = (
-                SourceFileType.PLUGIN,
-                SourceFileType.PROJECT
-            )
-            return file_type not in immovable_file_types
-        path_type = PathType.get_by_path(node_path, self.file_browser)
-        if path_type == PathType.SOURCE_SUB or path_type == PathType.MODULE:
-            return True
-        return False
+        return PathAttributes.is_movable(node_path)
 
-    def is_multiselectable(self, node) -> bool:
+    def is_multiselectable(self, node: str) -> bool:
         node_path = self.file_browser.get_node_path(node)
         if node_path is None:
             return
@@ -320,7 +328,7 @@ class Selection_DragDrop(object):
             return False
         return True
 
-    def handle_mouse_down_ctrl(self, event) -> None:
+    def handle_mouse_down_ctrl(self, event: tk.Event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if self.is_multiselectable(row):
@@ -329,14 +337,14 @@ class Selection_DragDrop(object):
             tv.selection_set(row)
         self.ctrl_down = True
 
-    def handle_mouse_down(self, event) -> None:
+    def handle_mouse_down(self, event: tk.Event) -> None:
         tv: ttk.Treeview = event.widget
         row = tv.identify_row(event.y)
         if row is None:
             return
         tv.selection_set(row)
 
-    def handle_mouse_up(self, event) -> None:
+    def handle_mouse_up(self, event: tk.Event) -> None:
         tv: ttk.Treeview = event.widget
         if not self.tooltip is None:
             self.tooltip.destroy()
@@ -348,11 +356,11 @@ class Selection_DragDrop(object):
         self.try_move_file(tv)
         self.moveto_row = None
 
-    def handle_ctrl_up(self, event) -> None:
+    def handle_ctrl_up(self, event: tk.Event) -> None:
         self.ctrl_down = False
         self.handle_mouse_up(event)
 
-    def handle_mouse_move(self, event) -> None:
+    def handle_mouse_move(self, event: tk.Event) -> None:
         tv: ttk.Treeview = event.widget
         self.moveto_row = tv.identify_row(event.y)
 
@@ -377,55 +385,8 @@ class Selection_DragDrop(object):
             self.tooltip_label.config(text=text)
             self.tooltip.geometry(geometry_str)
 
-    # TODO move to FileBrowser
     def try_move_file(self, tree: ttk.Treeview) -> None:
-        selection = list(tree.selection())
-        if len(selection) == 0 \
-                or self.moveto_row in selection \
-                or self.moveto_row is None \
-                or self.moveto_row not in self.file_browser.paths_by_node:
-            return
-
-        for item in selection:
-            if not self.is_movable(item):
-                return
-
-        # Use parent directory for files
-        path = self.file_browser.paths_by_node[self.moveto_row]
-        moveto_row = self.moveto_row if os.path.isdir(
-            path) else self.tree.parent(self.moveto_row)
-
-        # prevent moving parent into child
-        for node in selection:
-            if is_parent(tree, node, moveto_row):
-                self.file_browser.set_status(
-                    f"Prevented moving parent ({node}) into child ({moveto_row})")
-                return
-
-        moveto_idx = tree.index(moveto_row)
-        selection.sort(key=lambda item: self.tree.item(item)[
-                       "text"], reverse=moveto_idx < tree.index(selection[0]))
-        for node in selection:
-            move_src = self.file_browser.get_node_path(node)
-            moveto_dir = self.file_browser.get_node_path(moveto_row)
-            if moveto_dir in self.file_browser.root_paths:
-                return
-
-            moveto = os.path.normpath(os.path.join(
-                moveto_dir, Path(move_src).name))
-
-            # Update mappings
-            self.file_browser.nodes_by_path.pop(move_src)
-            self.file_browser.paths_by_node[node] = moveto
-            self.file_browser.nodes_by_path[moveto] = node
-
-            # Move node
-            tree.move(node, moveto_row, moveto_idx)
-
-            # Move file
-            shutil.move(move_src, moveto)
-            get_p4().reconcile(move_src)
-            get_p4().reconcile(moveto)
+        self.file_browser.move_paths(list(tree.selection()), self.moveto_row)
 
 
 class Popup(tk.Toplevel):
@@ -464,7 +425,7 @@ class NamePathElementDialog_Base(object):
         self.name_var.trace_add(
             "write", lambda name, index, mode, sv=self.name_var: self.handle_name_changed())
         self.name_entry = ttk.Entry(frame, textvariable=self.name_var)
-        self.name_entry.bind("<Return>", lambda event: self.submit())
+        self.name_entry.bind("<Return>", lambda event: self.handle_submit())
         #self.name_entry.insert(0, element_name)
         self.name_entry.focus_set()
         ttk_grid_fill(self.name_entry, 1, 1)
@@ -472,10 +433,11 @@ class NamePathElementDialog_Base(object):
         self.extension_point = ttk.Frame(frame)
         ttk_grid_fill(self.extension_point, 0, 2, columnspan=2)
 
-        submit_button = ttk.Button(frame, text="OK", command=self.submit)
+        submit_button = ttk.Button(
+            frame, text="OK", command=self.handle_submit)
         ttk_grid_fill(submit_button, 0, 3, columnspan=2)
 
-    def submit(self) -> None:
+    def handle_submit(self) -> None:
         # TODO validate names
         element_name = self.name_entry.get()
         full_path = os.path.join(self.dir, element_name)
@@ -487,7 +449,7 @@ class NamePathElementDialog_Base(object):
         # Implement in child classes if you want to react to name changes
         pass
 
-    def submit_impl(self, element_name, full_path) -> None:
+    def submit_impl(self, element_name: str, full_path: str) -> None:
         raise NotImplementedError()
 
 
@@ -512,23 +474,23 @@ class NewFileDialog(NamePathElementDialog_Base):
         geo.height += 20
         self.popup.geometry(str(geo))
 
-    def apply_extension_setting(self):
+    def apply_extension_setting(self) -> None:
         extension = self.preset_var.get()
         current_name = self.name_entry.get()
         if "." in current_name and not current_name.endswith(f".{extension}"):
             new_name = current_name.split(".")[0] + "." + extension
             self.name_var.set(new_name)
 
-    def handle_name_changed(self):
+    def handle_name_changed(self) -> None:
         current_name = self.name_var.get()
         extension = ".".join(current_name.split(".")[1:])
         # Automatically set the preset from the name:
         self.preset_var.set(SourceFileType.from_string(extension))
 
-    def handle_preset_changed(self, event):
+    def handle_preset_changed(self, event: tk.Event) -> None:
         self.apply_extension_setting()
 
-    def submit_impl(self, filename, full_path) -> None:
+    def submit_impl(self, filename: str, full_path: str) -> None:
         if not os.path.exists(full_path):
             self.file_browser.create_file(full_path)
             get_p4().add(full_path)
@@ -541,7 +503,7 @@ class NewFolderDialog(NamePathElementDialog_Base):
                                               title="New Folder",
                                               prompt="Create new folder...")
 
-    def submit_impl(self, folder_name, full_path) -> None:
+    def submit_impl(self, folder_name: str, full_path: str) -> None:
         if not os.path.exists(full_path):
             os.makedirs(full_path)
             # create node
@@ -559,7 +521,7 @@ class RenamePathElementDialog(NamePathElementDialog_Base):
                                                       title="Rename",
                                                       prompt="Rename file/directory...")
 
-    def submit_impl(self, filename, full_path) -> None:
+    def submit_impl(self, filename: str, full_path: str) -> None:
         # Update file on disk
         get_p4().edit(self.old_path)
         os.rename(self.old_path, full_path)
@@ -614,7 +576,7 @@ class FileBrowser(object):
 
     # misc UI / util
 
-    def set_heading(self, heading) -> None:
+    def set_heading(self, heading: str) -> None:
         self.tree.heading("#0", text=heading, anchor="w")
 
     def set_status(self, status: str) -> None:
@@ -623,7 +585,7 @@ class FileBrowser(object):
 
     # Node operations (internal)
 
-    def add_root_node(self, normpath) -> None:
+    def add_root_node(self, normpath: str) -> None:
         self.root_paths.add(normpath)
         root_node_name = ""
         if os.path.exists(normpath):
@@ -635,19 +597,19 @@ class FileBrowser(object):
         if not (node is None):
             self.register_node(normpath, node)
 
-    def register_node(self, path, node) -> None:
+    def register_node(self, path: str, node: str) -> None:
         self.nodes_by_path[path] = node
         self.paths_by_node[node] = path
 
-    def get_node_path(self, node) -> str:
+    def get_node_path(self, node: str) -> str:
         return self.paths_by_node.get(node, None)
 
-    def insert_root(self, root) -> None:
-        normpath = os.path.normpath(root)
+    def insert_root(self, root_path: str) -> None:
+        normpath = os.path.normpath(root_path)
         self.add_root_node(normpath)
 
-    def insert_node(self, parent, text, abspath) -> str:
-        path_type = PathType.get_by_path(abspath, self)
+    def insert_node(self, parent: str, text: str, abspath: str) -> str:
+        path_type = PathType.get_by_path(abspath)
         tags = (str(path_type),)
         node = self.tree.insert(
             parent, "end", text=f"{FileTreeIcons.get_by_path(abspath)} {text}", open=False, tags=tags)
@@ -657,14 +619,14 @@ class FileBrowser(object):
             self.tree.insert(node, "end")
         return node
 
-    def refresh_node_children(self, node) -> None:
+    def refresh_node_children(self, node: str) -> None:
         abspath = self.get_node_path(node)
         children = self.tree.get_children(node)
         for child in children:
             self.tree.delete(child)
         self.insert_node_path(abspath, node)
 
-    def open_node(self, event) -> None:
+    def open_node(self, event: tk.Event) -> None:
         # This implements open / double-click, so use focus instead of selection -> maybe change?
         node = self.tree.focus()
         path = self.get_node_path(node)
@@ -676,7 +638,7 @@ class FileBrowser(object):
         for node in self.tree.selection():
             os.startfile(self.get_node_path(node))
 
-    def insert_node_path(self, path, parent_node) -> None:
+    def insert_node_path(self, path: str, parent_node: str) -> None:
         abspath = os.path.abspath(path)
         for element in os.listdir(abspath):
             nested_abspath = os.path.normpath(os.path.join(abspath, element))
@@ -746,6 +708,56 @@ class FileBrowser(object):
         path = Path(self.get_node_path(self.tree.focus()))
         RenamePathElementDialog(
             self.root, self, dir=path.parent, element_name=path.name)
+
+    def move_paths(self, move_nodes: List[str], moveto_node: str) -> None:
+        if len(move_nodes) == 0 \
+                or moveto_node in move_nodes \
+                or moveto_node is None \
+                or moveto_node not in self.paths_by_node:
+            return
+
+        for item in move_nodes:
+            if not PathAttributes.is_movable(item):
+                return
+
+        # Use parent directory for files
+        path = self.paths_by_node[moveto_node]
+        moveto_node = moveto_node if os.path.isdir(
+            path) else self.tree.parent(moveto_node)
+
+        # prevent moving parent into child
+        for node in move_nodes:
+            if is_parent(self.tree, node, moveto_node):
+                self.set_status(
+                    f"Prevented moving parent ({node}) into child ({moveto_node})")
+                return
+
+        moveto_idx = self.tree.index(moveto_node)
+        move_nodes.sort(key=lambda item: self.tree.item(item)[
+            "text"], reverse=moveto_idx < self.tree.index(move_nodes[0]))
+
+        moveto_dir = self.get_node_path(moveto_node)
+        if moveto_dir in self.root_paths:
+            return
+
+        for node in move_nodes:
+            movefrom_path = self.get_node_path(node)
+
+            moveto_path = os.path.normpath(os.path.join(
+                moveto_dir, Path(movefrom_path).name))
+
+            # Update mappings
+            self.nodes_by_path.pop(movefrom_path)
+            self.paths_by_node[node] = moveto_path
+            self.nodes_by_path[moveto_path] = node
+
+            # Move node
+            self.tree.move(node, moveto_node, moveto_idx)
+
+            # Move file
+            shutil.move(movefrom_path, moveto_path)
+            get_p4().reconcile(movefrom_path)
+            get_p4().reconcile(moveto_path)
 
     # User action implementation -> file handling, etc
 
@@ -825,7 +837,7 @@ class App():
         self.init_browser()
 
     @staticmethod
-    def create_tkroot(sizex, sizey) -> tk.Tk:
+    def create_tkroot(sizex: int, sizey: int) -> tk.Tk:
         root = tk.Tk()
         root.geometry(str(TtkGeometry(sizex, sizey)))
         root.resizable(True, True)
