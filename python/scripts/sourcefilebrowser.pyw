@@ -493,7 +493,6 @@ class NewFileDialog(NamePathElementDialog_Base):
     def submit_impl(self, filename: str, full_path: str) -> None:
         if not os.path.exists(full_path):
             self.file_browser.create_file(full_path)
-            get_p4().add(full_path)
 
 
 class NewFolderDialog(NamePathElementDialog_Base):
@@ -562,9 +561,17 @@ class FileBrowser(object):
         status_label = tk.Label(frame, textvariable=self.status_text)
         ttk_grid_fill(status_label, 0, 1, row_weight=0)
 
+
+        refresh_button_frame = tk.Frame(frame)
+        ttk_grid_fill(refresh_button_frame, 0, 2, row_weight=0)
         refresh_button = ttk.Button(
-            frame, text="Generate Project Files", command=self.async_generate_project_files)
-        ttk_grid_fill(refresh_button, 0, 2, row_weight=0)
+            refresh_button_frame, text=f"Generate Project Files ({self.ue.environment.project_name})", command=self.async_generate_project_files_project)
+        ttk_grid_fill(refresh_button, 0, 0, row_weight=0)
+
+        if self.ue.environment.is_source_engine:
+            refresh_button_engine = ttk.Button(
+                refresh_button_frame, text="Generate Project Files (Engine)", command=self.async_generate_project_files_engine)
+            ttk_grid_fill(refresh_button_engine, 1, 0, row_weight=0)
 
         self.key_binds = KeyBindings(root, self)
         self.drag_drop = Selection_DragDrop(root, self)
@@ -798,10 +805,13 @@ class FileBrowser(object):
             file.write(template_text)
             pass
 
+        get_p4().add(full_path)
+
         # create node
-        parent_node = self.nodes_by_path[Path(full_path).parent]
+        parent_node = self.nodes_by_path[str(Path(full_path).parent)]
+        filename = Path(full_path).name
         self.insert_node(parent_node, filename, full_path)
-        self.set_status(f"Created file {Path(full_path).name}")
+        self.set_status(f"Created file {filename}")
 
     def refresh_roots(self) -> None:
         for path in self.root_paths:
@@ -810,9 +820,13 @@ class FileBrowser(object):
             # self.refresh_node_children(node)
             self.tree.item(node, open=False)
 
-    def async_generate_project_files(self):
-        self.set_status("Generating project files...")
-        self.ue.generate_project_files(extra_shell=True)
+    def async_generate_project_files_project(self):
+        self.set_status("Generating project files (project)...")
+        self.ue.generate_project_files(engine_sln=False, extra_shell=True)
+
+    def async_generate_project_files_engine(self):
+        self.set_status("Generating project files (engine)...")
+        self.ue.generate_project_files(engine_sln=True, extra_shell=True)
 
 
 class App():
