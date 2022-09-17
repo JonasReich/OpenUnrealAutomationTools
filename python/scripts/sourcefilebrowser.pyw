@@ -25,6 +25,7 @@ from locale import atoi
 from pathlib import Path
 from typing import List, Tuple
 
+from openunrealautomation.descriptor import UnrealPluginDescriptor
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.unrealengine import UnrealEngine
 
@@ -618,8 +619,15 @@ class FileBrowser(object):
     def insert_node(self, parent: str, text: str, abspath: str) -> str:
         path_type = PathType.get_by_path(abspath)
         tags = (str(path_type),)
+        icon = FileTreeIcons.get_by_path(abspath)
+        extra_text = ""
+        if SourceFileType.get_by_path(abspath) == SourceFileType.PLUGIN:
+            plugin = UnrealPluginDescriptor(abspath)
+            plugin_json = plugin.read()
+            extra_text = f" - v{plugin_json['VersionName']} by {plugin_json['CreatedBy']}"
+
         node = self.tree.insert(
-            parent, "end", text=f"{FileTreeIcons.get_by_path(abspath)} {text}", open=False, tags=tags)
+            parent, "end", text=f"{icon} {text}{extra_text}", open=False, tags=tags)
         self.register_node(abspath, node)
         if os.path.isdir(abspath):
             # insert an empty dummy node so graph shows the expand icon
