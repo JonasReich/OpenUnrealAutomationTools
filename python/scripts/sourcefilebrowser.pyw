@@ -62,15 +62,15 @@ class FileTreeIcons(enum.Enum):
 
 
 class PathType(enum.Enum):
-    ROOT = 0, "rootdir", "#aaa", "📁"
-    PLUGIN_ORG = 1, "pluginorg_dir", "#bbb", "📁"
-    PLUGIN = 2, "plugin_dir", "#ccc", "📁"
+    ROOT = 0, "rootdir", "#ddd", "📁"
+    PLUGIN_ORG = 1, "pluginorg_dir", "#ddd", "📁"
+    PLUGIN = 2, "plugin_dir", "#ddd", "📁"
     MODULE = 3, "module_dir", "#ddd", "📁"
     # The actual "Source" directory
-    SOURCE = 4, "source_dir", "#eee", "📁"
+    SOURCE = 4, "source_dir", "#ddd", "📁"
     # Directories in the Private/Public folder (incl. "Public", "Private")
     SOURCE_SUB = 5, "source_sub_dir", "#fff", "📁"
-    ANGELSCRIPT_ROOT = 6, "script_root", "#bbb", "📁"
+    ANGELSCRIPT_ROOT = 6, "script_root", "#ddd", "📁"
     ANGELSCRIPT_SUB = 7, "script_sub", "#fff", "📁"
     FILE = 100, "file", "#ffd", "📄"
 
