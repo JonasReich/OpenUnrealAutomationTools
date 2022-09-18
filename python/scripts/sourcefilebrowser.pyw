@@ -24,6 +24,7 @@ import tkinter.ttk as ttk
 from locale import atoi
 from pathlib import Path
 from typing import List, Tuple
+from openunrealautomation.core import OUAException
 
 from openunrealautomation.descriptor import UnrealPluginDescriptor
 from openunrealautomation.p4 import UnrealPerforce
@@ -562,7 +563,6 @@ class FileBrowser(object):
         status_label = tk.Label(frame, textvariable=self.status_text)
         ttk_grid_fill(status_label, 0, 1, row_weight=0)
 
-
         refresh_button_frame = tk.Frame(frame)
         ttk_grid_fill(refresh_button_frame, 0, 2, row_weight=0)
         refresh_button = ttk.Button(
@@ -593,18 +593,6 @@ class FileBrowser(object):
 
     # Node operations (internal)
 
-    def add_root_node(self, normpath: str) -> None:
-        self.root_paths.add(normpath)
-        root_node_name = ""
-        if os.path.exists(normpath):
-            node = self.insert_node(
-                root_node_name, Path(normpath).name, normpath)
-        else:
-            node = self.tree.insert(
-                "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
-        if not (node is None):
-            self.register_node(normpath, node)
-
     def register_node(self, path: str, node: str) -> None:
         self.nodes_by_path[path] = node
         self.paths_by_node[node] = path
@@ -612,19 +600,37 @@ class FileBrowser(object):
     def get_node_path(self, node: str) -> str:
         return self.paths_by_node.get(node, None)
 
-    def insert_root(self, root_path: str) -> None:
+    def insert_root(self, root_path: str, name: str = None) -> None:
         normpath = os.path.normpath(root_path)
-        self.add_root_node(normpath)
+        name = name if name is not None else Path(normpath).name
+
+        self.root_paths.add(normpath)
+        root_node_name = ""
+        if os.path.exists(normpath):
+            node = self.insert_node(
+                root_node_name, name, normpath)
+        else:
+            node = self.tree.insert(
+                "", "end",  text=f"{FileTreeIcons.MISSING} {normpath}", open=False)
+        if not (node is None):
+            self.register_node(normpath, node)
 
     def insert_node(self, parent: str, text: str, abspath: str) -> str:
         path_type = PathType.get_by_path(abspath)
         tags = (str(path_type),)
         icon = FileTreeIcons.get_by_path(abspath)
         extra_text = ""
-        if SourceFileType.get_by_path(abspath) == SourceFileType.PLUGIN:
-            plugin = UnrealPluginDescriptor(abspath)
-            plugin_json = plugin.read()
-            extra_text = f" - v{plugin_json['VersionName']} by {plugin_json['CreatedBy']}"
+        if (#SourceFileType.get_by_path(abspath) == SourceFileType.PLUGIN or
+            PathType.get_by_path(abspath) == PathType.PLUGIN):
+            try:
+                plugin = UnrealPluginDescriptor.try_find(abspath)
+                if not plugin is None:
+                    plugin_json = plugin.read()
+                    created_by = plugin_json['CreatedBy']
+                    extra_text = f" - v{plugin_json['VersionName']} by {'unknown' if created_by is None or created_by == '' else created_by}"
+            except OUAException as e:
+                extra_text = "- failed to read plugin file"
+                pass
 
         node = self.tree.insert(
             parent, "end", text=f"{icon} {text}{extra_text}", open=False, tags=tags)
@@ -665,6 +671,7 @@ class FileBrowser(object):
                 "\\Source" in nested_abspath or
                 # Add folders that contain Source folders -> HACK
                 len(glob.glob(f"{nested_abspath}\\Source\\")) > 0 or
+                len(glob.glob(f"{nested_abspath}\\*\\Source\\")) > 0 or
                 # Add uplugin files
                 element.endswith("uplugin") or
                 # Angelscript script support
@@ -886,26 +893,29 @@ class App():
         set_p4(self.rootdir)
         print("Set new root directory:", self.rootdir)
         ue = UnrealEngine.create_from_parent_tree(self.rootdir)
+        env = ue.environment
 
         if not self.file_browser is None:
             self.file_browser.destroy()
 
         self.file_browser = FileBrowser(self.tkroot, ue)
-        self.file_browser.set_heading(ue.environment.project_name)
-        root_dir = ue.environment.project_root
-        self.file_browser.insert_root(f"{root_dir}\\Source\\")
-        self.file_browser.insert_root(f"{root_dir}\\Plugins\\")
-        if os.path.exists(f"{root_dir}\\Script\\"):
-            self.file_browser.insert_root(f"{root_dir}\\Script\\")
-        self.file_browser.insert_root(ue.environment.project_file.file_path)
+        self.file_browser.set_heading(env.project_name)
+        self.file_browser.insert_root(env.project_file.file_path)
+        self.file_browser.insert_root(f"{env.project_root}\\Source\\", f"Source ({env.project_name})")
+        self.file_browser.insert_root(f"{env.project_root}\\Plugins\\", f"Plugins ({env.project_name})")
+        if os.path.exists(f"{env.project_root}\\Script\\"):
+            self.file_browser.insert_root(f"{env.project_root}\\Script\\", f"Script ({env.project_name})")
+        self.file_browser.insert_root(f"{env.engine_root}\\Engine\\Source\\", f"Source (Engine)")
+        self.file_browser.insert_root(f"{env.engine_root}\\Engine\\Plugins\\", f"Plugins (Engine)")
+
         self.tkroot.title(
-            f"openunrealautomation Source Browser - {ue.environment.project_name}")
+            f"openunrealautomation Source Browser - {env.project_name}")
 
         ttk_grid_fill(self.file_browser.frame, 0, 1,
                       columnspan=2, column_weight=0)
 
         self.file_browser.set_status(
-            f"Loaded project {ue.environment.project_name}")
+            f"Loaded project {env.project_name}")
 
     def mainloop(self):
         self.tkroot.mainloop()

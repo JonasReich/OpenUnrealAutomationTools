@@ -2,6 +2,7 @@ import glob
 import json
 import os
 import os.path
+from pathlib import Path
 
 from openunrealautomation.core import OUAException
 
@@ -28,11 +29,12 @@ class UnrealDescriptor():
         return len(self.file_path) > 0
 
     @classmethod
-    def try_find_file(cls, directory):
+    def try_find_file(cls, path):
         """
         Try to find a descriptor file based on its extension in a directory.
         Raises if less or more than one file are found.
         """
+        directory = path if os.path.isdir(path) else Path(path).parent
         descriptor_files = glob.glob(f"{directory}/*{cls.get_extension()}")
         if len(descriptor_files) == 0:
             raise OUAException(
@@ -62,14 +64,17 @@ class UnrealDescriptor():
         """
         Read the file into a python dictionary.
         """
-        with open(self.file_path, "r") as file:
-            return json.load(file)
+        try:
+            with open(self.file_path, "r", encoding="utf-8-sig", errors="ignore") as file:
+                return json.load(file)
+        except Exception as e:
+            raise OUAException("Failed to read descriptor file ", self.file_path)
 
     def write(self, values: dict) -> None:
         """
         Write the dictionary back into the json file.
         """
-        with open(self.file_path, "w") as file:
+        with open(self.file_path, "w", encoding="utf-8") as file:
             json.dump(values, file, indent=4)
             print("Wrote", self.file_path)
 
