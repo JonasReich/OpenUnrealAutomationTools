@@ -8,7 +8,7 @@
     &   &amp;
 -->
 <Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    xsi:noNamespaceSchemaLocation="openunreal_logparse_patterns.xsd">
     <Template Name="UAT">
         <Patterns Name="UAT Errors" Severity="Error">
             <Include Style="Regex">ERROR: </Include>
@@ -19,7 +19,7 @@
     </Template>
 
     <Template Name="ExitCodes">
-        <Patterns Name="Exit Codes">
+        <Patterns Name="Exit Codes" Severity="Message">
             <Include>Took \d+,\d+s to run .+, ExitCode=\d+</Include>
         </Patterns>
     </Template>

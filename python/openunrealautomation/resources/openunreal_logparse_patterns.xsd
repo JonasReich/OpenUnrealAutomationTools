@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+    <xs:simpleType name="StyleType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="Literal" />
+            <xs:enumeration value="Regex" />
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:complexType name="PatternType">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute default="Literal" name="Style" type="StyleType" use="optional" />
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:simpleType name="TagListType">
+        <xs:restriction base="xs:string">
+            <xs:pattern value="\w+(;\w+)*" />
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="SeverityType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="Warning" />
+            <xs:enumeration value="Error" />
+            <xs:enumeration value="Message" />
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:complexType name="PatternListType">
+        <xs:sequence>
+            <xs:choice>
+                <xs:element name="Include" type="PatternType" />
+                <xs:element name="Exclude" type="PatternType" />
+            </xs:choice>
+            <xs:element name="Include" type="PatternType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Exclude" type="PatternType" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="Name" type="xs:string" use="required" />
+        <xs:attribute name="Severity" type="SeverityType" use="required" />
+        <xs:attribute name="Tags" type="TagListType" use="optional" />
+    </xs:complexType>
+
+    <xs:complexType name="TemplateType">
+        <xs:sequence>
+            <xs:choice>
+                <xs:element name="Link" type="LinkType" />
+                <xs:element name="Patterns" type="PatternListType" />
+            </xs:choice>
+            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="Name" type="xs:ID" use="required" />
+    </xs:complexType>
+
+    <xs:complexType name="LinkType">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="Template" type="xs:IDREF" use="required" />
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="ScopeType">
+        <xs:sequence>
+            <xs:element name="Start" type="PatternType" minOccurs="1" maxOccurs="unbounded" />
+            <xs:element name="End" type="PatternType" minOccurs="1" maxOccurs="unbounded" />
+
+            <xs:choice>
+                <xs:element name="Scope" type="ScopeType" />
+                <xs:element name="Link" type="LinkType" />
+                <xs:element name="Patterns" type="PatternListType" />
+            </xs:choice>
+            <xs:element name="Scope" type="ScopeType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="Name" type="xs:string" use="required" />
+    </xs:complexType>
+
+    <xs:complexType name="TargetType">
+        <xs:sequence>
+            <xs:element name="Scope" type="ScopeType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:attribute name="Name" type="xs:ID" use="required" />
+    </xs:complexType>
+
+    <xs:element name="Root">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="Template" type="TemplateType" minOccurs="0" maxOccurs="unbounded" />
+                <xs:element name="Target" type="TargetType" minOccurs="0" maxOccurs="unbounded" />
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema> 
