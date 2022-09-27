@@ -3,7 +3,7 @@ from locale import atoi
 import subprocess
 import re
 from openunrealautomation.util import run_subprocess
-
+from typing import List
 
 class UnrealPerforce:
     """
@@ -33,6 +33,13 @@ class UnrealPerforce:
         else:
             args +=[f"{file}@{cl}"]
         subprocess.run(args, encoding="UTF8", check=True)
+
+    def opened() -> List[str]:
+        opened_files_str = subprocess.check_output(["p4", "opened"], encoding="UTF8")
+        if "File(s) not opened on this client." in opened_files_str:
+            return []
+        else:
+            return opened_files_str.splitlines()
 
 
 if __name__ == "__main__":
