@@ -102,7 +102,7 @@ class UnrealEnvironment:
                 f"    -> Project Root:   {self.project_root}\n"
                 f"    -> Project File:   {self.project_file}\n"
                 f"    -> Version:        {project_version.value} (source: {project_version.file})\n"
-                    if has_project_bool else ""
+                if has_project_bool else ""
             ) +\
             f"Has OUU?:        {bool(ouu)}\n" + (
                 f"    -> Version:        {ouu.read()['VersionName']}" if ouu else ""
@@ -129,23 +129,35 @@ class UnrealEnvironment:
     @staticmethod
     def create_from_parent_tree(folder: str) -> 'UnrealEnvironment':
         """Recursively search through parents in the directory tree until either a project or engine root is found (project root is preferred)"""
-        print(f"Searching for project or engine root in '{folder}'...")
-        environment: UnrealEnvironment = None
-        for pardir in walk_parents(folder):
-            # Any folder with a uproject file can be reasonably considered an Unreal project directory
-            if UnrealEnvironment.is_project_root(pardir):
-                print(f"    -> found a project root at '{pardir}'")
-                environment = UnrealEnvironment.create_from_project_root(
-                    project_root=pardir)
 
-            elif UnrealEnvironment.is_engine_root(pardir):
-                print(f"    -> found an engine root at '{pardir}'")
-                environment = UnrealEnvironment.create_from_engine_root(
-                    engine_root=pardir)
-        if environment is None:
-            raise OUAException(
-                f"Failed to find project or engine root in any parent directory of '{folder}'")
-        return environment
+        def try_create(dir: str) -> 'UnrealEnvironment':
+            # Any folder with a uproject file can be reasonably considered an Unreal project directory
+            if UnrealEnvironment.is_project_root(dir):
+                print(f"    -> found a project root at '{dir}'")
+                return UnrealEnvironment.create_from_project_root(
+                    project_root=dir)
+
+            elif UnrealEnvironment.is_engine_root(dir):
+                print(f"    -> found an engine root at '{dir}'")
+                return UnrealEnvironment.create_from_engine_root(
+                    engine_root=dir)
+            return None
+
+        environment: UnrealEnvironment = None
+        print(f"Searching for project or engine root in '{folder}'...")
+
+        # Try create the environment directly
+        environment = try_create(folder)
+        if not environment is None:
+            return environment
+
+        for pardir in walk_parents(folder):
+            environment = try_create(pardir)
+            if not environment is None:
+                return environment
+
+        raise OUAException(
+            f"Failed to find project or engine root in any parent directory of '{folder}'")
 
     # Member functions
 

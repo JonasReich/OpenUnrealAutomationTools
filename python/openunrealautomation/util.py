@@ -2,12 +2,14 @@
 Utility functions
 """
 
+from cgi import print_arguments
 import filecmp
 import glob
 import os
 import pathlib
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -212,7 +214,21 @@ def list_attrs(obj: object, class_filter: type) -> Generator[Tuple[str, Any], No
             yield name, attr
 
 
-def run_subprocess(*popenargs, check=False, **kwargs) -> int:
+def args_str(*args):
+    """Turn args into a string without any list/tuple markup""" 
+    def flatten_args(args):
+        flat_list = []
+        if isinstance(args, tuple) or isinstance(args, list):
+            for arg in args:
+                flat_list += flatten_args(arg)
+        else:
+            flat_list.append(args)
+        return flat_list
+
+    return subprocess.list2cmdline(flatten_args(args))
+
+
+def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
     """
     Runs a process while forwarding the output to stdout automatically.
 
@@ -227,6 +243,9 @@ def run_subprocess(*popenargs, check=False, **kwargs) -> int:
                 on non-zero exit codes.
     Returns process exit code.
     """
+
+    if print_args:
+        print(args_str(popenargs))
 
     with subprocess.Popen(*popenargs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, **kwargs) as p:
         try:
@@ -247,7 +266,7 @@ def run_subprocess(*popenargs, check=False, **kwargs) -> int:
 
             if check and p.returncode != 0:
                 raise subprocess.CalledProcessError(p.returncode, p.args,
-                                        output=None, stderr=None)
+                                                    output=None, stderr=None)
             return p.returncode
         except:  # Including KeyboardInterrupt, wait handled that.
             p.kill()
