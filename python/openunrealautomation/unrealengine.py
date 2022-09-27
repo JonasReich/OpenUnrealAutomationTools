@@ -365,7 +365,7 @@ class UnrealEngine:
         if program == UnrealProgram.EDITOR:
             return []
         if program == UnrealProgram.EDITOR_CMD:
-            return ["-unattended", "-buildmachine", "-stdout", "-nopause", "-nosplash"]
+            return ["-unattended", "-buildmachine", "-stdout", "-nopause", "-nosplash", "-FullStdOutLogOutput"]
         if program == UnrealProgram.UBT:
             return ["-utf8output", project_arg]
         if program == UnrealProgram.UAT:
