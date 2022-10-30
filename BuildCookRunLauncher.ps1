@@ -38,19 +38,17 @@ $MainSectionName = "/Script/OUUDeveloper.OUUMapsToCookSettings"
 $MapIniSectionNames = New-Object System.Collections.ArrayList
 $MapIniSectionNames.Add("") | Out-Null
 $AllMapsToCook = @{}
-if ($EditorIni.ContainsKey($MainSectionName)) {
-    foreach ($MapIniSection in $EditorIni[$MainSectionName]["ConfigSections"]) {
-        $MapIniSectionNames.Add($MapIniSection) | Out-Null
-        $AllMapsToCook[$MapIniSection] = $EditorIni[$MapIniSection]["Map"]
-    }
-    $InitialMapIniSectionIdx = 0
-    $MapIniSection = $MapIniSectionNames[$InitialMapIniSectionIdx]
-    Write-Verbose "Detected ConfigSections: $MapIniSectionNames."
-    Write-Verbose "Detected DefaultConfigSection: $MapIniSection"
+if (-not $EditorIni.ContainsKey($MainSectionName)) {
+    Write-Error "Expected a config section called [$MainSectionName] in DefaultEditor.ini to configure which map sections to use for map cook lists."
 }
-else {
-    Write-Warning "Expected a config section called [$MainSectionName] in DefaultGame.ini to configure which map sections to use for map cook lists."
+foreach ($MapIniSection in $EditorIni[$MainSectionName]["ConfigSections"]) {
+    $MapIniSectionNames.Add($MapIniSection) | Out-Null
+    $AllMapsToCook[$MapIniSection] = $EditorIni[$MapIniSection]["Map"]
 }
+$InitialMapIniSectionIdx = 0
+$MapIniSection = $MapIniSectionNames[$InitialMapIniSectionIdx]
+Write-Verbose "Detected ConfigSections: $MapIniSectionNames."
+Write-Verbose "Detected DefaultConfigSection: $MapIniSection"
 
 $Configuration = "Development"
 $Configurations = @("DebugGame", $Configuration, "Shipping", "Test")
@@ -270,9 +268,8 @@ $COMPILE_ARGS = @(
 # COOK
 #--------------
 $MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`"" } else { $null }
-$DefaultMapArg = if ($DefaultMap.Length -gt 0) { "-map=$DefaultMap"} else { $null }
 $PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
-$COOK_ARGS = @("-cook", $MapIniSectionArgs, $DefaultMapArg, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
+$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
 
 #--------------
 # STAGE
