@@ -256,8 +256,8 @@ $InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
 
 $COMPILE_ARGS = @(
     $ConfigurationArgs,      # see above
-    "-nocompile",            # do not compile automation tool / script binaries from source
-    "-nocompileeditor",      # do not compile editor binaries
+    #"-nocompile",           # This is a convenience tool. We need to compile UAT+editor to make cooking possible without requiring explicit steps in advance.
+    #"-nocompileeditor",     # ^
     $InstalledArg,           # see above
     "-platform=Win64",       # current platform
     "-targetplatform=Win64"  # platform for game
