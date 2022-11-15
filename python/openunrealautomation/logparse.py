@@ -6,11 +6,12 @@ import argparse
 import copy
 import datetime
 import glob
+import json
 import os.path
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Generator
+from typing import Generator, List
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -88,9 +89,10 @@ class UnrealLogSeverity(Enum):
     Instead, we just differentiate between error, warning and message depending on the declarations in the parser xml file.
     Default level is MESSAGE
     """
-    MESSAGE = 0, "📄"
-    WARNING = 1, "⚠️"
-    ERROR = 2, "⛔"
+    # int, icon, json value
+    MESSAGE = 0, "📄", "message"
+    WARNING = 1, "⚠️", "warning"
+    ERROR = 2, "⛔", "error"
 
     @staticmethod
     def from_string(string: str) -> 'UnrealLogSeverity':
@@ -108,28 +110,96 @@ class UnrealLogSeverity(Enum):
     def get_emoji(self) -> str:
         return self.value[1]
 
+    def json(self) -> str:
+        return self.value[2]
+
+
+class UnrealLogFileLineMatch:
+    line: str = ""
+    string_vars: dict = {}
+    numeric_vars: dict = {}
+
+    def __init__(self, line: str, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
+        self.line = line
+        self.string_vars = string_vars
+        self.numeric_vars = numeric_vars
+
+    def __str__(self) -> str:
+        return self.line
+
+    def json(self, owning_list: 'UnrealLogFilePatternList') -> dict:
+        return {
+            "line": self.line,
+            "severity": owning_list.severity.json(),
+            "strings": self.string_vars,
+            "numerics": self.numeric_vars,
+            "tags": list(owning_list.tags)
+        }
+
 
 class UnrealLogFilePattern:
     pattern: str = ""
     is_regex: bool = True
 
-    def __init__(self, pattern: str, is_regex: bool):
+    string_var_names: List[str]
+    numeric_var_names: List[str]
+
+    def __init__(self, pattern: str, is_regex: bool, string_var_names: List[str], numeric_var_names: List[str]):
         self.pattern = pattern
         self.is_regex = is_regex
+        self.string_var_names = string_var_names
+        self.numeric_var_names = numeric_var_names
 
     @staticmethod
     def from_xml_node(xml_node: XmlNode) -> 'UnrealLogFilePattern':
         if None is xml_node:
             return None
         is_regex = xml_node.get("Style", default="Regex") == "Regex"
-        return UnrealLogFilePattern(xml_node.text, is_regex=is_regex)
+        string_var_names = xml_node.get(
+            "StringVariables", default="").split(";")
+        numeric_var_names = xml_node.get(
+            "NumericVariables", default="").split(";")
+        # HACK fixup
+        if string_var_names == ['']:
+            string_var_names = []
+        if numeric_var_names == ['']:
+            numeric_var_names = []
 
-    def match(self, line: str) -> bool:
+        return UnrealLogFilePattern(xml_node.text,
+                                    is_regex=is_regex,
+                                    string_var_names=string_var_names,
+                                    numeric_var_names=numeric_var_names)
+
+    def match(self, line: str) -> UnrealLogFileLineMatch:
+        # HACK: Remove newlines at end
+        line = line[0:-1]
+
+        if self.pattern is None:
+            return None
+
         if self.is_regex:
-            return re.search(self.pattern, line)
+            re_match = re.search(self.pattern, line)
+            if re_match is None:
+                return None
+            string_vars = {}
+            for name in self.string_var_names:
+                named_group_value = re_match.group(name)
+                if not named_group_value is None:
+                    string_vars[name] = named_group_value
+            numeric_vars = {}
+            for name in self.numeric_var_names:
+                named_group_value = re_match.group(name)
+                if not named_group_value is None:
+                    try:
+                        numeric_vars[name] = float(named_group_value)
+                    except ValueError:
+                        numeric_vars[name] = float(
+                            named_group_value.replace(",", "."))
+            return UnrealLogFileLineMatch(line, string_vars, numeric_vars) if re_match else None
         else:
             # Convert both to lower case to make matching case-insensitive
-            return self.pattern.lower() in line.lower()
+            matches = self.pattern.lower() in line.lower()
+            return UnrealLogFileLineMatch(line) if matches else None
 
 
 class UnrealLogFilePatternList:
@@ -139,7 +209,7 @@ class UnrealLogFilePatternList:
     owning_scope: 'UnrealLogFilePatternScope'
     include_patterns: list[UnrealLogFilePattern]
     exclude_patterns: list[UnrealLogFilePattern]
-    matching_lines: list[str]
+    matching_lines: list[UnrealLogFileLineMatch]
 
     def __init__(self, group_name: str, owning_scope: 'UnrealLogFilePatternScope'):
         self.group_name = group_name
@@ -169,10 +239,19 @@ class UnrealLogFilePatternList:
                 UnrealLogFilePattern.from_xml_node(pattern))
         return result_list
 
-    def match(self, line: str) -> bool:
-        return any(pattern.match(line) for pattern in self.include_patterns) and \
-            not any(pattern.match(line)
-                    for pattern in self.exclude_patterns)
+    def match(self, line: str) -> UnrealLogFileLineMatch:
+        # Go through exclude patterns first, because we always have to check all of these
+        for pattern in self.exclude_patterns:
+            if not pattern.match(line) is None:
+                return None
+
+        first_match: UnrealLogFileLineMatch = None
+        for pattern in self.include_patterns:
+            first_match = pattern.match(line)
+            if not first_match is None:
+                break
+
+        return first_match
 
     def match_tags(self, tags: list[str]) -> bool:
         if len(tags) == 0:
@@ -180,37 +259,68 @@ class UnrealLogFilePatternList:
         return any(tag is None or tag == "" or tag.upper() in self.tags for tag in tags)
 
     def check_and_add(self, line: str) -> bool:
-        if self.match(line):
-            self.matching_lines.append(line[0:-1])
+        match = self.match(line)
+        if match:
+            self.matching_lines.append(match)
             return True
         return False
 
+    def get_header(self) -> str:
+        scope_name = self.owning_scope.get_fully_qualified_scope_name()
+        return f"[{scope_name}] {self.severity.get_emoji()}  {self.group_name}"
+
     def format(self, max_lines: int) -> str:
         num_lines = len(self.matching_lines)
-        disp_lines = min(max_lines, num_lines) if max_lines > 0 else num_lines
-        scope_name = self.owning_scope.get_fully_qualified_scope_name()
-        header = f"### [{scope_name}] {self.severity.get_emoji()}  {self.group_name} ({disp_lines}/{num_lines}) <{';'.join(self.tags)}> ###\n"
-        body = "\n".join(self.matching_lines[0:disp_lines])
+        if num_lines == 0:
+            return ""
+        disp_lines = min(max_lines, num_lines) if max_lines >= 0 else num_lines
+        header_str = self.get_header()
+        header = f"### {header_str} ({disp_lines}/{num_lines}) <{';'.join(self.tags)}> ###\n"
+        body = "\n".join(str(line)
+                         for line in self.matching_lines[0:disp_lines])
         return header + body
+
+    def json(self) -> dict:
+        num_lines = len(self.matching_lines)
+        if num_lines == 0:
+            return None
+        lines_json_objs = list(filter(lambda x: x is not None, [
+                               line.json(self) for line in self.matching_lines]))
+
+        return {
+            "name": self.get_header(),
+            "severity": self.severity.json(),
+            "tags": list(self.tags),
+            "lines": lines_json_objs
+        }
+
+    def num_matches(self) -> int:
+        return len(self.matching_lines)
 
 
 class UnrealLogFilePatternScope:
     scope_name: str
+    parent_target_name: str = None
     start_patterns: list[UnrealLogFilePattern]
     end_patterns: list[UnrealLogFilePattern]
     child_scopes: list['UnrealLogFilePatternScope']
     parent_scope: 'UnrealLogFilePatternScope' = None
     pattern_lists: list[UnrealLogFilePatternList]
+    require_all_lines_match: bool
 
     def __init__(self,
                  scope_name,
+                 parent_target_name,
                  start_patterns: list[UnrealLogFilePattern],
-                 end_patterns: list[UnrealLogFilePattern]):
+                 end_patterns: list[UnrealLogFilePattern],
+                 require_all_lines_match: bool):
         self.scope_name = scope_name
+        self.parent_target_name = parent_target_name
         self.start_patterns = start_patterns
         self.end_patterns = end_patterns
         self.child_scopes = []
         self.pattern_lists = []
+        self.require_all_lines_match = require_all_lines_match
 
     def num_patterns(self):
         result = 0
@@ -230,14 +340,28 @@ class UnrealLogFilePatternScope:
                 UnrealLogFilePatternList.from_xml_node(pattern_list, self))
         for scope in xml_node.findall("./Scope"):
             self.link_child_scope(
-                UnrealLogFilePatternScope.from_xml_node(scope, root_node))
+                UnrealLogFilePatternScope.from_xml_node(scope, root_node, self.parent_target_name))
         for link in xml_node.findall("./Link"):
             template_name = link.get("Template")
+            found_template = False
+            # Prefer templates
             for template in root_node.findall("./Template"):
                 if template.get("Name") == template_name:
                     self.fill_scope_from_xml_node(template, root_node)
+                    found_template = True
+                    break
+            # If there is not template with matching name, fallback to linking targets
+            if not found_template:
+                for template in root_node.findall("./Target"):
+                    if template.get("Name") == template_name:
+                        self.fill_scope_from_xml_node(template, root_node)
+                        found_template = True
+                        break
+            if not found_template:
+                raise OUAException(
+                    f"No template or target with name {template_name} was found")
 
-    def from_xml_node(xml_node: XmlNode, root_node: XmlNode) -> 'UnrealLogFilePatternScope':
+    def from_xml_node(xml_node: XmlNode, root_node: XmlNode, parent_target_name: str = None) -> 'UnrealLogFilePatternScope':
         start_patterns = [UnrealLogFilePattern.from_xml_node(
             node) for node in xml_node.findall("Start")]
         end_patterns = [UnrealLogFilePattern.from_xml_node(
@@ -245,8 +369,10 @@ class UnrealLogFilePatternScope:
 
         result_scope = UnrealLogFilePatternScope(
             xml_node.get("Name"),
+            parent_target_name,
             start_patterns,
-            end_patterns)
+            end_patterns,
+            xml_node.get("RequireAllLinesMatch"))
         result_scope.fill_scope_from_xml_node(xml_node, root_node)
         return result_scope
 
@@ -290,6 +416,19 @@ class UnrealLogFilePatternScope:
         self_copy.filter_inline(tags, min_severity, min_matches)
         return self_copy
 
+    def num_matches(self) -> int:
+        return sum(pattern.num_matches() for pattern in self.pattern_lists) + sum(child_scope.num_matches() for child_scope in self.child_scopes)
+
+    def _json_patterns(self) -> List[dict]:
+        jsons = list(filter(lambda x: x is not None, [
+                     pattern.json() for pattern in self.pattern_lists]))
+        for child_scope in self.child_scopes:
+            jsons += child_scope._json_patterns()
+        return jsons
+
+    def json(self) -> dict:
+        return {"scopes": self._json_patterns()}
+
 
 def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternScope:
     """
@@ -300,7 +439,7 @@ def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternSco
     root_node = XmlTree(file=xml_path)
     for target in root_node.findall("./Target"):
         if target.get("Name") == target_name:
-            return UnrealLogFilePatternScope.from_xml_node(target, root_node)
+            return UnrealLogFilePatternScope.from_xml_node(target, root_node, target_name)
     raise OUAException(f"No definition for log file target {target_name}")
 
 
@@ -322,6 +461,8 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
 
     with open(log_path, "r") as file:
         for line in file:
+            if "Package Accesses" in line:
+                print("foo")
             # What's a higher priority?
             # 1) opening child scopes <- current implementation
             # 2) closing current scope
@@ -335,11 +476,23 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
                 if scope_changed:
                     break
 
-            if not scope_changed and any(end_pattern.match(line) for end_pattern in current_scope.end_patterns):
+            # Allow parsing a line that is on the end line of a scope
+            line_checked = current_scope.check_and_add(line)
+
+            if not scope_changed and (
+                    any(end_pattern.match(line)
+                        for end_pattern in filter(lambda end_pattern: not end_pattern is None, current_scope.end_patterns))
+                    or (current_scope.require_all_lines_match and not line_checked)
+            ):
                 current_scope = current_scope.parent_scope
                 scope_changed = True
+                continue
 
-            current_scope.check_and_add(line)
+            # A line can only be matched by one scope. We assume inner scopes have more detailed info/parsing rules
+            # and prioritize them over outer scopes.
+            # Because of this, we can end a scope by "does not contain x" patterns
+            if not line_checked:
+                current_scope.check_and_add(line)
 
     if current_scope is not root_scope:
         print(
@@ -353,8 +506,8 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print(header, "\nParsing log file", path, "...", header)
 
     scope_with_matches = parse_log(path, logparse_patterns_xml, target_name)
-    scope_with_matches.filter_inline(
-        "", min_severity=UnrealLogSeverity.MESSAGE)
+    # scope_with_matches.filter_inline(
+    #     "", min_severity=UnrealLogSeverity.MESSAGE)
     print("\n", scope_with_matches.format(max_lines))
 
 
