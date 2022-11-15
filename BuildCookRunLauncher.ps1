@@ -269,7 +269,7 @@ $COMPILE_ARGS = @(
 #--------------
 $MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`"" } else { $null }
 $PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
-$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-iterativecooking", "-SkipCookingEditorContent", "-compressed", $PakArg)
+$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-SkipCookingEditorContent", "-compressed", $PakArg)
 
 #--------------
 # STAGE
