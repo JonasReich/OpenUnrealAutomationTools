@@ -1,4 +1,5 @@
 import glob
+import inspect
 import os
 import pathlib
 import platform
@@ -158,6 +159,13 @@ class UnrealEnvironment:
 
         raise OUAException(
             f"Failed to find project or engine root in any parent directory of '{folder}'")
+
+    @staticmethod
+    def create_from_invoking_file_parent_tree() -> 'UnrealEnvironment':
+        stack_frame = inspect.stack()[1]
+        stack_module = inspect.getmodule(stack_frame[0])
+        module_dir = pathlib.Path(stack_module.__file__).parent
+        return UnrealEnvironment.create_from_parent_tree(module_dir)
 
     # Member functions
 
