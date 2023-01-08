@@ -15,7 +15,8 @@ setup(
     zip_safe=True,
     python_requires=">=3.7",
     install_requires=[
-        "vswhere"
+        "vswhere",
+        "pytest"
     ],
     include_package_data=True
 )
