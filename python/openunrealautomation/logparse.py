@@ -99,6 +99,8 @@ class UnrealLogSeverity(Enum):
     MESSAGE = 0, "📄", "message"
     WARNING = 1, "⚠️", "warning"
     ERROR = 2, "⛔", "error"
+    # only distinguish internally for now -> auto step fails. json export etc should be unaffected.
+    FATAL = 3, "⛔", "error"
 
     @staticmethod
     def from_string(string: str) -> 'UnrealLogSeverity':
@@ -258,10 +260,16 @@ class UnrealLogFilePattern:
                 line, self, line_nr) if matches else None
 
         if not result_match is None:
+            full_scope_name = self.owning_scope.get_fully_qualified_scope_name()
             for flag in self.success_flag_names:
+                flag = full_scope_name if flag == "auto" else flag
                 self._flag_success(flag, True)
             for flag in self.failure_flag_names:
+                flag = full_scope_name if flag == "auto" else flag
                 self._flag_success(flag, False)
+            if not self.owning_list is None and self.owning_list.severity == UnrealLogSeverity.FATAL:
+                # Automatically flag the owning scope as failure.
+                self._flag_success(full_scope_name, False)
 
         return result_match
 
@@ -280,7 +288,8 @@ class UnrealLogFilePattern:
                     # However, this is definitely undesirable.
                     print(f"The step success flag '{flag}' was previously set to failure and is now set to success inside scope",
                           self.owning_scope.scope_name)
-                return
+            # The same flag was already present. We don't want duplicate flags
+            return
 
         root_scope.step_success_flags.append((flag, is_success))
 
