@@ -5,6 +5,7 @@ Because of UE's idiosyncracies with ini file keys, we do not offer any tools to 
 For writing to ini files, we recommend invoking UE commandlets written in UE C++ instead.
 
 #TODO Add auto array syntax support (+Key=Value)
+#TODO Check if this can be re-implemented/replaced by a python wrapper of https://github.com/Wortex17/UE4Config
 """
 
 import configparser
