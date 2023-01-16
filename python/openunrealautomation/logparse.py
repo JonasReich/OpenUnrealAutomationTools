@@ -8,7 +8,7 @@ import os.path
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Set, Tuple, Union
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -17,7 +17,7 @@ from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 
 
-def _get_name_id_list(xml_node: XmlNode, attribute: str) -> set[str]:
+def _get_name_id_list(xml_node: XmlNode, attribute: str) -> Set[str]:
     """Get a set of unique strings from a semi-colon separated string."""
     result = xml_node.get(attribute, default="").split(";")
     if result == ['']:
@@ -172,7 +172,7 @@ class UnrealLogFilePattern:
                                     failure_flag_names=failure_flag_names,
                                     tags=tags)
 
-    def match(self, line: str, line_nr: int) -> UnrealLogFileLineMatch:
+    def match(self, line: str, line_nr: int) -> Union[UnrealLogFileLineMatch, None]:
         """
         Search for pattern matches in a given line.
         Returns an UnrealLogFileLineMatch if a match was found. Otherwise None.
@@ -254,11 +254,11 @@ class UnrealLogFilePatternList:
     """
     group_name: str = ""
     severity: UnrealLogSeverity
-    tags: set[str] = None
+    tags: Set[str] = None
     owning_scope: 'UnrealLogFilePatternScope'
     include_patterns: list[UnrealLogFilePattern]
     exclude_patterns: list[UnrealLogFilePattern]
-    matching_lines: set[UnrealLogFileLineMatch]
+    matching_lines: Set[UnrealLogFileLineMatch]
 
     def __init__(self, group_name: str, owning_scope: 'UnrealLogFilePatternScope'):
         self.group_name = group_name
@@ -269,7 +269,7 @@ class UnrealLogFilePatternList:
         self.exclude_patterns = []
         self.matching_lines = []
 
-    def match(self, line: str, line_number: int) -> UnrealLogFileLineMatch:
+    def match(self, line: str, line_number: int) -> Union[UnrealLogFileLineMatch, None]:
         """
         Returns an UnrealLogFileLineMatch for the first pattern that matches the given line.
         May return None if no match was found.
@@ -315,7 +315,7 @@ class UnrealLogFilePatternList:
                          for line in self.matching_lines[0:disp_lines])
         return header + body
 
-    def json(self) -> dict:
+    def json(self) -> Union[dict, None]:
         num_lines = len(self.matching_lines)
         if num_lines == 0:
             return None
@@ -533,7 +533,7 @@ class UnrealLogFilePatternScope:
             for line in list.matching_lines:
                 yield line
 
-    def get_string_variable(self, variable_name) -> str:
+    def get_string_variable(self, variable_name) -> Union[str, None]:
         """
         Get the first instance of a string variable with the given name.
         If multiple lines have a variable with that name, only the first occurence will be returned.
