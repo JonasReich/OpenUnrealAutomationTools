@@ -272,3 +272,14 @@ def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
             p.kill()
             # We don't call p.wait() again as p.__exit__ does that for us.
             raise
+
+def read_text_file(path:str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def write_text_file(path: str, content: str) -> None:
+    pathlib.Path(path).parent.mkdir(exist_ok=True, parents=True)
+    with open(path, "w", encoding="utf8") as f:
+        f.write(content)
+        print("Wrote", (content.count("\n") + 1), "lines to", path)
