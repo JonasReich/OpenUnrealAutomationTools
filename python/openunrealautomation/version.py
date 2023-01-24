@@ -39,7 +39,7 @@ class UnrealVersion():
     @staticmethod
     def create_from_string(version_string: str, is_licensee_version: bool = False) -> 'UnrealVersion':
         version = UnrealVersion()
-        regex = "^(?P<MajorVersion>\\d+)(\\.(?P<MinorVersion>\\d+)(\\.(?P<PatchVersion>\\d+)(-(?P<Changelist>\\d+)(\\+(?P<BranchName>.+))?)?)?)?$"
+        regex = r"^(?P<MajorVersion>\d+)(\.(?P<MinorVersion>\d+)(\.(?P<PatchVersion>\d+)(-(?P<Changelist>\d+)(\+(?P<BranchName>.+))?)?)?)?$"
         match = search(regex, version_string)
         if match is None:
             raise OUAException(

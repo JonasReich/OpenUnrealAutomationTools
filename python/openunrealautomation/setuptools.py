@@ -108,7 +108,7 @@ class VisualStudio:
         self.product_line_version = latest_applicable_version["catalog"]["productLineVersion"]
 
         version_match = re.search(
-            "(?P<major>\\d+).(?P<minor>\\d+).(?P<patch>\\d+)", self.version)
+            r"(?P<major>\d+).(?P<minor>\d+).(?P<patch>\d+)", self.version)
         self.major_version = int(version_match.group("major"))
         self.minor_version = int(version_match.group("minor"))
         self.patch_version = int(version_match.group("patch"))

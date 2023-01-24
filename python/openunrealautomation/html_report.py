@@ -77,7 +77,7 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_str) -> str:
 
     for line in log_file_str.splitlines():
         matches = re.match(
-            "LogCook: Display:   (?P<Indent>\\s*)(?P<Label>\\w+): (?P<Time>\\d+\\.\\d+)s \\((?P<Counter>\\d+)\\)", line)
+            r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)", line)
         if matches:
             indent = len(matches.group("Indent")) / 2
             label = matches.group("Label")
@@ -153,7 +153,7 @@ def generate_html_report(
     report_description_html_str = f"IniMapSections: {map_list}<br>\n" +\
         f"CookCultures: {cook_cultures}<br>\n" +\
         f"<b>Build Steps</b><br>\n" +\
-        f"<ul class='list-group px-3' style='width: max-content;'>{build_steps_html_str}</ul><br>\n"
+        f"<ul class='list-group' style='width: max-content;'>{build_steps_html_str}</ul>"
 
     injected_javascript = _generate_hierarchical_cook_timing_stat_html(
         log_file_str)
