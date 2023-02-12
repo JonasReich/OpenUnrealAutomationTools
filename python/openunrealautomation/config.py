@@ -121,8 +121,16 @@ class UnrealConfig():
                     value = scope_value
             return value
 
+    def get_config_path(self, category: str, scope: UnrealConfigScope = UnrealConfigScope.PROJECT_DEFAULT, platform: str = "WindowsEditor") -> str:
+        return self._get_config_path(
+            engine_root=self.engine_root,
+            project_root=self.project_root,
+            category=category,
+            scope=scope,
+            platform=platform)
+
     @staticmethod
-    def get_config_path(engine_root: str, project_root: str, category: str, scope: UnrealConfigScope = UnrealConfigScope.PROJECT_DEFAULT, platform: str = "WindowsEditor") -> str:
+    def _get_config_path(engine_root: str, project_root: str, category: str, scope: UnrealConfigScope, platform: str) -> str:
         paths = {
             UnrealConfigScope.BASE: f"{engine_root}/Engine/Config/Base.ini",
             UnrealConfigScope.ENGINE_BASE: f"{engine_root}/Engine/Config/Base{category}.ini",
@@ -137,7 +145,7 @@ class UnrealConfig():
     def _read(self, category: str, section: str, key: str, scope: UnrealConfigScope,  platform: str) -> UnrealConfigValue:
         config = configparser.ConfigParser(
             strict=False, comment_prefixes=(";"), empty_lines_in_values=False)
-        config_path = self.get_config_path(
+        config_path = self._get_config_path(
             engine_root=self.engine_root,
             project_root=self.project_root,
             category=category,
