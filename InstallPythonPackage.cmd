@@ -18,16 +18,20 @@ if [%2]==[] (
 set PIP=%PYTHON% -m pip
 set SOURCE_PATH=%~dp0python
 
-echo Packing TestReportViewer_Template...
-set "ZIP_SCRIPT=%~dp0python/scripts/zip.py"
-set "ARCHIVE_SOURCE=%~dp0TestReportViewer_Template"
-set "ARCHIVE_FILE=%~dp0python/openunrealautomation/resources/TestReportViewer_Template"
-%PYTHON% %ZIP_SCRIPT% pack "%ARCHIVE_SOURCE%" "%ARCHIVE_FILE%"
+::echo Packing TestReportViewer_Template...
+::set "ZIP_SCRIPT=%~dp0python/scripts/zip.py"
+::set "ARCHIVE_SOURCE=%~dp0TestReportViewer_Template"
+::set "ARCHIVE_FILE=%~dp0python/openunrealautomation/resources/TestReportViewer_Template"
+::%PYTHON% %ZIP_SCRIPT% pack "%ARCHIVE_SOURCE%" "%ARCHIVE_FILE%"
 
 if %DEVMODE%==1 (
     echo Installing in dev mode...
+    @echo off
     %PIP% install -e %SOURCE_PATH%
+    @echo on
 ) else (
     echo Installing in regular mode...
+    @echo off
     %PIP% install %SOURCE_PATH%
+    @echo on
 )
