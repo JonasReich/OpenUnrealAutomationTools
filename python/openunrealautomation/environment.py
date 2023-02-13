@@ -181,11 +181,12 @@ class UnrealEnvironment:
         return self.build_version.get_current()
 
     def find_plugin(self, plugin_name) -> UnrealPluginDescriptor:
-        engine_plugin = self.find_plugin_in_dir(
-            dir=f"{self.engine_root}/Engine/Plugins", plugin_name=plugin_name)
-        if engine_plugin:
-            return engine_plugin
-        if self.has_project():
+        if os.path.isdir(f"{self.engine_root}/Engine/Plugins"):
+            engine_plugin = self.find_plugin_in_dir(
+                dir=f"{self.engine_root}/Engine/Plugins", plugin_name=plugin_name)
+            if engine_plugin:
+                return engine_plugin
+        if self.has_project() and os.path.isdir(f"{self.project_root}/Plugins"):
             project_plugin = self.find_plugin_in_dir(
                 dir=f"{self.project_root}/Plugins", plugin_name=plugin_name)
             if project_plugin:
@@ -314,7 +315,7 @@ class UnrealEnvironment:
     @staticmethod
     def find_engine_parent_dir(dir) -> str:
         for pardir in walk_parents(dir):
-            if os.path.exists(f"{pardir}/Engine/Build/Build.version") and os.path.exists(f"{pardir}/Engine/Source"):
+            if os.path.exists(f"{pardir}/Engine/Build/Build.version"):
                 # It's reasonable to expect that this is an Engine directory
                 return pardir
         return None
