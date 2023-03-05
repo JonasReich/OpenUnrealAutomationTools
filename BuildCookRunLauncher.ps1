@@ -166,6 +166,8 @@ function AddCheckBox {
 
 AddLabel -LabelText "Build" -IsHeader $true | Out-Null
 
+$BuildCheckbox = AddCheckBox -LabelText "Build" -DefaultCheckedState $True -TooltipText "Enable the build step. If false, skips the build"
+
 # Build configuration combobox
 $ConfigurationCombobox = AddCombobox -LabelText "Build Config (Server + Client)" -Items ($Configurations) -Index 1 -TooltipText "DebugGame is best for detailed debugging. `
 Shipping does not have any logs / debug info.`
@@ -254,20 +256,22 @@ $ConfigurationArgs = @("-clientconfig=$Configuration", "-serverconfig=$Configura
 # TODO: Is this the right condition / what is the flag used for? Is this dependent on the engine version or the desired build output?
 $InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
 
+$BuildArg = if ( $BuildCheckbox.Checked ) { "-build" } else { "-skipbuild" }
+
 $COMPILE_ARGS = @(
     $ConfigurationArgs,      # see above
-    #"-nocompile",           # This is a convenience tool. We need to compile UAT+editor to make cooking possible without requiring explicit steps in advance.
-    #"-nocompileeditor",     # ^
+    "-compile",           # This is a convenience tool. We need to compile UAT+editor to make cooking possible without requiring explicit steps in advance.
+    "-compileeditor",     # ^
     $InstalledArg,           # see above
     "-platform=Win64",       # current platform
-    "-targetplatform=Win64"  # platform for game
-    "-build"                 # build the game
+    "-targetplatform=Win64",  # platform for game
+    $BuildArg
 )
 
 #--------------
 # COOK
 #--------------
-$MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`"" } else { $null }
+$MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`" -NODEV -SCCProvider=None" } else { $null }
 $PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
 $COOK_ARGS = @("-cook", $MapIniSectionArgs, "-SkipCookingEditorContent", "-compressed", $PakArg)
 
