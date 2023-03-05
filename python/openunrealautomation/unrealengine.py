@@ -154,8 +154,8 @@ class UnrealEngine:
     def run_tests(self, test_filter: str = None,
                   game_test_target: bool = True,
                   arguments: "list[str]" = [],
-                  generate_report_file: bool = True,
-                  extract_report_viewer: bool = True,
+                  generate_report_file: bool = False,
+                  extract_report_viewer: bool = False,
                   generate_coverage_reports: bool = False):
         """
         Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
@@ -350,6 +350,9 @@ class UnrealEngine:
         all_arguments += ["-clean"]
 
         return self.run(UnrealProgram.UBT, arguments=all_arguments)
+
+    def update_local_version(self) -> int:
+        return self.run(UnrealProgram.UAT, ["UpdateLocalVersion", "-P4", "-Licensee", "-Promoted=0"])
 
     def _get_generate_project_files_path(self) -> Tuple[str, bool]:
         """
