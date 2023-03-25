@@ -1,13 +1,16 @@
+import json
 import os
 import shutil
 import subprocess
 import winreg
-from typing import Set, List, Tuple
+from typing import List, Optional, Set, Tuple
+from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
 from openunrealautomation.core import *
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import run_subprocess, walk_level, which_checked, args_str
+from openunrealautomation.util import (args_str, run_subprocess, walk_level,
+                                       which_checked)
 
 
 class UnrealEngine:
@@ -151,23 +154,34 @@ class UnrealEngine:
                         add_default_parameters=add_default_parameters,
                         generate_coverage_reports=generate_coverage_reports)
 
-    def run_tests(self, test_filter: str = None,
+    def run_tests(self, test_filter: Optional[str] = None,
                   game_test_target: bool = True,
                   arguments: "list[str]" = [],
                   generate_report_file: bool = False,
-                  extract_report_viewer: bool = False,
+                  report_directory: Optional[str] = None,
+                  convert_junit: bool = True,
+                  setup_report_viewer: bool = False,
                   generate_coverage_reports: bool = False):
         """
         Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
 
-        test_filter                 String that specifies which test categories shall be executed. Seprated by pluses.
+        test_filter                 Optional string that specifies which test categories shall be executed. Seprated by pluses.
         game_test_target            If true, the editor is launched in game mode (significantly faster). If false in editor mode. The test selection is updated accordingly.
         arguments                   Additional commandline arguments to pass to UE.
         generate_report_file        If true, a test report (json + html) is saved by UE into the project's Saved directory.
-        extract_report_viewer       If true, a modified version of the test report html file to view the json is copied into the test report.
-                                    This is to replace UE's default html file, which cannot be used without installing js/css dependencies.
+        report_directory            Optional path to a directory to place automation reports. By defautl a generated folder in the projects Saved directory is used. 
+        convert_junit               If true, the test results json file is converted into a JUnit xml file (e.g. to report test status to Jenkins/TeamCity).
+        setup_report_viewer         If true, all bower_components required for Epic's test viewer html page are installed into the report directory. This requires bower to be installed and on PATH.
         generate_coverage_reports   If true, the application is launched via opencppcoverage to generate code coverage reports in the project's Saved directory.
         """
+
+        setup_report_viewer_actual = generate_report_file and setup_report_viewer
+        # Already check for requirements at the start, so there are no surprises after running tests.
+        if setup_report_viewer_actual:
+            bower_path = which_checked("bower", "Bower (available via npm)")
+
+        if report_directory is None:
+            report_directory = self.environment.get_default_test_report_directory()
 
         if test_filter is None:
             optional_ouu_tests = "+OpenUnrealUtilities" if self.environment.has_open_unreal_utilities() else ""
@@ -178,31 +192,33 @@ class UnrealEngine:
         all_args.append(
             f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
         if generate_report_file:
-            report_export_path = f"{self.environment.project_root}/Saved/Automation/Reports/TestReport-{self.environment.creation_time_str}"
-            all_args.append(f"-ReportExportPath={report_export_path}")
+            os.makedirs(report_directory, exist_ok=True)
+            all_args.append(f"-ReportExportPath={report_directory}")
         all_args.append("-nullrhi")
         all_args += arguments
 
         # run
-        exit_code = self.run(UnrealProgram.EDITOR_CMD,
-                             arguments=all_args,
-                             map=None,
-                             raise_on_error=True,
-                             add_default_parameters=True,
-                             generate_coverage_reports=generate_coverage_reports)
+        unreal_exit_code = self.run(UnrealProgram.EDITOR_CMD,
+                                    arguments=all_args,
+                                    map=None,
+                                    raise_on_error=True,
+                                    add_default_parameters=True,
+                                    generate_coverage_reports=generate_coverage_reports)
 
-        if generate_report_file and extract_report_viewer:
-            # copy over test report viewer template
-            test_report_viewer_zip = os.path.realpath(
-                f"{os.path.dirname(__file__)}/resources/TestReportViewer_Template.zip")
-            print(
-                f"\nUnpacking {test_report_viewer_zip} to {report_export_path}/...")
+        if generate_report_file and convert_junit:
+            json_path = os.path.join(report_directory, "index.json")
+            junit_path = os.path.join(report_directory, "JUnitTestResults.xml")
+            self._convert_test_results_to_junit(
+                json_path=json_path, junit_path=junit_path)
 
-            if not self.dry_run:
-                shutil.unpack_archive(test_report_viewer_zip,
-                                      report_export_path, "zip")
+        if setup_report_viewer_actual:
+            bower_json = os.path.join(
+                self.environment.engine_root, "Engine/Content/Automation/bower.json")
+            # Install bower components to report directory
+            run_subprocess([bower_path, "install", bower_json],
+                           cwd=report_directory)
 
-        return exit_code
+        return unreal_exit_code
 
     def run_buildgraph(self,
                        script: str,
@@ -237,7 +253,6 @@ class UnrealEngine:
                     xml_files.append(os.path.join(root, filename))
         if len(xml_files) == 0:
             raise OUAException(f"No valid xml file found for tag {tag}")
-            return set()
         elif len(xml_files) > 1:
             print("WARNING: More than 1 xml file found for tag",
                   tag, ":", len(xml_files))
@@ -446,6 +461,62 @@ class UnrealEngine:
         # Always last argument before UE program commandline
         result_args += ["--"]
         return result_args
+
+    def _convert_test_results_to_junit(self, json_path: str, junit_path: str) -> None:
+        print(f"Converting {json_path} to {junit_path}...")
+        with open(json_path, "r", encoding="utf-8-sig") as json_file:
+            json_results = json.loads(json_file.read())
+
+            test_platform = json_results['devices'][0]['platform']
+            report_created_on = json_results['reportCreatedOn']
+            testsuite_id =  f"UnrealTest {test_platform} @ {report_created_on}"
+            num_failures = str(json_results["failed"])
+            num_tests = str(int(json_results["succeeded"]) + int(num_failures))
+            testsuite_time = str(json_results["totalDuration"])
+
+            testsuite_node = XmlNode("testsuite")
+            testsuite_node.set("id", testsuite_id)
+            testsuite_node.set("tests", num_tests)
+            testsuite_node.set("failures", num_failures)
+            testsuite_node.set("time", testsuite_time)
+
+            for test in json_results["tests"]:
+                test_node = XmlNode("testcase")
+                test_node.set("name", test["testDisplayName"])
+                test_node.set("classname", test["fullTestPath"])
+                test_node.set("status", test["state"])
+                test_node.set("time", str(test["duration"]))
+                
+                for entry in test["entries"]:
+                    if entry["event"]["type"] == "Info":
+                        continue
+
+                    event_node = XmlNode("failure")
+                    event_node.set("message", entry["event"]["message"])
+                    event_type =  entry["event"]["type"]
+                    event_node.set("type", event_type)
+                    event_node.text = event_type
+                    event_node.text += "\n" + entry["event"]["message"]
+                    event_node.text += "\n" + entry["filename"]
+                    event_node.text += "\n" + str(entry["lineNumber"])
+
+                testsuite_node.append(test_node)
+
+            # Use the same data as from the first testsuite
+            root_node = XmlNode("testsuites")
+            root_node.set("id", testsuite_id)
+            root_node.set("tests", num_tests)
+            root_node.set("failures", num_failures)
+            root_node.set("time", testsuite_time)
+            root_node.append(testsuite_node)
+
+            xml_tree = XmlTree(root_node)
+            xml_tree.write(junit_path, encoding="utf-8", xml_declaration=True)
+
+            # Always report tets back to TeamCity.
+            # This is not necessarily required, but should never hurt.
+            # See https://www.jetbrains.com/help/teamcity/service-messages.html#Importing+XML+Reports
+            print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
 if __name__ == "__main__":
