@@ -1,1 +1,2 @@
+include openunrealautomation/resources/build_issues_template.html
 include openunrealautomation/resources/logparse_patterns.xml

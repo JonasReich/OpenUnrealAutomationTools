@@ -4,13 +4,16 @@ Used in conjunction with logparse module.
 """
 
 import json
+import os
 import re
-from typing import Tuple
-from openunrealautomation.logparse import UnrealLogFilePatternScope
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance
 from openunrealautomation.util import read_text_file, write_text_file
 
 
-def _parsed_log_to_json(parsed_log: UnrealLogFilePatternScope, output_json_path: str) -> str:
+def _parsed_log_to_json(parsed_log: UnrealLogFilePatternScopeInstance, output_json_path: str) -> str:
     json_str = json.dumps(parsed_log.json(), indent=4)
 
     # Replace backticks for javascript. Not great. Not terrible.
@@ -129,34 +132,31 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_str) -> str:
 
 
 def generate_html_report(
-    html_report_template_path: str,
+    html_report_template_path: Optional[str],
     html_report_path: str,
     log_file_str: str,
-    parsed_log: UnrealLogFilePatternScope,
+    parsed_log: UnrealLogFilePatternScopeInstance,
     parsed_log_json_path: str,
     report_title: str,
-    background_image_uri: str
+    background_image_uri: str,
+    filter_tags_and_labels: Dict[str, str]
 ):
 
     # Do this before and not inline, because it already writes out the json file internally
     json_str = _parsed_log_to_json(parsed_log, parsed_log_json_path)
 
-    build_steps_html_str = "\n".join(
-        [
-            f"<li class='list-group-item list-group-item-{'success' if step_success else 'danger'} small p-1'>{'✅' if step_success else '❌'} {step}</li>"
-            for (step, step_success) in parsed_log.step_success_flags
-        ])
-
     map_list = parsed_log.get_string_variable("IniMapSections")
     cook_cultures = parsed_log.get_string_variable("CookCultures")
 
     report_description_html_str = f"IniMapSections: {map_list}<br>\n" +\
-        f"CookCultures: {cook_cultures}<br>\n" +\
-        f"<b>Build Steps</b><br>\n" +\
-        f"<ul class='list-group' style='width: max-content;'>{build_steps_html_str}</ul>"
+        f"CookCultures: {cook_cultures}<br>\n"
 
     injected_javascript = _generate_hierarchical_cook_timing_stat_html(
         log_file_str)
+
+    if html_report_template_path is None:
+        html_report_template_path = os.path.join(
+            Path(__file__).parent, "resources/build_issues_template.html")
 
     html_template = read_text_file(html_report_template_path)
 
@@ -166,6 +166,7 @@ def generate_html_report(
         replace("REPORT_TITLE", report_title).\
         replace("REPORT_DESCRIPTION", report_description_html_str).\
         replace("INLINE_JAVASCRIPT", injected_javascript).\
-        replace("BACKGROUND_IMAGE_URI", background_image_uri)
+        replace("BACKGROUND_IMAGE_URI", background_image_uri).\
+        replace("FILTER_TAGS_AND_LABELS", str(filter_tags_and_labels))
 
     write_text_file(html_report_path, output_html)

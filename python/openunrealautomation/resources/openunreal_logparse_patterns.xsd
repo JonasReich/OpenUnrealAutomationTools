@@ -11,14 +11,20 @@
     <xs:complexType name="PatternType">
         <xs:simpleContent>
             <xs:extension base="xs:string">
-                <xs:attribute default="Literal" name="Style" type="StyleType" use="optional" />
+                <xs:attribute name="Style" type="StyleType" default="Literal" use="optional" />
+                <xs:attribute name="StringVariables" type="TagOrVarListType" use="optional" />
+                <xs:attribute name="NumericVariables" type="TagOrVarListType" use="optional" />
+                <xs:attribute name="SuccessFlags" type="TagOrVarListType" use="optional" />
+                <xs:attribute name="FailureFlags" type="TagOrVarListType" use="optional" />
+                <xs:attribute name="Tags" type="TagOrVarListType" use="optional" />
             </xs:extension>
         </xs:simpleContent>
     </xs:complexType>
 
-    <xs:simpleType name="TagListType">
+    <!-- Use for list of named tags or variables -->
+    <xs:simpleType name="TagOrVarListType">
         <xs:restriction base="xs:string">
-            <xs:pattern value="\w+(;\w+)*" />
+            <xs:pattern value="[\w_]+(;[\w_]+)*" />
         </xs:restriction>
     </xs:simpleType>
 
@@ -27,6 +33,7 @@
             <xs:enumeration value="Warning" />
             <xs:enumeration value="Error" />
             <xs:enumeration value="Message" />
+            <xs:enumeration value="Fatal" />
         </xs:restriction>
     </xs:simpleType>
 
@@ -41,17 +48,23 @@
         </xs:sequence>
         <xs:attribute name="Name" type="xs:string" use="required" />
         <xs:attribute name="Severity" type="SeverityType" use="required" />
-        <xs:attribute name="Tags" type="TagListType" use="optional" />
+        <xs:attribute name="Tags" type="TagOrVarListType" use="optional" />
+        <xs:attribute name="Hidden" type="xs:boolean" default="false" use="optional" />
+        <xs:attribute name="SuccessFlags" type="TagOrVarListType" use="optional" />
+        <xs:attribute name="FailureFlags" type="TagOrVarListType" use="optional" />
     </xs:complexType>
 
     <xs:complexType name="TemplateType">
         <xs:sequence>
+            <!-- First patterns, then scopes, then links (that's the order they are parsed) -->
             <xs:choice>
-                <xs:element name="Link" type="LinkType" />
                 <xs:element name="Patterns" type="PatternListType" />
+                <xs:element name="Scope" type="ScopeType" />
+                <xs:element name="Link" type="LinkType" />
             </xs:choice>
-            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
             <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Scope" type="ScopeType" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
         </xs:sequence>
         <xs:attribute name="Name" type="xs:ID" use="required" />
     </xs:complexType>
@@ -79,6 +92,9 @@
             <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
         </xs:sequence>
         <xs:attribute name="Name" type="xs:string" use="required" />
+        <!-- Exit scope if a line does not match. Useful if you don't have a specific scope exit point. -->
+        <xs:attribute name="RequireAllLinesMatch" type="xs:boolean" use="optional" />
+        <xs:attribute name="DisplayNameVariable" type="xs:string" use="optional"/>
     </xs:complexType>
 
     <xs:complexType name="TargetType">

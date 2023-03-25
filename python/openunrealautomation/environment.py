@@ -30,7 +30,14 @@ class UnrealEnvironment:
     # Unreal string for the platform that this script is running on
     host_platform: str
 
-    # Path to the engine root directory
+    # Path to the engine root directory. This is the directory containing the 'Engine' folder:
+    # <Engine Root>/
+    #    Engine/
+    #       Binaries/
+    #       Build/
+    #       ...
+    #    .uprojectdirs
+    #    ...
     engine_root: str = ""
 
     is_source_engine: bool = False
@@ -215,6 +222,9 @@ class UnrealEnvironment:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/UnrealEditor-Cmd.exe")
         if program == UnrealProgram.PROGRAM:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/{program_name}.exe")
+
+    def get_default_test_report_directory(self) -> str:
+        return f"{self.project_root}/Saved/Automation/Reports/TestReport-{self.creation_time_str}"
 
     def get_native_projects(self) -> "list[str]":
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
