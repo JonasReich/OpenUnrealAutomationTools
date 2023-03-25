@@ -13,9 +13,28 @@ import shlex
 import shutil
 import stat
 import subprocess
-from typing import Any, Generator, Dict, MutableSet, List, Tuple
+from typing import Any, Generator, Dict, MutableSet, List, Optional, Tuple
 
 from openunrealautomation.core import *
+
+
+def strtobool(val) -> bool:
+    """Convert a string representation of truth to a boolean value.
+    Based on distutils.util.strtobool but supports None value (=False) and returns bool instead of 1/0 int.
+
+    True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
+    'val' is anything else.
+    """
+    if val is None:
+        return False
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return True
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return False
+    else:
+        raise ValueError("invalid truth value %r" % (val,))
 
 
 def walk_level(top, topdown=True, onerror=None, followlinks=False, level=1) -> None:
@@ -151,7 +170,7 @@ def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[
     return num_modified_files
 
 
-def which_checked(command, display_name) -> str:
+def which_checked(command: str, display_name: Optional[str] = None) -> str:
     """
     Get the executable path of a CLI command that is on PATH.
     Will raise an exception if the command is not found.
@@ -161,12 +180,13 @@ def which_checked(command, display_name) -> str:
     """
     exe_path = shutil.which(command)
     if exe_path is None:
+        error_str = command if display_name is None else f"{command} ({display_name})"
         raise OUAException(
-            f"{command} ({display_name}) is not installed or cannot be found via PATH environment.")
+            f"{error_str} is required for this script, but it is not installed or cannot be found via PATH environment.")
     return exe_path
 
 
-def set_system_env_var(name, value) -> None:
+def set_system_env_var(name: str, value: str) -> None:
     """
     Set a system wide environment variable (like PATH).
     Does not affect the current environment, but all future commands.
@@ -215,7 +235,7 @@ def list_attrs(obj: object, class_filter: type) -> Generator[Tuple[str, Any], No
 
 
 def args_str(*args):
-    """Turn args into a string without any list/tuple markup""" 
+    """Turn args into a string without any list/tuple markup"""
     def flatten_args(args):
         flat_list = []
         if isinstance(args, tuple) or isinstance(args, list):
@@ -273,7 +293,8 @@ def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
             # We don't call p.wait() again as p.__exit__ does that for us.
             raise
 
-def read_text_file(path:str) -> str:
+
+def read_text_file(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
