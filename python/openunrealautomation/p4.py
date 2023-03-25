@@ -95,6 +95,9 @@ class UnrealPerforce:
                 result[user.username] = user
         return result
 
+    def get_user(self, user_name:str) -> UnrealPerforceUserInfo:
+        users_str = self._p4_get_output(["users", user_name])
+        return UnrealPerforceUserInfo(users_str)
 
     def _p4(self, args):
         _args = ["p4"] + args
