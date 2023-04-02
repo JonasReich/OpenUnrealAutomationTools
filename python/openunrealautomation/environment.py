@@ -50,10 +50,11 @@ class UnrealEnvironment:
 
     # Path to the project file
     project_file: UnrealProjectDescriptor = None
+    project_file_auto_detected: bool
 
     project_name: str = ""
 
-    def __init__(self, engine_root: str, project_root: str = "", project_file: UnrealProjectDescriptor = None) -> None:
+    def __init__(self, engine_root: str, project_file: UnrealProjectDescriptor = None) -> None:
         # Cache the creation time once so it can be used by various processes as timestamp
         # The format string is adopted from the way UE formats the timestamps for log file backups.
         self.creation_time = datetime.now()
@@ -69,22 +70,23 @@ class UnrealEnvironment:
         self.engine_root = os.path.abspath(engine_root)
         if not os.path.exists(self.engine_root):
             raise OUAException(f"Invalid engine path at {self.engine_root}")
-            return
-        else:
-            self.is_source_engine = os.path.exists(
-                f"{engine_root}/Engine/Build/SourceDistribution.txt")
-            self.is_installed_engine = os.path.exists(
-                f"{engine_root}/Engine/Build/InstalledBuild.txt")
 
-            self.build_version = UnrealVersionDescriptor(
-                f"{self.engine_root}/Engine/Build/Build.version")
+        self.is_source_engine = os.path.exists(
+            f"{engine_root}/Engine/Build/SourceDistribution.txt")
+        self.is_installed_engine = os.path.exists(
+            f"{engine_root}/Engine/Build/InstalledBuild.txt")
 
-            self.project_root = os.path.abspath(project_root)
-            self.project_file = project_file
-            if self.has_project():
-                self.project_name = project_file.get_name()
+        self.build_version = UnrealVersionDescriptor(
+            f"{self.engine_root}/Engine/Build/Build.version")
 
-            self._validate_paths()
+        auto_detect = False
+        if project_file is None:
+            native_projects = self.get_native_projects()
+            if len(native_projects) > 0:
+                project_file = native_projects[0]
+                auto_detect = True
+        # Always do this last. It includes path validation!
+        self._set_project(project_file=project_file, auto_detect=auto_detect)
 
     def __str__(self) -> str:
         has_project_bool = self.has_project()
@@ -100,27 +102,34 @@ class UnrealEnvironment:
             project_version = self.get_project_version()
 
         ouu = self.find_open_unreal_utilities()
+
+        native_projects_str = '\n'.join(
+            [f'    -> {project}' for project in self.get_native_projects()])
         return \
             f"Creation Time:   {self.creation_time_str}\n"\
             f"Engine Root:     {self.engine_root}\n"\
             f"Engine Version:  {self.engine_version}\n"\
             f"Distribution:    {distribution_type}\n"\
-            f"Has Project?:    {has_project_bool}\n" + (
-                f"    -> Project Name:   {self.project_name}\n"
-                f"    -> Project Root:   {self.project_root}\n"
-                f"    -> Project File:   {self.project_file}\n"
-                f"    -> Version:        {project_version.value} (source: {project_version.file})\n"
+            f"Has Project:     {has_project_bool}\n" + (
+                f"    -> Project Name:     {self.project_name}\n"
+                f"    -> Is Auto Detected: {self.project_file_auto_detected}\n"
+                f"    -> Project Root:     {self.project_root}\n"
+                f"    -> Project File:     {self.project_file}\n"
+                f"    -> Is Native:        {self.is_native_project()}\n"
+                f"    -> Version:          {project_version.value} (source: {project_version.file})\n"
                 if has_project_bool else ""
             ) +\
-            f"Has OUU?:        {bool(ouu)}\n" + (
-                f"    -> Version:        {ouu.read()['VersionName']}" if ouu else ""
-            )
+            f"Has OUU:         {bool(ouu)}\n" + (
+                f"    -> Version:          {ouu.read()['VersionName']}\n" if ouu else ""
+            ) +\
+            f"Native Projects:\n"\
+            f"{(native_projects_str if len(native_projects_str) > 0 else '    -> None')}"
 
     # Factory methods
 
     @staticmethod
     def create_from_engine_root(engine_root) -> 'UnrealEnvironment':
-        return UnrealEnvironment(engine_root=engine_root, project_root="", project_file=None)
+        return UnrealEnvironment(engine_root=engine_root, project_file=None)
 
     @staticmethod
     def create_from_project_root(project_root: str) -> 'UnrealEnvironment':
@@ -130,8 +139,6 @@ class UnrealEnvironment:
     @staticmethod
     def create_from_project_file(project_file: UnrealProjectDescriptor) -> 'UnrealEnvironment':
         return UnrealEnvironment(engine_root=UnrealEnvironment.engine_root_from_project(project_file),
-                                 project_root=str(pathlib.Path(
-                                     str(project_file)).parent),
                                  project_file=project_file)
 
     @staticmethod
@@ -226,21 +233,40 @@ class UnrealEnvironment:
     def get_default_test_report_directory(self) -> str:
         return f"{self.project_root}/Saved/Automation/Reports/TestReport-{self.creation_time_str}"
 
-    def get_native_projects(self) -> "list[str]":
+    def get_native_projects(self) -> List[UnrealProjectDescriptor]:
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
-        # TODO: Implement this!
-        raise NotImplementedError
+        projectdirs_files = glob.glob(
+            os.path.join(self.engine_root, "*.uprojectdirs"))
 
-    def set_project_by_native_name(self, project_name) -> None:
+        result_list = []
+        for file in projectdirs_files:
+            with open(file, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith(";"):
+                        continue
+                    line = line.removesuffix("\n")
+                    scan_dir = os.path.join(self.engine_root, line)
+                    if not os.path.exists(scan_dir):
+                        continue
+                    for item in os.scandir(scan_dir):
+                        if item.is_dir() and UnrealEnvironment.is_project_root(item.path):
+                            project_file = UnrealProjectDescriptor.try_find(
+                                item.path)
+                            if project_file is not None:
+                                result_list.append(project_file)
+
+        return result_list
+
+    def set_project_by_native_name(self, project_name: str) -> None:
         """Set the project by name. Only works for native projects contained within the engine root searchable via .uprojectdirs."""
-        # TODO: Implement this!
-        # Should call self.set_project_by_path()
-        raise NotImplementedError
+        for project_file in self.get_native_projects():
+            if project_file.get_name() == project_name:
+                self.set_project(project_file)
+                return
 
-    def set_project_by_path(self, project_path) -> None:
+    def set_project(self, project_file: UnrealProjectDescriptor) -> None:
         """Set the project by path. This works both for native and foreign projects."""
-        # TODO: Implement this!
-        raise NotImplementedError
+        self._set_project(project_file)
 
     def config(self) -> UnrealConfig:
         return UnrealConfig(engine_root=self.engine_root, project_root=self.project_root)
@@ -343,8 +369,19 @@ class UnrealEnvironment:
                     pass
         return None
 
+    def _set_project(self, project_file: UnrealProjectDescriptor, auto_detect: bool) -> None:
+        self.project_file = project_file
+        self.project_file_auto_detected = auto_detect
+        if project_file is not None:
+            self.project_root = os.path.abspath(pathlib.Path(
+                project_file.file_path).parent)
+        else:
+            self.project_root = ""
+        self.project_name = project_file.get_name() if self.has_project() else None
+        self._validate_paths()
+
     def _validate_paths(self) -> None:
-        if len(self.project_root) == 0 or not os.path.exists(self.engine_root):
+        if len(self.engine_root) == 0 or not os.path.exists(self.engine_root):
             raise OUAException(
                 f"Engine root directory {self.engine_root} does not exist")
         if len(self.project_root) > 0 and not os.path.exists(self.project_root):
@@ -358,4 +395,5 @@ class UnrealEnvironment:
 if __name__ == "__main__":
     module_path = os.path.realpath(os.path.dirname(__file__))
     environment = UnrealEnvironment.create_from_parent_tree(module_path)
+
     print(str(environment))
