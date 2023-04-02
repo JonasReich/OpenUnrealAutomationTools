@@ -640,7 +640,7 @@ class UnrealLogFilePatternScopeInstance:
         return f"{self.scope_declaration.scope_name}{suffix}"
 
     def get_scope_display_name(self) -> str:
-        line_number_suffix =  f" @ {self.start_line_match.line_nr}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
+        line_number_suffix = f" @ {self.start_line_match.line_nr}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
 
         if self.scope_declaration.scope_display_name_var is None:
             return self.get_local_scope_name() + line_number_suffix
@@ -708,9 +708,12 @@ class UnrealLogFilePatternScopeInstance:
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
         result["start"] = self.start_line_match.json()
-        result["end"] = self.end_line_match.json() if self.end_line_match is not None else ""
-        result["match_lists"] = [list.json()
-                                 for list in self.pattern_match_lists if not list.source_list.hidden]
+        result["end"] = self.end_line_match.json(
+        ) if self.end_line_match is not None else ""
+        match_lists_jsons = [list.json()
+                             for list in self.pattern_match_lists if not list.source_list.hidden]
+        result["match_lists"] = [
+            list_json for list_json in match_lists_jsons if list_json is not None]
         result["child_scopes"] = [scope.json()
                                   for scope in self.child_scope_instances]
 
@@ -807,6 +810,7 @@ def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternSco
             return UnrealLogFilePatternScopeDeclaration._from_xml_node(target, root_node, parent_scope=None, parent_target_name=target_name)
     raise OUAException(f"No definition for log file target {target_name}")
 
+
 class LogScopeChange(Enum):
     UNCHANGED = 0,
     OPEN = 1,
@@ -832,7 +836,8 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
     root_scope_instance = UnrealLogFilePatternScopeInstance(parent_scope_instance=None,
                                                             scope_declaration=root_scope_declaration,
                                                             # TODO Move into first iteration so we get the first line?
-                                                            start_match=UnrealLogFileLineMatch("", None, 0),
+                                                            start_match=UnrealLogFileLineMatch(
+                                                                "", None, 0),
                                                             instance_number=0)
     current_scope_instance = root_scope_instance
 
@@ -916,17 +921,33 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print("\n", scope_with_matches.format(max_lines))
 
 
-if __name__ == "__main__":
+def _main_get_files() -> List[Tuple[str, str]]:
     env = UnrealEnvironment.create_from_invoking_file_parent_tree()
 
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--file")
+    argparser.add_argument("--files")
     cli_args = argparser.parse_args()
-    cli_args.file
 
+    files: List[Tuple[str, str]]
+    if cli_args.files is not None:
+        files_strs = cli_args.files.split(",")
+        files = []
+        for i in range(0, len(files_strs), 2):
+            files.append((files_strs[i], files_strs[i+1]))
+    else:
+        files = [
+            ("UAT", UnrealLogFile.UAT.find_latest(env)),
+            ("Cook", UnrealLogFile.COOK.find_latest(env)),
+            ("Unreal", UnrealLogFile.EDITOR.find_latest(env))
+        ]
+
+    return files
+
+
+if __name__ == "__main__":
+    files = _main_get_files()
     patterns_xml = os.path.join(
         Path(__file__).parent, "resources/logparse_patterns.xml")
 
-    parse_file = cli_args.file if cli_args.file is not None else UnrealLogFile.UAT.find_latest(
-        env)
-    print_parsed_log(parse_file, patterns_xml, "BuildCookRun")
+    for target, file in files:
+        print_parsed_log(file, patterns_xml, target)

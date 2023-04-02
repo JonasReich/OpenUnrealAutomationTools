@@ -172,13 +172,7 @@
                     </div>
                 </div>
 
-                <div class="col-12 box-ouu">
-                    <h5>Source Log</h5>
-                    <!-- anchor for source log preview -->
-                    <div id="source-log" class="text-nowrap p-3 code-container">
-                        INLINE_SOURCE_LOG
-                    </div>
-                </div>
+                INLINE_SOURCE_LOG
             </div>
 
             <div class="col-12 col-xxl-4">
@@ -214,9 +208,10 @@
 
         const zeroPad = (num, places) => String(num).padStart(places, '0');
 
-        var last_goto_line = null;
-        function goToSource(line) {
-            let new_goto_line = `#source-log-${line}`;
+        var last_goto_lines = new Map();;
+        function goToSource(source_file, line) {
+            let new_goto_line = `#source-log-${source_file}-${line}`;
+            let last_goto_line = last_goto_lines.has(source_file) ? last_goto_lines.get(source_file) : null;
             if (last_goto_line === null) {
                 // do nothing
             } else {
@@ -226,7 +221,7 @@
             window.location = new_goto_line;
             // This does not work properly :/
             // $('html,body').animate({ scrollTop: $(new_goto_line).offset().top }, 500);
-            last_goto_line = new_goto_line;
+            last_goto_lines.set(source_file, new_goto_line);
         }
 
         // #TODO Make this automatic -> Collect item values automatically, so we can just call addButtonsForData("Developer")
@@ -277,7 +272,7 @@
         }
 
 
-        function addIssueScope(scope, ref_node) {
+        function addIssueScope(source_file, scope, ref_node) {
             // #TODO adjust css classes
             let scope_row = $(`<div class="row scope-container scope-${scope.status} pt-2 px-4"><div>${scope.name}</div></div>`);
             $(ref_node).append(scope_row);
@@ -317,9 +312,10 @@
                         }
                     }
 
-                    let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource(${line_obj.line_nr})">🔗</button>`
+                    let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${line_obj.line_nr})">🔗</button>`
                     let new_code_line = $(`<code>${jump_to_src_btn}<div class="code-tag">${dev_str}${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(line_obj.line_nr, 5)}): </div>${line_str}<br></code>`);
                     new_code_line.data("json", line_obj);
+                    new_code_line.data("source_file", source_file);
 
                     for (tag_idx in line_obj.tags) {
                         increment_tag_count(line_obj.tags[tag_idx]);
@@ -333,11 +329,13 @@
             });
 
             scope.child_scopes.forEach(child_scope => {
-                addIssueScope(child_scope, scope_row);
+                addIssueScope(source_file, child_scope, scope_row);
             });
         }
 
-        addIssueScope(json_obj, $("#code-root")[0]);
+        for (const [source_file, scope] of Object.entries(json_obj)) {
+            addIssueScope(source_file, scope, $("#code-root")[0]);
+        }
 
         let tags_and_labels = FILTER_TAGS_AND_LABELS;
         function getTagLabel(tag) {

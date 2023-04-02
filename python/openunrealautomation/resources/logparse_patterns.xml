@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
     XML Escape characters:
     "   &quot;
@@ -9,14 +9,6 @@
 -->
 <Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="openunreal_logparse_patterns.xsd">
-    <Template Name="UAT">
-        <Patterns Name="UAT Errors" Severity="Error">
-            <Include Style="Regex">ERROR: </Include>
-        </Patterns>
-        <Patterns Name="UAT Warnings" Severity="Warning">
-            <Include Style="Regex">WARNING: </Include>
-        </Patterns>
-    </Template>
 
     <Template Name="ExitCodes">
         <Patterns Name="Exit Codes" Severity="Message">
@@ -24,7 +16,7 @@
         </Patterns>
     </Template>
 
-    <Template Name="Unreal">
+    <Target Name="Unreal">
         <Patterns Name="Load Errors + Warnings" Tags="Code" Severity="Error">
             <Include Style="Literal">LogLinker: Warning: Unable to load</Include>
             <Include Style="Regex">Failed to load '.*': Can't find file</Include>
@@ -54,7 +46,21 @@
         <Patterns Name="Warnings" Tags="Code" Severity="Warning">
             <Include>Warning:</Include>
         </Patterns>
-    </Template>
+    </Target>
+
+    <Target Name="UAT">
+        <Patterns Name="UAT Errors" Severity="Error">
+            <Include Style="Regex">ERROR: </Include>
+        </Patterns>
+        <Patterns Name="UAT Warnings" Severity="Warning">
+            <Include Style="Regex">WARNING: </Include>
+        </Patterns>
+    </Target>
+
+
+    <Target Name="Cook">
+        <Link Template="Unreal" />
+    </Target>
 
     <Target Name="BuildCookRun">
         <Scope Name="🧱 Build">
@@ -65,7 +71,7 @@
         <Scope Name="🔥 Cook">
             <Start Style="Literal">********** COOK COMMAND STARTED **********</Start>
             <End Style="Literal">********** COOK COMMAND COMPLETED **********</End>
-            <Link Template="Unreal" />
+            <Link Template="Cook" />
         </Scope>
         <Scope Name="📁 Stage">
             <Start Style="Literal">********** STAGE COMMAND STARTED **********</Start>
