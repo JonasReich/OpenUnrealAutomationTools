@@ -73,7 +73,7 @@ $ToolTip.ReshowDelay = 1;
 $ToolTip.ShowAlways = $true;
 
 $Width = 400
-$VerticalPadding = 15
+$VerticalPadding = 5
 $HorizontalPadding = 10
 $AccumulatedHeight = $VerticalPadding
 
@@ -109,6 +109,9 @@ function AddLabel {
     $Label.AutoEllipsis = $true
     $Label.Text = $LabelText
     $Label.Font = if ($IsHeader) { $Font_Header } else { $Font_Regular }
+    if ($IsHeader) {
+        $Label.Backcolor = "#8888dd"
+    }
     $WinForm.Controls.Add($Label) | Out-Null
     SetTooltip $Label $TooltipText
 
@@ -160,13 +163,29 @@ function AddCheckBox {
     return $Checkbox
 }
 
+class ParamCheckBox {
+    [object] $CheckBox = $null
+    [string] $TrueParam
+    [string] $FalseParam
+    ParamCheckBox($LabelText, $DefaultCheckedState, $ToolTipText, $TrueParam, $FalseParam) {
+        $this.CheckBox = AddCheckbox -LabelText $LabelText -DefaultCheckedState $DefaultCheckedState -ToolTipText $ToolTipText
+        $this.TrueParam = $TrueParam
+        $this.FalseParam = $FalseParam
+    }
+
+    [string] Get() {
+        $Result = if ($this.CheckBox.Checked) { $this.TrueParam } else { $this.FalseParam }
+        return $Result
+    }
+}
+
 #--------------
 # Primary Layout
 #--------------
 
 AddLabel -LabelText "Build" -IsHeader $true | Out-Null
 
-$BuildCheckbox = AddCheckBox -LabelText "Build" -DefaultCheckedState $True -TooltipText "Enable the build step. If false, skips the build"
+$BuildCheckbox = [ParamCheckBox]::new("Build", $True, "Enable the build step. If false, skips the build",  "-build", "-skipbuild")
 
 # Build configuration combobox
 $ConfigurationCombobox = AddCombobox -LabelText "Build Config (Server + Client)" -Items ($Configurations) -Index 1 -TooltipText "DebugGame is best for detailed debugging. `
@@ -179,6 +198,8 @@ $ConfigurationCombobox.Add_SelectedIndexChanged({
 })
 
 AddLabel -LabelText "Cook" -IsHeader $true | Out-Null
+
+$CookCheckbox = [ParamCheckBox]::new("Cook", $True, "Enable the cook step. If false, skips the cook",  "-cook", "-skipcook")
 
 function UpdateMapsToCookLabel() {
     $MapsToCook = $AllMapsToCook[$script:MapIniSection] -join "`n"
@@ -196,11 +217,21 @@ $IniSectionCombobox.Add_SelectedIndexChanged({
 $MapsToCookLabel = AddLabel -LabelText "TEMP" -IsHeader $false -TooltipText "TEMP"
 UpdateMapsToCookLabel
 
-$PakCheckbox = AddCheckBox -LabelText "pak" -DefaultCheckedState $False -TooltipText "Combine assets into a few .pak files"
+$AdditionalCookParamsCheckboxes = @(
+    [ParamCheckBox]::new("waitforattach", $False, "Pause cook until a debugger is attached. Useful to debug cook code.",  "-waitforattach", $null)
+    [ParamCheckBox]::new("pak", $False, "Combine assets into a few .pak files",  "-pak", $null),
+    [ParamCheckBox]::new("NODEV", $True, "Exclude content from developer folders",  "-NODEV", $null),
+    [ParamCheckBox]::new("SkipCookingEditorContent", $True, "Exclude content marked as 'editor only'",  "-SkipCookingEditorContent", $null),
+    [ParamCheckBox]::new("DisableUnsolicitedPackages", $False, "Do not include any content through propery references. Only content explicitly requested. Debug only.'",  "-DisableUnsolicitedPackages", $null)
+)
+
+AddLabel -LabelText "Stage" -IsHeader $true | Out-Null
+$StageCheckbox = [ParamCheckBox]::new("Stage", $True, "Enable the stage step. If false, skips the stage",  "-stage", "-skipstage")
 
 AddLabel -LabelText "Run" -IsHeader $true | Out-Null
+$RunCheckbox = [ParamCheckBox]::new("Run", $True, "Enable the run step. If false, skips the run",  "-run", "-skiprun")
 
-$WaitForAttachCheckbox = AddCheckBox -LabelText "waitforattach" -DefaultCheckedState $False -TooltipText "Pause game until a debugger is attached. Useful to debug startup code."
+$WaitForAttachCheckbox = [ParamCheckBox]::new("waitforattach", $False, "Pause game until a debugger is attached. Useful to debug startup code.",  "-waitforattach", $null)
 
 # Additional padding before launch button
 $AccumulatedHeight += $VerticalPadding
@@ -256,8 +287,6 @@ $ConfigurationArgs = @("-clientconfig=$Configuration", "-serverconfig=$Configura
 # TODO: Is this the right condition / what is the flag used for? Is this dependent on the engine version or the desired build output?
 $InstalledArg = if ($UEIsInstalledBuild) { "-installed" } else { @() }
 
-$BuildArg = if ( $BuildCheckbox.Checked ) { "-build" } else { "-skipbuild" }
-
 $COMPILE_ARGS = @(
     $ConfigurationArgs,      # see above
     "-compile",           # This is a convenience tool. We need to compile UAT+editor to make cooking possible without requiring explicit steps in advance.
@@ -265,20 +294,24 @@ $COMPILE_ARGS = @(
     $InstalledArg,           # see above
     "-platform=Win64",       # current platform
     "-targetplatform=Win64",  # platform for game
-    $BuildArg
+    $BuildCheckbox.Get()
 )
 
 #--------------
 # COOK
 #--------------
-$MapIniSectionArgs = if ($MapIniSection.Length -gt 0) { "-additionalcookeroptions=\`"-MAPINISECTION=$MapIniSection\`" -NODEV -SCCProvider=None" } else { $null }
-$PakArg = if ($PakCheckbox.Checked) { "-pak" } else { $null }
-$COOK_ARGS = @("-cook", $MapIniSectionArgs, "-SkipCookingEditorContent", "-compressed", $PakArg)
+$MapIniSectionArg = if ($MapIniSection.Length -gt 0) { "-MAPINISECTION=$MapIniSection" } else { "" }
+$AdditionalCookArgs = "$MapIniSectionArg -SCCProvider=None"
+$CookOptionArgs = "-additionalcookeroptions=`"$AdditionalCookArgs`""
+$COOK_ARGS = @($CookCheckbox.Get(), $CookOptionArgs, "", "-compressed")
+foreach ($checkbox in $AdditionalCookParamsCheckboxes) {
+    $COOK_ARGS += $checkbox.Get()
+}
 
 #--------------
 # STAGE
 #--------------
-$STAGE_ARGS = @("-stage")
+$STAGE_ARGS = @($StageCheckbox.Get())
 
 #--------------
 # DEPLOY
@@ -295,9 +328,8 @@ $DEPLOY_ARGS = @() # @("-deploy", "-iterativedeploy")
 # -addcmdline="-SessionId=E6ACA1E245978B313340D4A46A0995FD -SessionOwner='username' -SessionName='BuildCookLaunch_GameName_Development'  "  # -> pass session info to run cmdline
 
 # additional commandline args for game build during "run" step
-$WaitForAttachArg = if ($WaitForAttachCheckbox.Checked) { "-waitforattach" } else { "" }
-$RunCmdline = "$WaitForAttachArg"
+$RunCmdline =  $WaitForAttachCheckbox.Get()
 $RunCmdlineArg = if ($RunCmdline.Length -gt 0) { "-addcmdline=\`"$RunCmdline\`"" } else { $null }
-$RUN_ARGS = @("-run", $RunCmdlineArg)
+$RUN_ARGS = @($RunCheckbox.Get(), $RunCmdlineArg)
 
 Start-UE UAT -ScriptsForProject="$ProjectPath" BuildCookRun $GENERAL_ARGS $COMPILE_ARGS $COOK_ARGS $DEPLOY_ARGS $STAGE_ARGS $RUN_ARGS
