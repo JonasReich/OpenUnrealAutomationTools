@@ -780,22 +780,38 @@ class UnrealLogFilePatternScopeInstance:
         """Reports a success or failure to the root scope."""
         # TODO At the moment this always uses the root scope, but maybe there is some benefit in tracking these flags on sub-scopes?
         # root_scope: 'UnrealLogFilePatternScopeDeclaration' = self.owning_scope.scope_declaration.root_scope
+        flag_modified =False
+
         for step_index, (previous_flag, previous_step_status) in enumerate(self.step_success_flags):
             if previous_flag != flag:
                 continue
-            if previous_step_status != step_status:
-                if step_status == False:
+            if previous_step_status == step_status:
+                # The same flag was already present. We don't want duplicate flags / status
+                pass
+            else:
+                if step_status == UnrealBuildStepStatus.FAILURE:
                     # Marking a previously successful step as failed is okay-ish - we just overwrite with new value
                     self.step_success_flags[step_index] = (
                         flag, step_status)
+                    flag_modified = True
+                    break
                 else:
                     # However, this is definitely undesirable.
                     print(f"The step success flag '{flag}' was previously set to failure and is now set to success inside scope",
                           self.scope_declaration.scope_name)
-            # The same flag was already present. We don't want duplicate flags
-            return
+                    break
+        if not flag_modified:
+            self.step_success_flags.append((flag, step_status))
+            flag_modified = True
 
-        self.step_success_flags.append((flag, step_status))
+        if flag_modified:
+            if step_status == UnrealBuildStepStatus.FAILURE:
+                full_scope_name = self.get_fully_qualified_scope_name()
+                if flag == full_scope_name:
+                    if self.parent_scope_instance is not None:
+                        self.parent_scope_instance._flag_step_status(self.parent_scope_instance.get_fully_qualified_scope_name(), UnrealBuildStepStatus.FAILURE)
+                else:
+                    self._flag_step_status(full_scope_name, UnrealBuildStepStatus.FAILURE)
 
 
 def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternScopeDeclaration:
