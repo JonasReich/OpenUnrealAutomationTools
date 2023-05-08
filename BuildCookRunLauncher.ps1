@@ -302,11 +302,11 @@ $COMPILE_ARGS = @(
 #--------------
 $MapIniSectionArg = if ($MapIniSection.Length -gt 0) { "-MAPINISECTION=$MapIniSection" } else { "" }
 $AdditionalCookArgs = "$MapIniSectionArg -SCCProvider=None"
+foreach ($checkbox in $AdditionalCookParamsCheckboxes) {
+    $AdditionalCookArgs += " " + $checkbox.Get()
+}
 $CookOptionArgs = "-additionalcookeroptions=`"$AdditionalCookArgs`""
 $COOK_ARGS = @($CookCheckbox.Get(), $CookOptionArgs, "", "-compressed")
-foreach ($checkbox in $AdditionalCookParamsCheckboxes) {
-    $COOK_ARGS += $checkbox.Get()
-}
 
 #--------------
 # STAGE
