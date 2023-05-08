@@ -103,7 +103,7 @@ def rmtree_empty(root) -> MutableSet[str]:
     return deleted
 
 
-def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[str], ignore_patterns: List[str] = []) -> int:
+def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[str], ignore_patterns: List[str] = []) -> List[str]:
     """
     Take a list of relative file paths (e.g. from buildgraph) and copy them from source to target.
     Existing files in target that are not in source will be deleted.
@@ -130,7 +130,7 @@ def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[
     check_files_num = len(check_files)
     print(f"Checking {check_files_num} paths for differences to sync")
 
-    num_modified_files = 0
+    modified_files = []
     file_i = 0
     for file in check_files:
         source_file = os.path.join(source_root, file)
@@ -152,22 +152,22 @@ def mirror_files(source_root: str, target_root: str, relative_paths: MutableSet[
             else:
                 print(filenum_str, "change  ", file)
                 shutil.copy2(source_file, target_file)
-                num_modified_files += 1
+                modified_files.append(file)
         elif file in relative_paths:
             # File is new, copy it over
             print(filenum_str, "new     ", file)
             shutil.copy2(source_file, target_file)
-            num_modified_files += 1
+            modified_files.append(file)
         elif os.path.exists(target_file):
             # File is not in new list, delete it
             print(filenum_str, "delete  ", file)
             os.remove(target_file)
-            num_modified_files += 1
+            modified_files.append(file)
         else:
             raise OUAException(f"File {file} is only in existing_files, but does not exist on disk. "
                                "Was it deleted by some other process?")
 
-    return num_modified_files
+    return modified_files
 
 
 def which_checked(command: str, display_name: Optional[str] = None) -> str:
