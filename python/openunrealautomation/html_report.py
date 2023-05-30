@@ -177,7 +177,6 @@ def generate_html_report(
         replace("INLINE_JSON", json_str).\
         replace("INLINE_SOURCE_LOG", inline_source_log).\
         replace("REPORT_TITLE", report_title).\
-        replace("REPORT_DESCRIPTION", "").\
         replace("INLINE_JAVASCRIPT", injected_javascript).\
         replace("BACKGROUND_IMAGE_URI", background_image_uri).\
         replace("FILTER_TAGS_AND_LABELS", str(filter_tags_and_labels))
