@@ -88,6 +88,10 @@
             color: rgb(233, 233, 15);
         }
 
+        .severe-warning {
+            color: #e9a00f;
+        }
+
         .error {
             color: rgb(225, 21, 21);
         }
@@ -280,7 +284,8 @@
             scope.match_lists.forEach(match_list => {
                 let is_error = match_list.severity == "error";
                 let is_warning = match_list.severity == "warning";
-                let is_message = !is_error && !is_warning;
+                let is_severe_warning = match_list.severity == "severe_warning";
+                let is_message = !is_error && !is_warning && !is_severe_warning;
 
                 let section_row = $(`<details class="row issue-scope pt-2"><summary>${match_list.name}</summary><div class="text-nowrap overflow-scroll mx-3 p-3 code-container"><div></details>`);
                 scope_row.append(section_row);
@@ -288,6 +293,7 @@
                 section_row.data("name", match_list.name);
                 section_row.data("json", match_list);
                 section_row.toggleClass("warning", is_warning);
+                section_row.toggleClass("severe-warning", is_severe_warning);
                 section_row.toggleClass("error", is_error);
                 section_row.toggleClass("message", is_message);
 
@@ -322,6 +328,7 @@
                     }
 
                     new_code_line.toggleClass("warning", is_warning);
+                    new_code_line.toggleClass("severe-warning", is_severe_warning);
                     new_code_line.toggleClass("error", is_error);
                     new_code_line.toggleClass("message", is_message);
                     code_container.append(new_code_line);
@@ -517,10 +524,12 @@
             let labels = [];
             let error_counts = [];
             let warning_counts = [];
+            let severe_warning_counts = [];
             let message_counts = [];
 
             let error_counts_total = [];
             let warning_counts_total = [];
+            let severe_warning_counts_total = [];
             let message_counts_total = [];
 
             // #TODO instead of counting occurences manually, the json export should contain tag data incl. unique tag occurences + total tag occurences
@@ -528,9 +537,11 @@
                 labels.push(getTagLabel(tag));
                 let error_count = 0;
                 let warning_count = 0;
+                let severe_warning_count = 0;
                 let message_count = 0;
                 let error_count_total = 0;
                 let warning_count_total = 0;
+                let severe_warning_count_total = 0;
                 let message_count_total = 0;
                 count = $("#code-root code").each(function () {
                     if ($(this).data("json").tags.includes(tag) == false) {
@@ -542,6 +553,9 @@
                     } else if ($(this).data("json").severity == "warning") {
                         warning_count++;
                         warning_count_total += $(this).data("json").occurences;
+                    }  else if ($(this).data("json").severity == "severe_warning") {
+                        severe_warning_count++;
+                        severe_warning_count_total += $(this).data("json").occurences;
                     } else {
                         message_count++;
                         message_count_total += $(this).data("json").occurences;
@@ -549,13 +563,15 @@
                 })
                 error_counts.push(error_count);
                 warning_counts.push(warning_count);
+                severe_warning_counts.push(severe_warning_count);
                 message_counts.push(message_count);
                 error_counts_total.push(error_count_total);
                 warning_counts_total.push(warning_count_total);
+                severe_warning_counts_total.push(severe_warning_count_total);
                 message_counts_total.push(message_count_total);
             })
 
-            function createIssueCountChart(title, error_counts_var, warning_counts_var, message_counts_var) {
+            function createIssueCountChart(title, error_counts_var, warning_counts_var, severe_warning_counts_var, message_counts_var) {
                 new Chart(createChartContext(), {
                     type: "bar",
                     data: {
@@ -563,6 +579,7 @@
                         datasets: [
                             { label: "Errors", data: error_counts_var, backgroundColor: "#bb4444", color: "#bb4444" },
                             { label: "Warnigns", data: warning_counts_var, backgroundColor: "#bbbb44", color: "#bbbb44" },
+                            { label: "Severe Warnigns", data: severe_warning_counts_var, backgroundColor: "#e9a00f", color: "#e9a00f" },
                             { label: "Messages", data: message_counts_var, backgroundColor: "#aaaaaa", color: "#aaaaaa" }
                         ]
                     },
@@ -576,8 +593,8 @@
                 });
             }
 
-            createIssueCountChart("Issues per Tag (Unique)", error_counts, warning_counts, message_counts);
-            createIssueCountChart("Issues per Tag (Total)", error_counts_total, warning_counts_total, message_counts_total);
+            createIssueCountChart("Issues per Tag (Unique)", error_counts, warning_counts, severe_warning_counts, message_counts);
+            createIssueCountChart("Issues per Tag (Total)", error_counts_total, warning_counts_total, severe_warning_counts_total, message_counts_total);
         }
         createIssuesPerTagChart()
 

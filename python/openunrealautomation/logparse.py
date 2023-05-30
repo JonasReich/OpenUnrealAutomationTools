@@ -35,9 +35,10 @@ class UnrealLogSeverity(Enum):
     # int, icon, json value
     MESSAGE = 0, "📄", "message"
     WARNING = 1, "⚠️", "warning"
-    ERROR = 2, "⛔", "error"
+    SEVERE_WARNING = 2, "⚠️", "severe_warning"
+    ERROR = 3, "⛔", "error"
     # only distinguish internally for now -> auto step fails. json export etc should be unaffected.
-    FATAL = 3, "⛔", "error"
+    FATAL = 4, "⛔", "error"
 
     @staticmethod
     def from_string(string: str) -> 'UnrealLogSeverity':
@@ -639,13 +640,17 @@ class UnrealLogFilePatternScopeInstance:
         suffix = f"_{self.instance_number}" if self.instance_number > 0 else ""
         return f"{self.scope_declaration.scope_name}{suffix}"
 
-    def get_scope_display_name(self) -> str:
-        line_number_suffix = f" @ {self.start_line_match.line_nr}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
+    def get_scope_display_name(self, fully_qualified: bool = False, add_line_suffix: bool = True) -> str:
 
-        if self.scope_declaration.scope_display_name_var is None:
-            return self.get_local_scope_name() + line_number_suffix
+        if fully_qualified:
+            base_name = self.get_local_scope_name() if self.parent_scope_instance is None else (
+                self.parent_scope_instance.get_scope_display_name(fully_qualified=True, add_line_suffix=False) + "." + self.get_local_scope_name())
         else:
-            return f"{self.get_local_scope_name()} - {self.get_string_variable(self.scope_declaration.scope_display_name_var)}{line_number_suffix}"
+            base_name = self.get_local_scope_name()
+
+        line_number_suffix = f" @ {self.start_line_match.line_nr}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}" if add_line_suffix else ""
+        display_suffix = f" - {self.get_string_variable(self.scope_declaration.scope_display_name_var)}" if self.scope_declaration.scope_display_name_var is not None else ""
+        return f"{base_name}{display_suffix}{line_number_suffix}"
 
     def get_fully_qualified_scope_name(self) -> str:
         """
@@ -780,7 +785,7 @@ class UnrealLogFilePatternScopeInstance:
         """Reports a success or failure to the root scope."""
         # TODO At the moment this always uses the root scope, but maybe there is some benefit in tracking these flags on sub-scopes?
         # root_scope: 'UnrealLogFilePatternScopeDeclaration' = self.owning_scope.scope_declaration.root_scope
-        flag_modified =False
+        flag_modified = False
 
         for step_index, (previous_flag, previous_step_status) in enumerate(self.step_success_flags):
             if previous_flag != flag:
@@ -809,9 +814,11 @@ class UnrealLogFilePatternScopeInstance:
                 full_scope_name = self.get_fully_qualified_scope_name()
                 if flag == full_scope_name:
                     if self.parent_scope_instance is not None:
-                        self.parent_scope_instance._flag_step_status(self.parent_scope_instance.get_fully_qualified_scope_name(), UnrealBuildStepStatus.FAILURE)
+                        self.parent_scope_instance._flag_step_status(
+                            self.parent_scope_instance.get_fully_qualified_scope_name(), UnrealBuildStepStatus.FAILURE)
                 else:
-                    self._flag_step_status(full_scope_name, UnrealBuildStepStatus.FAILURE)
+                    self._flag_step_status(
+                        full_scope_name, UnrealBuildStepStatus.FAILURE)
 
 
 def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternScopeDeclaration:

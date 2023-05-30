@@ -21,10 +21,6 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
     # Replace backticks for javascript. Not great. Not terrible.
     json_str = json_str.replace("`", "'")
 
-    # Remove unnecessary fluff components for overview (json).
-    # The full log still has those components.
-    json_str = json_str.replace("Warning: ", "").replace(
-        "Error: ", "").replace("Display: ", "").replace("[AssetLog] ", "")
     write_text_file(output_json_path, json_str)
     return json_str
 
