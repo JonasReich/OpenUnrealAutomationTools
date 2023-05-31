@@ -12,6 +12,8 @@ from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
+from alive_progress import alive_bar
+
 from openunrealautomation.core import *
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
@@ -905,29 +907,33 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
             scope_change = LogScopeChange.CLOSE
 
     with open(log_path, "r") as file:
-        for line_number, line in enumerate(file, 1):
-            # What's a higher priority?
-            # 1) closing current scope <- current implementation
-            # 2) opening child scopes
-            scope_change = LogScopeChange.UNCHANGED
+        lines = file.readlines()
+        with alive_bar(len(lines), title="parsing lines") as update_progress_bar:
+            for line_number, line in enumerate(lines, 0):
+                update_progress_bar()
 
-            # Allow parsing a line that is on the end line of a scope
-            line_checked = current_scope_instance._check_and_add(
-                line, line_number)
+                # What's a higher priority?
+                # 1) closing current scope <- current implementation
+                # 2) opening child scopes
+                scope_change = LogScopeChange.UNCHANGED
 
-            # Allow not only current scope, but also all parent scopes to end/close.
-            # This is required, because script steps may crash / exit preemptively, which would result in socpes not being closed properly,
-            # which in turn might mess up parsing rules of the next steps.
-            for check_parent_scope in current_scope_instance.all_parent_scope_instances():
-                check_parent_scope_declaration = check_parent_scope.scope_declaration
-                try_close_scope()
-                if scope_change is not LogScopeChange.UNCHANGED:
-                    break
+                # Allow parsing a line that is on the end line of a scope
+                line_checked = current_scope_instance._check_and_add(
+                    line, line_number)
 
-            try_open_scope()
+                # Allow not only current scope, but also all parent scopes to end/close.
+                # This is required, because script steps may crash / exit preemptively, which would result in socpes not being closed properly,
+                # which in turn might mess up parsing rules of the next steps.
+                for check_parent_scope in current_scope_instance.all_parent_scope_instances():
+                    check_parent_scope_declaration = check_parent_scope.scope_declaration
+                    try_close_scope()
+                    if scope_change is not LogScopeChange.UNCHANGED:
+                        break
 
-            # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
-            current_scope_instance._check_and_add(line, line_number)
+                try_open_scope()
+
+                # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
+                current_scope_instance._check_and_add(line, line_number)
 
     if not current_scope_instance.scope_declaration.is_root_scope():
         print(
