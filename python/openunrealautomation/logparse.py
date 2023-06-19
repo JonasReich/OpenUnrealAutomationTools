@@ -693,7 +693,7 @@ class UnrealLogFilePatternScopeInstance:
         for child_scope_instance in self.child_scope_instances:
             child_scope_instance.filter_inline(tags, min_severity)
 
-    def filter(self, tag: str, min_severity: UnrealLogSeverity, min_matches: int = 1) -> 'UnrealLogFilePatternScopeDeclaration':
+    def filter(self, tag: str, min_severity: UnrealLogSeverity, min_matches: int = 1) -> 'UnrealLogFilePatternScopeInstance':
         """
         Create a deep copy of this scope instance and filter out match results (see filter_inline).
         Only supported on root scopes to avoid invalid linking of scopes.
