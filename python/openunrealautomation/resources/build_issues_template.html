@@ -296,16 +296,21 @@
 
             let dev_str = tagged_dev == "" ? "" : `by ${tagged_dev} &emsp;&emsp;`;
             let line_str = line_obj.line;
-            let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
-            if (file_path_matches) {
-                for (let i = 0; i < file_path_matches.length; i++) {
-                    let file_path = file_path_matches[i];
-                    line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
-                }
-            }
 
-            let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${line_obj.line_nr})">🔗</button>`
-            let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${dev_str}${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(line_obj.line_nr, 5)}): </div>${line_str}<br></code>`);
+            // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
+            // if (file_path_matches) {
+            //     for (let i = 0; i < file_path_matches.length; i++) {
+            //         let file_path = file_path_matches[i];
+            //         // This only works if the paths do not have any overlaps.
+            //         // With this implementation, 'foo/bar/baz' and 'foo/bar' in the same log line would cause the 'foo/bar' part to overlap, which can result in wrong text resplacement / invalid HTML
+            //         line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
+            //     }
+            // }
+
+            // Line numbers in report start with 0
+            let normal_line_nr = line_obj.line_nr + 1;
+            let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${normal_line_nr})">🔗</button>`
+            let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${dev_str}${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(normal_line_nr, 5)}): </div>${line_str}<br></code>`);
             new_code_line.data("json", line_obj);
             new_code_line.data("source_file", source_file);
 
