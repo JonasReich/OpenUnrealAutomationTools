@@ -1,3 +1,10 @@
+"""
+Descriptor files are config files in json format.
+Examples: .uproject, .uplugin, .version
+
+For each descriptor type, there is a unique descriptor class ensuring type safety and exposing additional members.
+"""
+
 import glob
 import json
 import os
@@ -10,11 +17,6 @@ from openunrealautomation.core import OUAException
 class UnrealDescriptor():
     """
     Base class for UE descriptor files.
-    These files are always config files in json format.
-    Examples: .uproject, .uplugin, .version
-
-    For each descriptor type, there is a unique descriptor class
-    ensuring type safety and exposing additional members.
     """
 
     file_path: str = ""
@@ -68,7 +70,8 @@ class UnrealDescriptor():
             with open(self.file_path, "r", encoding="utf-8-sig", errors="ignore") as file:
                 return json.load(file)
         except Exception as e:
-            raise OUAException("Failed to read descriptor file ", self.file_path)
+            raise OUAException(
+                "Failed to read descriptor file ", self.file_path)
 
     def write(self, values: dict) -> None:
         """

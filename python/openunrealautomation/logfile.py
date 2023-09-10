@@ -1,7 +1,14 @@
+"""
+Access log text files from Unreal programs and the engine.
+"""
+
 import glob
 import os
+from datetime import datetime
+from enum import Enum
+from typing import Optional
 
-from openunrealautomation.core import *
+from openunrealautomation.core import ue_time_to_string
 from openunrealautomation.environment import UnrealEnvironment
 
 
@@ -43,7 +50,7 @@ class UnrealLogFile(Enum):
         """File extensions including colon delimiter"""
         return self.value[4]
 
-    def format(self, environment: UnrealEnvironment, time: datetime = None, time_string: str = None, uat_step: str = None, uat_substep: str = None) -> str:
+    def format(self, environment: UnrealEnvironment, time: Optional[datetime] = None, time_string: Optional[str] = None, uat_step: Optional[str] = None, uat_substep: Optional[str] = None) -> str:
         """Format a log file path string. time and time_string are optional because not all log files use them."""
         if not time is None:
             time_string = ue_time_to_string(time)
@@ -55,7 +62,7 @@ class UnrealLogFile(Enum):
                                                        uat_step=uat_step,
                                                        uat_substep=uat_substep))
 
-    def find_latest(self, environment: UnrealEnvironment) -> str:
+    def find_latest(self, environment: UnrealEnvironment) -> Optional[str]:
         """Find the latest local log file of a given log file category"""
         found_files = self.get_all(environment=environment)
         if found_files is None or len(found_files) == 0:

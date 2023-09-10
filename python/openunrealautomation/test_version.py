@@ -1,4 +1,5 @@
-from openunrealautomation.version import *
+from openunrealautomation.version import UnrealVersion
+
 
 def _test_version_string_conversion(test_string, expected_result) -> None:
     result = str(UnrealVersion.create_from_string(test_string))
@@ -37,6 +38,7 @@ def test_version_string_conversion():
     _test_version_string_conversion("5.0", "5.0.0-0")
     _test_version_string_conversion("5", "5.0.0-0")
 
+
 def test_version_compatibilit_matching():
     # test matching licensee version compatibility
     _test_version_compatibility(True, "1.2.3-10", "1.2.3-9", True)
@@ -47,6 +49,7 @@ def test_version_compatibilit_matching():
     _test_version_compatibility(True, "1.2.3-10", "1.2.4-10", False)
     _test_version_compatibility(True, "1.3.3-10", "1.2.3-10", True)
     _test_version_compatibility(True, "1.2.3-10", "1.3.3-10", False)
+
 
 def test_version_compatibilit_non_matching():
     # test non-matching licensee version compatibility

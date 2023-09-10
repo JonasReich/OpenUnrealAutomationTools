@@ -1,13 +1,13 @@
 """
 Create a static HTML file for a build report and other project automation metrics.
-Used in conjunction with logparse module.
+Extends the logparse module.
 """
 
 import json
 import os
 import re
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
@@ -47,7 +47,7 @@ def _generate_html_inline_source_log(source_file: str, source_file_count: int, s
         '</div>'
 
 
-def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: str) -> Tuple[str, str]:
+def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: str) -> str:
     injected_javascript = f"""
     var {plot_id}_data = [{{
         type: "icicle",

@@ -1,13 +1,18 @@
+"""
+Interact with Unreal Engine executables (editor, build tools, etc).
+"""
+
 import json
 import os
-import shutil
 import subprocess
 import winreg
 from typing import List, Optional, Set, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import *
+from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
+                                       UnrealBuildTarget, UnrealProgram)
+from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.util import (args_str, run_subprocess, walk_level,
                                        which_checked)
@@ -21,7 +26,7 @@ class UnrealEngine:
     If UnrealEnvironment changes, all functions should work as expected with the new environment.
     """
 
-    environment: UnrealEnvironment = None
+    environment: UnrealEnvironment
     # If true, run commands just print their command line and do not actually launch any executables
     dry_run: bool = False
 
@@ -38,7 +43,7 @@ class UnrealEngine:
 
     @staticmethod
     def create_from_project_file(project_file: str) -> 'UnrealEngine':
-        return UnrealEngine(UnrealEnvironment.create_from_project_file(project_file=project_file))
+        return UnrealEngine(UnrealEnvironment.create_from_project_file(project_file=UnrealProjectDescriptor(project_file)))
 
     @staticmethod
     def create_from_parent_tree(folder: str) -> 'UnrealEngine':
@@ -48,7 +53,7 @@ class UnrealEngine:
     def run(self,
             program: UnrealProgram,
             arguments: "list[str]" = [],
-            map: str = None,
+            map: Optional[str] = None,
             program_name: str = "",
             raise_on_error: bool = True,
             add_default_parameters: bool = True,
@@ -66,6 +71,8 @@ class UnrealEngine:
 
         returns application exit code
         """
+        assert self.environment.project_file is not None
+
         all_arguments = []
 
         program_path = self.environment.get_program_path(
@@ -124,7 +131,7 @@ class UnrealEngine:
     def run_commandlet(self,
                        commandlet_name: str,
                        arguments: "list[str]" = [],
-                       map: str = None,
+                       map: Optional[str] = None,
                        raise_on_error: bool = True,
                        add_default_parameters: bool = True,
                        allow_commandlet_rendering: bool = False,
@@ -177,6 +184,7 @@ class UnrealEngine:
 
         setup_report_viewer_actual = generate_report_file and setup_report_viewer
         # Already check for requirements at the start, so there are no surprises after running tests.
+        bower_path = None
         if setup_report_viewer_actual:
             bower_path = which_checked("bower", "Bower (available via npm)")
 
@@ -211,7 +219,7 @@ class UnrealEngine:
             self._convert_test_results_to_junit(
                 json_path=json_path, junit_path=junit_path)
 
-        if setup_report_viewer_actual:
+        if setup_report_viewer_actual and bower_path is not None:
             bower_json = os.path.join(
                 self.environment.engine_root, "Engine/Content/Automation/bower.json")
             # Install bower components to report directory
@@ -276,9 +284,10 @@ class UnrealEngine:
         if not self.environment.is_source_engine and not self.environment.has_project:
             raise OUAException(
                 "Cannot generate project files for environments that are not source builds but also do not have a project")
-        if self.environment.has_project and os.path.exists(os.path.join(self.environment.project_root, "Source")) == False:
+        if self.environment.has_project() and os.path.exists(os.path.join(self.environment.project_root, "Source")) == False:
             raise OUAException(
                 "Cannot generate project files for projects that do not have source files")
+        assert self.environment.project_file is not None
 
         # Generate the project files
         (generator_path, is_script) = self._get_generate_project_files_path()
@@ -310,7 +319,7 @@ class UnrealEngine:
               target: UnrealBuildTarget,
               build_configuration:
               UnrealBuildConfiguration,
-              platform: str = None,
+              platform: Optional[str] = None,
               program_name: str = "") -> int:
         """
         Launch UBT to build the provided target.
@@ -347,7 +356,7 @@ class UnrealEngine:
     def clean(self,
               target: UnrealBuildTarget,
               build_configuration: UnrealBuildConfiguration,
-              platform: str = None,
+              platform: Optional[str] = None,
               program_name: str = "") -> int:
         """
         Cleans the build files for a given target
@@ -400,6 +409,7 @@ class UnrealEngine:
         This list does not include position sensitive command line arguments like project or startup map.
         Those should be configured directly in UnrealEngine.run().
         """
+        assert self.environment.project_file is not None
         project_arg = f"-project={self.environment.project_file.file_path}"
 
         if program == UnrealProgram.EDITOR:
@@ -417,11 +427,12 @@ class UnrealEngine:
                            build_configuration: UnrealBuildConfiguration,
                            platform: str,
                            program_name: str):
+        project_name = str(self.environment.project_name)
         target_args = {
             UnrealBuildTarget.GAME: self.environment.project_name,
-            UnrealBuildTarget.SERVER: self.environment.project_name + "Server",
-            UnrealBuildTarget.CLIENT: self.environment.project_name + "Client",
-            UnrealBuildTarget.EDITOR: self.environment.project_name + "Editor",
+            UnrealBuildTarget.SERVER: project_name + "Server",
+            UnrealBuildTarget.CLIENT: project_name + "Client",
+            UnrealBuildTarget.EDITOR: project_name + "Editor",
             UnrealBuildTarget.PROGRAM: program_name,
         }
 
@@ -469,7 +480,7 @@ class UnrealEngine:
 
             test_platform = json_results['devices'][0]['platform']
             report_created_on = json_results['reportCreatedOn']
-            testsuite_id =  f"UnrealTest {test_platform} @ {report_created_on}"
+            testsuite_id = f"UnrealTest {test_platform} @ {report_created_on}"
             num_failures = str(json_results["failed"])
             num_tests = str(int(json_results["succeeded"]) + int(num_failures))
             testsuite_time = str(json_results["totalDuration"])
@@ -486,14 +497,14 @@ class UnrealEngine:
                 test_node.set("classname", test["fullTestPath"])
                 test_node.set("status", test["state"])
                 test_node.set("time", str(test["duration"]))
-                
+
                 for entry in test["entries"]:
                     if entry["event"]["type"] == "Info":
                         continue
 
                     event_node = XmlNode("failure")
                     event_node.set("message", entry["event"]["message"])
-                    event_type =  entry["event"]["type"]
+                    event_type = entry["event"]["type"]
                     event_node.set("type", event_type)
                     event_node.text = event_type
                     event_node.text += "\n" + entry["event"]["message"]

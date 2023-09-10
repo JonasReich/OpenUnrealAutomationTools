@@ -1,3 +1,7 @@
+"""
+Environment (engine + project) utilities.
+"""
+
 import glob
 import inspect
 import os
@@ -5,18 +9,19 @@ import pathlib
 import platform
 import winreg
 from datetime import datetime
+from typing import List, Optional
 
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
-from openunrealautomation.core import *
+from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.descriptor import (UnrealPluginDescriptor,
                                              UnrealProjectDescriptor)
-from openunrealautomation.util import *
-from openunrealautomation.version import *
+from openunrealautomation.util import walk_level, walk_parents
+from openunrealautomation.version import UnrealVersionDescriptor
 
 
 class UnrealEnvironment:
     """
-    Environment paths required for an automation job.
+    Environment required for an Unreal automation job.
     It's assumed that only one engine and game project are used at a time.
 
     This class is not meant to be subclassed.
@@ -24,8 +29,8 @@ class UnrealEnvironment:
     Use the create_from_* factory methods instead of creating an UnrealPaths object directly.
     """
 
-    creation_time: datetime = None
-    creation_time_str: str = ""
+    creation_time: datetime
+    creation_time_str: str
 
     # Unreal string for the platform that this script is running on
     host_platform: str
@@ -43,18 +48,18 @@ class UnrealEnvironment:
     is_source_engine: bool = False
     is_installed_engine: bool = False
 
-    build_version: UnrealVersionDescriptor = None
+    build_version: UnrealVersionDescriptor
 
     # Path to the project root directory
     project_root: str = ""
 
     # Path to the project file
-    project_file: UnrealProjectDescriptor = None
+    project_file: Optional[UnrealProjectDescriptor] = None
     project_file_auto_detected: bool
 
-    project_name: str = ""
+    project_name: Optional[str]
 
-    def __init__(self, engine_root: str, project_file: UnrealProjectDescriptor = None) -> None:
+    def __init__(self, engine_root: str, project_file: Optional[UnrealProjectDescriptor] = None) -> None:
         # Cache the creation time once so it can be used by various processes as timestamp
         # The format string is adopted from the way UE formats the timestamps for log file backups.
         self.creation_time = datetime.now()
@@ -98,8 +103,13 @@ class UnrealEnvironment:
         else:
             distribution_type = "Unknown"
 
+        version_str = ""
         if has_project_bool:
             project_version = self.get_project_version()
+            if project_version is not None:
+                version_str = f"    -> Version:          {project_version.value} (source: {project_version.file})\n"
+            else:
+                version_str = f"    -> Version:          not detected\n"
 
         ouu = self.find_open_unreal_utilities()
 
@@ -111,12 +121,12 @@ class UnrealEnvironment:
             f"Engine Version:  {self.engine_version}\n"\
             f"Distribution:    {distribution_type}\n"\
             f"Has Project:     {has_project_bool}\n" + (
-                f"    -> Project Name:     {self.project_name}\n"
-                f"    -> Is Auto Detected: {self.project_file_auto_detected}\n"
-                f"    -> Project Root:     {self.project_root}\n"
-                f"    -> Project File:     {self.project_file}\n"
-                f"    -> Is Native:        {self.is_native_project()}\n"
-                f"    -> Version:          {project_version.value} (source: {project_version.file})\n"
+                (f"    -> Project Name:     {self.project_name}\n"
+                 f"    -> Is Auto Detected: {self.project_file_auto_detected}\n"
+                 f"    -> Project Root:     {self.project_root}\n"
+                 f"    -> Project File:     {self.project_file}\n"
+                 f"    -> Is Native:        {self.is_native_project()}\n"
+                 + version_str)
                 if has_project_bool else ""
             ) +\
             f"Has OUU:         {bool(ouu)}\n" + (
@@ -145,7 +155,7 @@ class UnrealEnvironment:
     def create_from_parent_tree(folder: str) -> 'UnrealEnvironment':
         """Recursively search through parents in the directory tree until either a project or engine root is found (project root is preferred)"""
 
-        def try_create(dir: str) -> 'UnrealEnvironment':
+        def try_create(dir: str) -> Optional['UnrealEnvironment']:
             # Any folder with a uproject file can be reasonably considered an Unreal project directory
             if UnrealEnvironment.is_project_root(dir):
                 print(f"    -> found a project root at '{dir}'")
@@ -158,7 +168,7 @@ class UnrealEnvironment:
                     engine_root=dir)
             return None
 
-        environment: UnrealEnvironment = None
+        environment: Optional[UnrealEnvironment] = None
         print(f"Searching for project or engine root in '{folder}'...")
 
         # Try create the environment directly
@@ -178,13 +188,14 @@ class UnrealEnvironment:
     def create_from_invoking_file_parent_tree() -> 'UnrealEnvironment':
         stack_frame = inspect.stack()[1]
         stack_module = inspect.getmodule(stack_frame[0])
+        assert stack_module is not None and stack_module.__file__ is not None
         module_dir = pathlib.Path(stack_module.__file__).parent
-        return UnrealEnvironment.create_from_parent_tree(module_dir)
+        return UnrealEnvironment.create_from_parent_tree(str(module_dir))
 
     # Member functions
 
     def has_project(self) -> bool:
-        return not self.project_file is None
+        return self.project_file is not None
 
     def is_native_project(self) -> bool:
         return self.project_root.startswith(self.engine_root)
@@ -192,9 +203,9 @@ class UnrealEnvironment:
     @property
     def engine_version(self) -> str:
         """For backwards compatibility"""
-        return self.build_version.get_current()
+        return str(self.build_version.get_current())
 
-    def find_plugin(self, plugin_name) -> UnrealPluginDescriptor:
+    def find_plugin(self, plugin_name) -> Optional[UnrealPluginDescriptor]:
         if os.path.isdir(f"{self.engine_root}/Engine/Plugins"):
             engine_plugin = self.find_plugin_in_dir(
                 dir=f"{self.engine_root}/Engine/Plugins", plugin_name=plugin_name)
@@ -207,7 +218,7 @@ class UnrealEnvironment:
                 return project_plugin
         return None
 
-    def find_open_unreal_utilities(self) -> UnrealPluginDescriptor:
+    def find_open_unreal_utilities(self) -> Optional[UnrealPluginDescriptor]:
         return self.find_plugin("OpenUnrealUtilities")
 
     def has_plugin(self, plugin_name) -> bool:
@@ -266,12 +277,12 @@ class UnrealEnvironment:
 
     def set_project(self, project_file: UnrealProjectDescriptor) -> None:
         """Set the project by path. This works both for native and foreign projects."""
-        self._set_project(project_file)
+        self._set_project(project_file, False)
 
     def config(self) -> UnrealConfig:
         return UnrealConfig(engine_root=self.engine_root, project_root=self.project_root)
 
-    def get_project_version(self) -> UnrealConfigValue:
+    def get_project_version(self) -> Optional[UnrealConfigValue]:
         return self.config().read(category="Game", section="/Script/EngineSettings.GeneralProjectSettings", key="ProjectVersion")
 
     # Static utility functions
@@ -318,7 +329,7 @@ class UnrealEnvironment:
         return engine_root
 
     @staticmethod
-    def engine_root_from_association(engine_association_key) -> str:
+    def engine_root_from_association(engine_association_key) -> Optional[str]:
         """
         Search the windows registry for an engine installation key
         """
@@ -349,7 +360,7 @@ class UnrealEnvironment:
         return None
 
     @staticmethod
-    def find_engine_parent_dir(dir) -> str:
+    def find_engine_parent_dir(dir: str) -> Optional[str]:
         for pardir in walk_parents(dir):
             if os.path.exists(f"{pardir}/Engine/Build/Build.version"):
                 # It's reasonable to expect that this is an Engine directory
@@ -357,8 +368,8 @@ class UnrealEnvironment:
         return None
 
     @staticmethod
-    def find_plugin_in_dir(dir, plugin_name) -> UnrealPluginDescriptor:
-        for root, dirs, files in walk_level(dir, level=2):
+    def find_plugin_in_dir(dir: str, plugin_name: str) -> Optional[UnrealPluginDescriptor]:
+        for root, dirs, _files in walk_level(dir, level=2):
             for dirname in dirs:
                 subdir = os.path.join(root, dirname)
                 try:
@@ -369,7 +380,7 @@ class UnrealEnvironment:
                     pass
         return None
 
-    def _set_project(self, project_file: UnrealProjectDescriptor, auto_detect: bool) -> None:
+    def _set_project(self, project_file: Optional[UnrealProjectDescriptor], auto_detect: bool) -> None:
         self.project_file = project_file
         self.project_file_auto_detected = auto_detect
         if project_file is not None:
@@ -377,7 +388,8 @@ class UnrealEnvironment:
                 project_file.file_path).parent)
         else:
             self.project_root = ""
-        self.project_name = project_file.get_name() if self.has_project() else None
+        self.project_name = self.project_file.get_name(
+        ) if self.project_file is not None else None
         self._validate_paths()
 
     def _validate_paths(self) -> None:
@@ -387,7 +399,7 @@ class UnrealEnvironment:
         if len(self.project_root) > 0 and not os.path.exists(self.project_root):
             raise OUAException(
                 f"Project root directory {self.project_root} does not exist")
-        if self.has_project() and (len(self.project_file.file_path) == 0 or not os.path.exists(self.project_file.file_path)):
+        if self.project_file is not None and (len(self.project_file.file_path) == 0 or not os.path.exists(self.project_file.file_path)):
             raise OUAException(
                 f"Project root directory does not contain a valid project file")
 

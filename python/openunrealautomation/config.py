@@ -10,11 +10,10 @@ For writing to ini files, we recommend invoking UE commandlets written in UE C++
 
 import configparser
 import os
-import winreg
 import platform
-from typing import Any
-
-from openunrealautomation.core import *
+import winreg
+from enum import Enum
+from typing import Any, Iterable, List, Optional
 
 
 class UnrealConfigScope(Enum):
@@ -50,7 +49,7 @@ class UnrealConfigScope(Enum):
         return self.value
 
     @staticmethod
-    def all_scopes() -> 'list[UnrealConfigScope]':
+    def all_scopes() -> List['UnrealConfigScope']:
         """Returns a list of all scopes"""
         return [
             UnrealConfigScope.BASE,
@@ -63,7 +62,7 @@ class UnrealConfigScope(Enum):
         ]
 
     @staticmethod
-    def parent_scopes(refscope: 'UnrealConfigScope') -> 'list[UnrealConfigScope]':
+    def parent_scopes(refscope: 'UnrealConfigScope') -> Iterable['UnrealConfigScope']:
         """Returns a list of scopes smaller or equal to refscope"""
         return filter(lambda scope: int(scope) <= int(refscope), UnrealConfigScope.all_scopes())
 
@@ -100,7 +99,7 @@ class UnrealConfig():
         self.engine_root = engine_root
         self.project_root = project_root
 
-    def read(self, category: str, section: str, key: str, scope: UnrealConfigScope = UnrealConfigScope.PROJECT_DEFAULT, platform: str = "WindowsEditor", single_scope: bool = False) -> UnrealConfigValue:
+    def read(self, category: str, section: str, key: str, scope: UnrealConfigScope = UnrealConfigScope.PROJECT_DEFAULT, platform: str = "WindowsEditor", single_scope: bool = False) -> Optional[UnrealConfigValue]:
         """
         Read a single config value.
 
