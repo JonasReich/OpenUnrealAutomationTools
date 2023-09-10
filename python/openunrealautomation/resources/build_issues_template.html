@@ -88,6 +88,10 @@
             color: rgb(233, 233, 15);
         }
 
+        .severe-warning {
+            color: #e9a00f;
+        }
+
         .error {
             color: rgb(225, 21, 21);
         }
@@ -150,11 +154,6 @@
                 <h2>REPORT_TITLE</h2>
             </div>
             <div class="col-12 col-xxl-8">
-                <div class="col-12 box-ouu small">
-                    <h5>General Build Info</h5>
-                    <p>REPORT_DESCRIPTION</p>
-                </div>
-
                 <div class="col-12 box-ouu">
                     <h5>Filtered Log Messages</h5>
                     <!-- anchor for filter button hotbar -->
@@ -272,58 +271,88 @@
         }
 
 
+        function updateSeverityCSS(element, severity) {
+            let is_error = severity == "error";
+            let is_warning = severity == "warning";
+            let is_severe_warning = severity == "severe_warning";
+            let is_message = !is_error && !is_warning && !is_severe_warning;
+
+            element.toggleClass("warning", is_warning);
+            element.toggleClass("severe-warning", is_severe_warning);
+            element.toggleClass("error", is_error);
+            element.toggleClass("message", is_message);
+        }
+
+
+        function addLineDiv(line_obj, source_file, line_name = "") {
+            let line_string_vars = line_obj.strings;
+
+            for (string_key in line_string_vars) {
+                incrementStringVar(string_key, line_string_vars[string_key]);
+            }
+
+            let tagged_dev = line_string_vars["Developer"] ?? "";
+            all_devs.add(tagged_dev);
+
+            let dev_str = tagged_dev == "" ? "" : `by ${tagged_dev} &emsp;&emsp;`;
+            let line_str = line_obj.line;
+
+            // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
+            // if (file_path_matches) {
+            //     for (let i = 0; i < file_path_matches.length; i++) {
+            //         let file_path = file_path_matches[i];
+            //         // This only works if the paths do not have any overlaps.
+            //         // With this implementation, 'foo/bar/baz' and 'foo/bar' in the same log line would cause the 'foo/bar' part to overlap, which can result in wrong text resplacement / invalid HTML
+            //         line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
+            //     }
+            // }
+
+            // Line numbers in report start with 0
+            let normal_line_nr = line_obj.line_nr + 1;
+            let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${normal_line_nr})">🔗</button>`
+            let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${dev_str}${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(normal_line_nr, 5)}): </div>${line_str}<br></code>`);
+            new_code_line.data("json", line_obj);
+            new_code_line.data("source_file", source_file);
+
+            for (tag_idx in line_obj.tags) {
+                increment_tag_count(line_obj.tags[tag_idx]);
+            }
+
+            updateSeverityCSS(new_code_line, line_obj.severity);
+
+            return new_code_line;
+        }
+
+        let CODE_CONTAINER_TEMPLATE = `<div class="text-nowrap overflow-scroll mx-3 p-3 code-container"><div>`;
+
+        function addMatchListCodeContainer(match_list, parent) {
+            match_list_row = $(`<details class="row issue-scope pt-2"><summary>${name}</summary>${CODE_CONTAINER_TEMPLATE}</details>`);
+            match_list_row.data("name", name);
+            parent.append(match_list_row);
+            match_list_row.data("json", match_list);
+
+            updateSeverityCSS(match_list_row, match_list.severity);
+
+            return match_list_row.find(".code-container");
+        }
+
+
         function addIssueScope(source_file, scope, ref_node) {
             // #TODO adjust css classes
             let scope_row = $(`<div class="row scope-container scope-${scope.status} pt-2 px-4"><div>${scope.name}</div></div>`);
             $(ref_node).append(scope_row);
 
-            scope.match_lists.forEach(match_list => {
-                let is_error = match_list.severity == "error";
-                let is_warning = match_list.severity == "warning";
-                let is_message = !is_error && !is_warning;
+            if ((typeof scope.start === 'string' || scope.start instanceof String) == false && scope.start.severity != "message") {
+                let start_code_line = addLineDiv(scope.start, source_file, "Start");
+                scope_row.append($(CODE_CONTAINER_TEMPLATE).append(start_code_line));
+            }
 
-                let section_row = $(`<details class="row issue-scope pt-2"><summary>${match_list.name}</summary><div class="text-nowrap overflow-scroll mx-3 p-3 code-container"><div></details>`);
-                scope_row.append(section_row);
-                let code_container = section_row.find(".code-container");
-                section_row.data("name", match_list.name);
-                section_row.data("json", match_list);
-                section_row.toggleClass("warning", is_warning);
-                section_row.toggleClass("error", is_error);
-                section_row.toggleClass("message", is_message);
+            scope.match_lists.forEach(match_list => {
+                let code_container = addMatchListCodeContainer(match_list, scope_row);
 
                 for (let line_idx = 0; line_idx < match_list.lines.length; line_idx++) {
                     let line_obj = match_list.lines[line_idx];
-                    let line_string_vars = line_obj.strings;
-
-                    for (string_key in line_string_vars) {
-                        incrementStringVar(string_key, line_string_vars[string_key]);
-                    }
-
-                    let tagged_dev = line_string_vars["Developer"] ?? "";
-                    all_devs.add(tagged_dev);
-
-                    let dev_str = tagged_dev == "" ? "" : `by ${tagged_dev} &emsp;&emsp;`;
-                    let line_str = line_obj.line;
-                    let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
-                    if (file_path_matches) {
-                        for (let i = 0; i < file_path_matches.length; i++) {
-                            let file_path = file_path_matches[i];
-                            line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
-                        }
-                    }
-
-                    let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${line_obj.line_nr})">🔗</button>`
-                    let new_code_line = $(`<code>${jump_to_src_btn}<div class="code-tag">${dev_str}${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(line_obj.line_nr, 5)}): </div>${line_str}<br></code>`);
-                    new_code_line.data("json", line_obj);
-                    new_code_line.data("source_file", source_file);
-
-                    for (tag_idx in line_obj.tags) {
-                        increment_tag_count(line_obj.tags[tag_idx]);
-                    }
-
-                    new_code_line.toggleClass("warning", is_warning);
-                    new_code_line.toggleClass("error", is_error);
-                    new_code_line.toggleClass("message", is_message);
+                    let new_code_line = addLineDiv(line_obj, source_file);
                     code_container.append(new_code_line);
                 }
             });
@@ -331,6 +360,11 @@
             scope.child_scopes.forEach(child_scope => {
                 addIssueScope(source_file, child_scope, scope_row);
             });
+
+            if ((typeof scope.end === 'string' || scope.end instanceof String) == false && scope.end.severity != "message") {
+                let end_code_line = addLineDiv(scope.end, source_file, "End");
+                scope_row.append($(CODE_CONTAINER_TEMPLATE).append(end_code_line));
+            }
         }
 
         for (const [source_file, scope] of Object.entries(json_obj)) {
@@ -517,10 +551,12 @@
             let labels = [];
             let error_counts = [];
             let warning_counts = [];
+            let severe_warning_counts = [];
             let message_counts = [];
 
             let error_counts_total = [];
             let warning_counts_total = [];
+            let severe_warning_counts_total = [];
             let message_counts_total = [];
 
             // #TODO instead of counting occurences manually, the json export should contain tag data incl. unique tag occurences + total tag occurences
@@ -528,9 +564,11 @@
                 labels.push(getTagLabel(tag));
                 let error_count = 0;
                 let warning_count = 0;
+                let severe_warning_count = 0;
                 let message_count = 0;
                 let error_count_total = 0;
                 let warning_count_total = 0;
+                let severe_warning_count_total = 0;
                 let message_count_total = 0;
                 count = $("#code-root code").each(function () {
                     if ($(this).data("json").tags.includes(tag) == false) {
@@ -542,6 +580,9 @@
                     } else if ($(this).data("json").severity == "warning") {
                         warning_count++;
                         warning_count_total += $(this).data("json").occurences;
+                    } else if ($(this).data("json").severity == "severe_warning") {
+                        severe_warning_count++;
+                        severe_warning_count_total += $(this).data("json").occurences;
                     } else {
                         message_count++;
                         message_count_total += $(this).data("json").occurences;
@@ -549,13 +590,15 @@
                 })
                 error_counts.push(error_count);
                 warning_counts.push(warning_count);
+                severe_warning_counts.push(severe_warning_count);
                 message_counts.push(message_count);
                 error_counts_total.push(error_count_total);
                 warning_counts_total.push(warning_count_total);
+                severe_warning_counts_total.push(severe_warning_count_total);
                 message_counts_total.push(message_count_total);
             })
 
-            function createIssueCountChart(title, error_counts_var, warning_counts_var, message_counts_var) {
+            function createIssueCountChart(title, error_counts_var, warning_counts_var, severe_warning_counts_var, message_counts_var) {
                 new Chart(createChartContext(), {
                     type: "bar",
                     data: {
@@ -563,6 +606,7 @@
                         datasets: [
                             { label: "Errors", data: error_counts_var, backgroundColor: "#bb4444", color: "#bb4444" },
                             { label: "Warnigns", data: warning_counts_var, backgroundColor: "#bbbb44", color: "#bbbb44" },
+                            { label: "Severe Warnigns", data: severe_warning_counts_var, backgroundColor: "#e9a00f", color: "#e9a00f" },
                             { label: "Messages", data: message_counts_var, backgroundColor: "#aaaaaa", color: "#aaaaaa" }
                         ]
                     },
@@ -576,8 +620,8 @@
                 });
             }
 
-            createIssueCountChart("Issues per Tag (Unique)", error_counts, warning_counts, message_counts);
-            createIssueCountChart("Issues per Tag (Total)", error_counts_total, warning_counts_total, message_counts_total);
+            createIssueCountChart("Issues per Tag (Unique)", error_counts, warning_counts, severe_warning_counts, message_counts);
+            createIssueCountChart("Issues per Tag (Total)", error_counts_total, warning_counts_total, severe_warning_counts_total, message_counts_total);
         }
         createIssuesPerTagChart()
 

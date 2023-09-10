@@ -1,4 +1,4 @@
-﻿"""
+"""
 Parse UE logs for warning / error summary.
 """
 
@@ -8,9 +8,11 @@ import os.path
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
+
+from alive_progress import alive_bar
 
 from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
@@ -33,11 +35,12 @@ class UnrealLogSeverity(Enum):
     Default level is MESSAGE
     """
     # int, icon, json value
-    MESSAGE = 0, "📄", "message"
-    WARNING = 1, "⚠️", "warning"
-    ERROR = 2, "⛔", "error"
+    MESSAGE = 0, "??", "message"
+    WARNING = 1, "??", "warning"
+    SEVERE_WARNING = 2, "??", "severe_warning"
+    ERROR = 3, "?", "error"
     # only distinguish internally for now -> auto step fails. json export etc should be unaffected.
-    FATAL = 3, "⛔", "error"
+    FATAL = 4, "?", "error"
 
     @staticmethod
     def from_string(string: str) -> 'UnrealLogSeverity':
@@ -63,9 +66,9 @@ class UnrealBuildStepStatus(Enum):
     """
     Status of a single build step
     """
-    SUCCESS = 0, "✅", "success"
-    FAILURE = 1, "❌", "failure"
-    UNKNOWN = 2, "⏳", "unknown"
+    SUCCESS = 0, "?", "success"
+    FAILURE = 1, "?", "failure"
+    UNKNOWN = 2, "?", "unknown"
 
     def __str__(self) -> str:
         return self.long_str()
@@ -646,13 +649,19 @@ class UnrealLogFilePatternScopeInstance:
         suffix = f"_{self.instance_number}" if self.instance_number > 0 else ""
         return f"{self.scope_declaration.scope_name}{suffix}"
 
-    def get_scope_display_name(self) -> str:
-        line_number_suffix = f" @ {self.start_line_match.line_nr if self.start_line_match is not None else '?'}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
+    def get_scope_display_name(self, fully_qualified: bool = False, add_line_suffix: bool = True) -> str:
 
-        if self.scope_declaration.scope_display_name_var is None:
-            return self.get_local_scope_name() + line_number_suffix
+        if fully_qualified:
+            base_name = self.get_local_scope_name() if self.parent_scope_instance is None else (
+                self.parent_scope_instance.get_scope_display_name(fully_qualified=True, add_line_suffix=False) + "." + self.get_local_scope_name())
         else:
-            return f"{self.get_local_scope_name()} - {self.get_string_variable(self.scope_declaration.scope_display_name_var)}{line_number_suffix}"
+            base_name = self.get_local_scope_name()
+
+        line_nr_str = str(
+            self.start_line_match.line_nr) if self.start_line_match is not None else '?'
+        line_number_suffix = f" @ {line_nr_str}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}" if add_line_suffix else ""
+        display_suffix = f" - {self.get_string_variable(self.scope_declaration.scope_display_name_var)}" if self.scope_declaration.scope_display_name_var is not None else ""
+        return f"{base_name}{display_suffix}{line_number_suffix}"
 
     def get_fully_qualified_scope_name(self) -> str:
         """
@@ -917,29 +926,33 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
             scope_change = LogScopeChange.CLOSE
 
     with open(log_path, "r") as file:
-        for line_number, line in enumerate(file, 1):
-            # What's a higher priority?
-            # 1) closing current scope <- current implementation
-            # 2) opening child scopes
-            scope_change = LogScopeChange.UNCHANGED
+        lines = file.readlines()
+        with alive_bar(len(lines), title="parsing lines") as update_progress_bar:
+            for line_number, line in enumerate(lines, 0):
+                update_progress_bar()
 
-            # Allow parsing a line that is on the end line of a scope
-            line_checked = current_scope_instance._check_and_add(
-                line, line_number)
+                # What's a higher priority?
+                # 1) closing current scope <- current implementation
+                # 2) opening child scopes
+                scope_change = LogScopeChange.UNCHANGED
 
-            # Allow not only current scope, but also all parent scopes to end/close.
-            # This is required, because script steps may crash / exit preemptively, which would result in socpes not being closed properly,
-            # which in turn might mess up parsing rules of the next steps.
-            for check_parent_scope in current_scope_instance.all_parent_scope_instances():
-                check_parent_scope_declaration = check_parent_scope.scope_declaration
-                try_close_scope()
-                if scope_change is not LogScopeChange.UNCHANGED:
-                    break
+                # Allow parsing a line that is on the end line of a scope
+                line_checked = current_scope_instance._check_and_add(
+                    line, line_number)
 
-            try_open_scope()
+                # Allow not only current scope, but also all parent scopes to end/close.
+                # This is required, because script steps may crash / exit preemptively, which would result in socpes not being closed properly,
+                # which in turn might mess up parsing rules of the next steps.
+                for check_parent_scope in current_scope_instance.all_parent_scope_instances():
+                    check_parent_scope_declaration = check_parent_scope.scope_declaration
+                    try_close_scope()
+                    if scope_change is not LogScopeChange.UNCHANGED:
+                        break
 
-            # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
-            current_scope_instance._check_and_add(line, line_number)
+                try_open_scope()
+
+                # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
+                current_scope_instance._check_and_add(line, line_number)
 
     if not current_scope_instance.scope_declaration.is_root_scope():
         print(
@@ -956,14 +969,14 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print("\n", scope_with_matches.format(max_lines))
 
 
-def _main_get_files() -> List[Tuple[str, str]]:
+def _main_get_files() -> List[Tuple[str, Optional[str]]]:
     env = UnrealEnvironment.create_from_invoking_file_parent_tree()
 
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--files")
     cli_args = argparser.parse_args()
 
-    files: List[Tuple[str, str]]
+    files: List[Tuple[str, Optional[str]]]
     if cli_args.files is not None:
         files_strs = cli_args.files.split(",")
         files = []
@@ -971,9 +984,9 @@ def _main_get_files() -> List[Tuple[str, str]]:
             files.append((files_strs[i], files_strs[i+1]))
     else:
         files = [
-            ("UAT", str(UnrealLogFile.UAT.find_latest(env))),
-            ("Cook", str(UnrealLogFile.COOK.find_latest(env))),
-            ("Unreal", str(UnrealLogFile.EDITOR.find_latest(env)))
+            ("UAT", UnrealLogFile.UAT.find_latest(env)),
+            ("Cook", UnrealLogFile.COOK.find_latest(env)),
+            ("Unreal", UnrealLogFile.EDITOR.find_latest(env))
         ]
 
     return files
@@ -985,4 +998,7 @@ if __name__ == "__main__":
         Path(__file__).parent, "resources/logparse_patterns.xml")
 
     for target, file in files:
-        print_parsed_log(file, patterns_xml, target)
+        if file is not None:
+            print_parsed_log(file, patterns_xml, target)
+        else:
+            print("no file for target", target)

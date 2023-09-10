@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from alive_progress import alive_bar
+
 from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
                                            _main_get_files, parse_log)
 from openunrealautomation.util import read_text_file, write_text_file
@@ -21,22 +23,23 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
     # Replace backticks for javascript. Not great. Not terrible.
     json_str = json_str.replace("`", "'")
 
-    # Remove unnecessary fluff components for overview (json).
-    # The full log still has those components.
-    json_str = json_str.replace("Warning: ", "").replace(
-        "Error: ", "").replace("Display: ", "").replace("[AssetLog] ", "")
     write_text_file(output_json_path, json_str)
     return json_str
 
 
 def _generate_html_inline_source_log(source_file: str, source_file_count: int, source_file_display: str, log_file_str: str) -> str:
     log_file_lines = log_file_str.splitlines()
-    log_file_str_html = ""
     log_file_line_count = len(log_file_lines)
-    for line_number, line in enumerate(log_file_lines, 1):
-        padded_line_number = str(line_number).rjust(
-            len(str(log_file_line_count)), "0")
-        log_file_str_html += f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n'
+    html_lines = []
+    with alive_bar(log_file_line_count, title="_generate_html_inline_source_log") as update_progress_bar:
+        for line_number, line in enumerate(log_file_lines, 1):
+            update_progress_bar()
+
+            padded_line_number = str(line_number).rjust(
+                len(str(log_file_line_count)), "0")
+            html_lines.append(f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
+
+    log_file_str_html = "".join(html_lines)
 
     return f'<div class="col-12 box-ouu">'\
         f'<h5>Source File #{source_file_count}: {source_file_display}</h5>\n'\
@@ -84,44 +87,47 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_str) -> str:
 
     all_labels = set()
 
-    for line in log_file_str.splitlines():
-        matches = re.match(
-            r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)", line)
-        if matches:
-            indent = len(matches.group("Indent")) / 2
-            label = matches.group("Label")
-            value = matches.group("Time")
+    lines = log_file_str.splitlines()
+    with alive_bar(len(lines), title="_generate_hierarchical_cook_timing_stat_html") as update_progress_bar:
+        for line in lines:
+            update_progress_bar()
 
-            while label in all_labels:
-                label += "_"
-            all_labels.add(label)
+            matches = re.match(
+                r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)", line)
+            if matches:
+                indent = len(matches.group("Indent")) / 2
+                label = matches.group("Label")
+                value = matches.group("Time")
 
-            if indent < last_indent:
-                assert type(last_parent) is dict
-                new_parent = last_parent["parent"]
-            elif indent > last_indent:
-                new_parent = last_node
-            else:
-                new_parent = last_parent
+                while label in all_labels:
+                    label += "_"
+                all_labels.add(label)
 
-            last_indent = indent
+                if indent < last_indent:
+                    new_parent = last_parent["parent"]
+                elif indent > last_indent:
+                    new_parent = last_node
+                else:
+                    new_parent = last_parent
 
-            new_node = {
-                "label": label,
-                "parent": new_parent,
-                "value": float(value),
-                "children": []
-            }
+                last_indent = indent
 
-            if not new_parent is None:
-                new_parent["children"].append(new_node)
+                new_node = {
+                    "label": label,
+                    "parent": new_parent,
+                    "value": float(value),
+                    "children": []
+                }
 
-            if root_node is None:
-                root_node = new_node
-            last_node = new_node
-            last_parent = new_parent
+                if not new_parent is None:
+                    new_parent["children"].append(new_node)
 
-            all_nodes.append(new_node)
+                if root_node is None:
+                    root_node = new_node
+                last_node = new_node
+                last_parent = new_parent
+
+                all_nodes.append(new_node)
 
     if len(all_nodes) == 0:
         return ""
@@ -182,7 +188,6 @@ def generate_html_report(
         replace("INLINE_JSON", json_str).\
         replace("INLINE_SOURCE_LOG", inline_source_log).\
         replace("REPORT_TITLE", report_title).\
-        replace("REPORT_DESCRIPTION", "").\
         replace("INLINE_JAVASCRIPT", injected_javascript).\
         replace("BACKGROUND_IMAGE_URI", background_image_uri).\
         replace("FILTER_TAGS_AND_LABELS", str(filter_tags_and_labels))

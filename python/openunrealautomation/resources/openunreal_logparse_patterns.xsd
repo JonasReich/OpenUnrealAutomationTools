@@ -31,6 +31,7 @@
     <xs:simpleType name="SeverityType">
         <xs:restriction base="xs:string">
             <xs:enumeration value="Warning" />
+            <xs:enumeration value="Severe_Warning" />
             <xs:enumeration value="Error" />
             <xs:enumeration value="Message" />
             <xs:enumeration value="Fatal" />

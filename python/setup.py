@@ -18,6 +18,7 @@ setuptools.setup(
         "vswhere",
         "pytest",
         "requests",
+        "alive_progress",
     ],
     include_package_data=True
 )

@@ -3,6 +3,8 @@
 :: 1 - dev/regular (optional) to enable install in dev-mode
 :: 2 - python-path (optional) path to custom python installation
 
+echo ARGS: %0 %*
+
 if [%1]==[dev] (
     set DEVMODE=1
 ) else (
