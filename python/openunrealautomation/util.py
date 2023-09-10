@@ -1,24 +1,22 @@
 """
-Utility functions
+General utility functions (python type conversion, file system access, starting processes, etc)
 """
 
-from cgi import print_arguments
 import filecmp
 import glob
 import os
 import pathlib
 import platform
 import re
-import shlex
 import shutil
 import stat
 import subprocess
-from typing import Any, Generator, Dict, MutableSet, List, Optional, Tuple
+from typing import Any, Generator, List, MutableSet, Optional, Tuple
 
-from openunrealautomation.core import *
+from openunrealautomation.core import OUAException
 
 
-def strtobool(val) -> bool:
+def strtobool(val: Optional[str]) -> bool:
     """Convert a string representation of truth to a boolean value.
     Based on distutils.util.strtobool but supports None value (=False) and returns bool instead of 1/0 int.
 
@@ -37,7 +35,7 @@ def strtobool(val) -> bool:
         raise ValueError("invalid truth value %r" % (val,))
 
 
-def walk_level(top, topdown=True, onerror=None, followlinks=False, level=1) -> None:
+def walk_level(top: str, topdown=True, onerror=None, followlinks=False, level=1) -> Generator[Tuple[Any, List[Any], List[Any]], Any, Any]:
     """
     Copy of os.walk() with additional level parameter.
     @param level    How many sub-directories to traverse
@@ -77,7 +75,7 @@ def force_rmtree(path: str, no_file_ok: bool = False) -> None:
     shutil.rmtree(path, onerror=_on_rm_error)
 
 
-def rmtree_empty(root) -> MutableSet[str]:
+def rmtree_empty(root: str) -> MutableSet[str]:
     """
     Delete empty directories in tree.
     Returns set of deleted directories.
@@ -269,6 +267,7 @@ def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
 
     with subprocess.Popen(*popenargs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, **kwargs) as p:
         try:
+            assert p.stdout is not None
             # Grab stdout line by line as it becomes available.  This will loop until
             # p terminates.
             while p.poll() is None:

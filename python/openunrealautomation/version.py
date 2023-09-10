@@ -1,6 +1,11 @@
+"""
+Python implementation of Unreal Engine build versioning
+"""
+
 from enum import Enum
 from locale import atoi
 from re import search
+from typing import Optional
 
 from openunrealautomation.core import OUAException
 from openunrealautomation.descriptor import UnrealDescriptor
@@ -15,6 +20,13 @@ def _try_atoi(str) -> int:
 
 
 class UnrealVersionComparison(Enum):
+    """
+    When comparing two engine versions (A, B), does the result refer to...
+    - neither A or B
+    - only A (first)
+    - only B (second)
+    """
+
     NEITHER = 1
     FIRST = 2
     SECOND = 3
@@ -22,13 +34,15 @@ class UnrealVersionComparison(Enum):
 
 class UnrealVersion():
     """
-    Python wrapper for Unreal Engine Build.version (see C++ class FEngineVersionBase)
+    One unique version of the engine. Used for version / compatibility checks.
+    This is a python implementation of the FEngineVersionBase C++ class.
     """
 
     major_version: int = 0
     minor_version: int = 0
     patch_version: int = 0
     changelist: int = 0
+    compatible_changelist: int = 0
     is_licensee_version: bool = False
     is_promoted_build: bool = False
     branch_name: str = ""
@@ -71,7 +85,7 @@ class UnrealVersion():
         return newest is not UnrealVersionComparison.SECOND
 
     @staticmethod
-    def get_newest(first, second) -> UnrealVersionComparison:
+    def get_newest(first: 'UnrealVersion', second: 'UnrealVersion') -> UnrealVersionComparison:
         if not first.major_version == second.major_version:
             return UnrealVersionComparison.FIRST if first.major_version > second.major_version else UnrealVersionComparison.SECOND
         if not first.minor_version == second.minor_version:
@@ -85,7 +99,7 @@ class UnrealVersion():
 
 class UnrealVersionDescriptor(UnrealDescriptor):
     """
-    Descriptor helper to read version file
+    Descriptor helper to read version file (Build.version)
     """
 
     @classmethod
@@ -93,19 +107,19 @@ class UnrealVersionDescriptor(UnrealDescriptor):
         return ".version"
 
     def update_local_version(self,
-                             cl: int = None,
-                             compatible_cl: int = None,
-                             build_id: str = None,
+                             cl: Optional[int] = None,
+                             compatible_cl: Optional[int] = None,
+                             build_id: Optional[str] = None,
                              promoted: bool = False,
-                             branch: str = None,
+                             branch: Optional[str] = None,
                              licensee: bool = True) -> None:
         """
         Update the local version file (equivalent to UpdateLocalVersion UAT script).
         """
         if cl is None:
-            cl = UnrealPerforce.get_current_cl()
+            cl = UnrealPerforce().get_current_cl()
 
-        UnrealPerforce.sync(self.file_path, cl=cl, force=True)
+        UnrealPerforce().sync(self.file_path, cl=cl, force=True)
         version_json = self.read()
         version_json["Changelist"] = cl
         if compatible_cl:
@@ -120,14 +134,14 @@ class UnrealVersionDescriptor(UnrealDescriptor):
         version_json["IsPromotedBuild"] = int(promoted)
 
         if branch is None:
-            branch = UnrealPerforce.get_current_stream()
+            branch = UnrealPerforce().get_current_stream()
         branch = branch.replace("/", "+")
         version_json["BranchName"] = branch
 
         if build_id:
             version_json["BuildId"] = build_id
 
-        UnrealPerforce.sync(self.file_path, cl=0)
+        UnrealPerforce().sync(self.file_path, cl=0)
         self.write(version_json)
 
     def get_current(self) -> UnrealVersion:

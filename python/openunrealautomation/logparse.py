@@ -12,7 +12,7 @@ from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import *
+from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.util import strtobool
@@ -83,7 +83,7 @@ class UnrealLogFileLineMatch:
     Stores meta information from where it was parsed and variables extracted from the line.
     """
     line: str = ""
-    owning_pattern: 'UnrealLogFilePattern'
+    owning_pattern: Optional['UnrealLogFilePattern']
     # Line number where this match was first encountered
     line_nr: int
     string_vars: Dict[str, str]
@@ -93,7 +93,7 @@ class UnrealLogFileLineMatch:
     # (this has to be done by external post-processing code atm)
     tags: Set[str]
 
-    def __init__(self, line: str, owning_pattern: 'UnrealLogFilePattern', line_nr: int, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
+    def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
         self.line = line
         self.owning_pattern = owning_pattern
         self.line_nr = line_nr
@@ -137,7 +137,7 @@ class UnrealLogFilePattern:
     Only the first pattern that gets a passing match will have the matching line even if later patterns would also match.
     """
     owning_scope: 'UnrealLogFilePatternScopeDeclaration'
-    owning_list: 'UnrealLogFilePatternList'
+    owning_list: Optional['UnrealLogFilePatternList']
 
     pattern: str
     is_regex: bool
@@ -150,7 +150,7 @@ class UnrealLogFilePattern:
 
     def __init__(self, pattern: str,
                  owning_scope: 'UnrealLogFilePatternScopeDeclaration',
-                 owning_list: 'UnrealLogFilePatternList',
+                 owning_list: Optional['UnrealLogFilePatternList'],
                  is_regex: bool,
                  string_var_names: Set[str],
                  numeric_var_names: Set[str],
@@ -168,7 +168,7 @@ class UnrealLogFilePattern:
         self.tags = tags
 
     @staticmethod
-    def _from_xml_node(xml_node: XmlNode, owning_scope: 'UnrealLogFilePatternScopeDeclaration', owning_list: Optional['UnrealLogFilePatternList'] = None) -> 'UnrealLogFilePattern':
+    def _from_xml_node(xml_node: XmlNode, owning_scope: 'UnrealLogFilePatternScopeDeclaration', owning_list: Optional['UnrealLogFilePatternList'] = None) -> Optional['UnrealLogFilePattern']:
         if None is xml_node:
             return None
         is_regex = xml_node.get("Style", default="Regex") == "Regex"
@@ -191,7 +191,7 @@ class UnrealLogFilePattern:
         else:
             tags: Set[str] = set()
 
-        return UnrealLogFilePattern(xml_node.text,
+        return UnrealLogFilePattern(str(xml_node.text),
                                     owning_scope=owning_scope,
                                     owning_list=owning_list,
                                     is_regex=is_regex,
@@ -373,7 +373,7 @@ class UnrealLogFilePatternList:
     @staticmethod
     def _from_xml_node(xml_node: XmlNode, owning_scope: 'UnrealLogFilePatternScopeDeclaration') -> 'UnrealLogFilePatternList':
         result_list = UnrealLogFilePatternList(
-            xml_node.get("Name"),
+            str(xml_node.get("Name")),
             owning_scope=owning_scope)
 
         result_list.severity = UnrealLogSeverity.from_string(
@@ -391,11 +391,15 @@ class UnrealLogFilePatternList:
             xml_node, "FailureFlags")
 
         for pattern in xml_node.findall("Include"):
-            result_list.include_patterns.append(
-                UnrealLogFilePattern._from_xml_node(pattern, owning_scope, result_list))
+            include_pattern = UnrealLogFilePattern._from_xml_node(
+                pattern, owning_scope, result_list)
+            if include_pattern is not None:
+                result_list.include_patterns.append(include_pattern)
         for pattern in xml_node.findall("Exclude"):
-            result_list.exclude_patterns.append(
-                UnrealLogFilePattern._from_xml_node(pattern, owning_scope, result_list))
+            exclude_pattern = UnrealLogFilePattern._from_xml_node(
+                pattern, owning_scope, result_list)
+            if exclude_pattern is not None:
+                result_list.exclude_patterns.append(exclude_pattern)
 
         return result_list
 
@@ -409,7 +413,7 @@ class UnrealLogFilePatternScopeDeclaration:
     scope_display_name_var: str
     parent_target_name: Optional[str]
     root_scope: 'UnrealLogFilePatternScopeDeclaration'
-    parent_scope: 'UnrealLogFilePatternScopeDeclaration'
+    parent_scope: Optional['UnrealLogFilePatternScopeDeclaration']
     require_all_lines_match: bool
 
     child_scope_declarations: List['UnrealLogFilePatternScopeDeclaration']
@@ -422,7 +426,7 @@ class UnrealLogFilePatternScopeDeclaration:
                  scope_display_name_var: str,
                  parent_target_name: Optional[str],
                  require_all_lines_match: bool,
-                 parent_scope: 'UnrealLogFilePatternScopeDeclaration') -> None:
+                 parent_scope: Optional['UnrealLogFilePatternScopeDeclaration']) -> None:
         self.scope_name = scope_name
         self.scope_display_name_var = scope_display_name_var
         self.parent_target_name = parent_target_name
@@ -474,16 +478,16 @@ class UnrealLogFilePatternScopeDeclaration:
                 yield pattern_list
 
     @staticmethod
-    def _from_xml_node(xml_node: XmlNode, root_node: XmlNode, parent_scope: Optional['UnrealLogFilePatternScopeDeclaration'] = None, parent_target_name: Optional[str] = None) -> 'UnrealLogFilePatternScopeDeclaration':
+    def _from_xml_node(xml_node: XmlNode, root_node: XmlTree, parent_scope: Optional['UnrealLogFilePatternScopeDeclaration'] = None, parent_target_name: Optional[str] = None) -> 'UnrealLogFilePatternScopeDeclaration':
         """
         Create a scope object from an XML node.
         The node can be either a <Template> or <Target> node.
         """
         result_scope = UnrealLogFilePatternScopeDeclaration(
-            xml_node.get("Name"),
-            xml_node.get("DisplayNameVariable"),
+            str(xml_node.get("Name")),
+            str(xml_node.get("DisplayNameVariable")),
             parent_target_name,
-            xml_node.get("RequireAllLinesMatch"),
+            bool(xml_node.get("RequireAllLinesMatch")),
             parent_scope=parent_scope)
 
         result_scope._set_start_end_patterns(xml_node)
@@ -493,7 +497,7 @@ class UnrealLogFilePatternScopeDeclaration:
                                                root_node)
         return result_scope
 
-    def _fill_scope_from_xml_node(self, xml_node: XmlNode, root_node: XmlNode) -> None:
+    def _fill_scope_from_xml_node(self, xml_node: XmlNode, root_node: XmlTree) -> None:
         for pattern_list in xml_node.findall("./Patterns"):
             self.pattern_lists.append(
                 UnrealLogFilePatternList._from_xml_node(pattern_list, self))
@@ -528,12 +532,15 @@ class UnrealLogFilePatternScopeDeclaration:
         self.end_patterns = []
 
         for node in xml_node.findall("Start"):
-            self.start_patterns.append(UnrealLogFilePattern._from_xml_node(
-                node, self))
+            start_pattern = UnrealLogFilePattern._from_xml_node(node, self)
+            if start_pattern is not None:
+                self.start_patterns.append(start_pattern)
 
         for node in xml_node.findall("End"):
-            self.end_patterns.append(UnrealLogFilePattern._from_xml_node(
-                node, self))
+            end_pattern = UnrealLogFilePattern._from_xml_node(
+                node, self)
+            if end_pattern is not None:
+                self.end_patterns.append(end_pattern)
 
     def _link_child_scope(self, child_scope: 'UnrealLogFilePatternScopeDeclaration') -> None:
         child_scope.parent_scope = self
@@ -563,7 +570,7 @@ class UnrealLogFilePatternScopeInstance:
 
     pattern_match_lists: List[UnrealLogFilePatternList_MatchList]
 
-    def __init__(self, parent_scope_instance: 'UnrealLogFilePatternScopeInstance', scope_declaration: 'UnrealLogFilePatternScopeDeclaration', start_match: UnrealLogFileLineMatch, instance_number: int) -> None:
+    def __init__(self, parent_scope_instance: Optional['UnrealLogFilePatternScopeInstance'], scope_declaration: 'UnrealLogFilePatternScopeDeclaration', start_match: UnrealLogFileLineMatch, instance_number: int) -> None:
         self.parent_scope_instance = parent_scope_instance
         self.scope_declaration = scope_declaration
         self.start_line_match = start_match
@@ -640,7 +647,7 @@ class UnrealLogFilePatternScopeInstance:
         return f"{self.scope_declaration.scope_name}{suffix}"
 
     def get_scope_display_name(self) -> str:
-        line_number_suffix = f" @ {self.start_line_match.line_nr}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
+        line_number_suffix = f" @ {self.start_line_match.line_nr if self.start_line_match is not None else '?'}-{'?' if self.end_line_match is None else str(self.end_line_match.line_nr)}"
 
         if self.scope_declaration.scope_display_name_var is None:
             return self.get_local_scope_name() + line_number_suffix
@@ -686,7 +693,7 @@ class UnrealLogFilePatternScopeInstance:
         for child_scope_instance in self.child_scope_instances:
             child_scope_instance.filter_inline(tags, min_severity)
 
-    def filter(self, tag: str, min_severity: UnrealLogSeverity, min_matches: int = 1) -> 'UnrealLogFilePatternScopeDeclaration':
+    def filter(self, tag: str, min_severity: UnrealLogSeverity, min_matches: int = 1) -> 'UnrealLogFilePatternScopeInstance':
         """
         Create a deep copy of this scope instance and filter out match results (see filter_inline).
         Only supported on root scopes to avoid invalid linking of scopes.
@@ -707,7 +714,8 @@ class UnrealLogFilePatternScopeInstance:
         """
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
-        result["start"] = self.start_line_match.json()
+        result["start"] = self.start_line_match.json(
+        ) if self.start_line_match is not None else ""
         result["end"] = self.end_line_match.json(
         ) if self.end_line_match is not None else ""
         match_lists_jsons = [list.json()
@@ -745,7 +753,8 @@ class UnrealLogFilePatternScopeInstance:
 
     def all_matching_lines(self) -> Iterator[UnrealLogFileLineMatch]:
         """Iterate all matching lines inside all lists inside all child scopes"""
-        yield self.start_line_match
+        if self.start_line_match is not None:
+            yield self.start_line_match
         if self.end_line_match is not None:
             yield self.end_line_match
         for list in self.all_match_lists():
@@ -764,6 +773,9 @@ class UnrealLogFilePatternScopeInstance:
         return None
 
     def flag_match_success(self, match: UnrealLogFileLineMatch) -> None:
+        if match.owning_pattern is None:
+            return
+
         full_scope_name = self.get_fully_qualified_scope_name()
         for flag in match.owning_pattern.success_flag_names:
             flag = full_scope_name if flag == "auto" else flag
@@ -780,7 +792,7 @@ class UnrealLogFilePatternScopeInstance:
         """Reports a success or failure to the root scope."""
         # TODO At the moment this always uses the root scope, but maybe there is some benefit in tracking these flags on sub-scopes?
         # root_scope: 'UnrealLogFilePatternScopeDeclaration' = self.owning_scope.scope_declaration.root_scope
-        flag_modified =False
+        flag_modified = False
 
         for step_index, (previous_flag, previous_step_status) in enumerate(self.step_success_flags):
             if previous_flag != flag:
@@ -809,9 +821,11 @@ class UnrealLogFilePatternScopeInstance:
                 full_scope_name = self.get_fully_qualified_scope_name()
                 if flag == full_scope_name:
                     if self.parent_scope_instance is not None:
-                        self.parent_scope_instance._flag_step_status(self.parent_scope_instance.get_fully_qualified_scope_name(), UnrealBuildStepStatus.FAILURE)
+                        self.parent_scope_instance._flag_step_status(
+                            self.parent_scope_instance.get_fully_qualified_scope_name(), UnrealBuildStepStatus.FAILURE)
                 else:
-                    self._flag_step_status(full_scope_name, UnrealBuildStepStatus.FAILURE)
+                    self._flag_step_status(
+                        full_scope_name, UnrealBuildStepStatus.FAILURE)
 
 
 def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternScopeDeclaration:
@@ -848,7 +862,7 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
     if root_scope_declaration.num_patterns() == 0:
         raise OUAException("No log parsing patterns found!")
 
-    #current_scope = root_scope_declaration
+    # current_scope = root_scope_declaration
     root_scope_instance = UnrealLogFilePatternScopeInstance(parent_scope_instance=None,
                                                             scope_declaration=root_scope_declaration,
                                                             # TODO Move into first iteration so we get the first line?
@@ -857,9 +871,12 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
                                                             instance_number=0)
     current_scope_instance = root_scope_instance
 
-    def try_open_scope():
+    def try_open_scope() -> None:
         nonlocal current_scope_instance
         nonlocal scope_change
+
+        if current_scope_instance is None or current_scope_instance.scope_declaration is None:
+            return
 
         for child_scope_declaration in current_scope_instance.scope_declaration.child_scope_declarations:
             for start_pattern in child_scope_declaration.start_patterns:
@@ -876,11 +893,12 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
             if scope_change is LogScopeChange.OPEN:
                 break
 
-    def try_close_scope():
+    def try_close_scope() -> None:
         nonlocal current_scope_instance
         nonlocal scope_change
 
         scope_close_needed = False
+        end_match = None
         for end_pattern in filter(lambda end_pattern: not end_pattern is None, check_parent_scope_declaration.end_patterns):
             end_match = end_pattern.match(line, line_number)
             if end_match is None:
@@ -893,7 +911,8 @@ def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> Un
             scope_close_needed = True
 
         if scope_close_needed:
-            check_parent_scope.close_scope(end_match)
+            if end_match is not None:
+                check_parent_scope.close_scope(end_match)
             current_scope_instance = check_parent_scope.parent_scope_instance
             scope_change = LogScopeChange.CLOSE
 
@@ -952,9 +971,9 @@ def _main_get_files() -> List[Tuple[str, str]]:
             files.append((files_strs[i], files_strs[i+1]))
     else:
         files = [
-            ("UAT", UnrealLogFile.UAT.find_latest(env)),
-            ("Cook", UnrealLogFile.COOK.find_latest(env)),
-            ("Unreal", UnrealLogFile.EDITOR.find_latest(env))
+            ("UAT", str(UnrealLogFile.UAT.find_latest(env))),
+            ("Cook", str(UnrealLogFile.COOK.find_latest(env))),
+            ("Unreal", str(UnrealLogFile.EDITOR.find_latest(env)))
         ]
 
     return files

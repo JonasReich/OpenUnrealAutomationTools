@@ -1,19 +1,27 @@
+"""
+Lightweight utilites to get information from Perforce environment.
+This should be optional for the core openunrealatuomation functionality,
+but some of the automation tools will be tied to Perforce anyways,
+because Epic's tooling assumes Perforce as only source control tool in many places.
+"""
 
-from locale import atoi
-import subprocess
-import re
 import os
-from typing import Dict, List
+import re
+import subprocess
+from locale import atoi
+from typing import Dict, List, Optional
+
 
 class UnrealPerforceUserInfo:
-    username:str = ""
-    email:str = ""
-    display_name:str = ""
-    last_access_str:str = ""
-    valid_user:bool = False
+    username: str = ""
+    email: str = ""
+    display_name: str = ""
+    last_access_str: str = ""
+    valid_user: bool = False
 
-    def __init__(self, p4_users_line:str)->None:
-        matches = re.match(r"(?P<username>\w+) \<(?P<email>[\w\.@]+)\> \((?P<display_name>.+?)\) accessed (?P<last_access_str>\d{4}\/\d{2}\/\d{2})", p4_users_line)
+    def __init__(self, p4_users_line: str) -> None:
+        matches = re.match(
+            r"(?P<username>\w+) \<(?P<email>[\w\.@]+)\> \((?P<display_name>.+?)\) accessed (?P<last_access_str>\d{4}\/\d{2}\/\d{2})", p4_users_line)
         if matches:
             self.valid_user = True
             self.username = matches.group("username")
@@ -24,7 +32,7 @@ class UnrealPerforceUserInfo:
     def __str__(self) -> str:
         # This format is identical to a line of the output from "p4 users"
         return f"{self.username} <{self.email}> ({self.display_name}) accessed {self.last_access_str}"
-    
+
     def __bool__(self) -> bool:
         return self.valid_user
 
@@ -35,7 +43,7 @@ class UnrealPerforce:
     May be extended later for more robust Perforce implementation.
     """
 
-    def __init__(self, cwd:str = None, check:bool = True) -> None:
+    def __init__(self, cwd: Optional[str] = None, check: bool = True) -> None:
         self.check = check
         self.cwd = cwd
 
@@ -47,12 +55,13 @@ class UnrealPerforce:
         return 0
 
     def get_current_stream(self) -> str:
-        current_stream_output = self._p4_get_output(["-F", "%Stream%", "-ztag", "client", "-o"])
+        current_stream_output = self._p4_get_output(
+            ["-F", "%Stream%", "-ztag", "client", "-o"])
         current_stream_clean = current_stream_output.strip()
-        assert(not "\n" in current_stream_clean)
+        assert (not "\n" in current_stream_clean)
         return current_stream_clean
 
-    def sync(self, path, cl:int=None, force:bool=False):
+    def sync(self, path, cl: Optional[int] = None, force: bool = False):
         path = self._auto_path(path)
         args = ["sync"]
         if force:
@@ -60,7 +69,7 @@ class UnrealPerforce:
         if cl is None:
             args += [path]
         else:
-            args +=[f"{path}@{cl}"]
+            args += [f"{path}@{cl}"]
         self._p4(args)
 
     def add(self, path):
@@ -95,7 +104,7 @@ class UnrealPerforce:
                 result[user.username] = user
         return result
 
-    def get_user(self, user_name:str) -> UnrealPerforceUserInfo:
+    def get_user(self, user_name: str) -> UnrealPerforceUserInfo:
         users_str = self._p4_get_output(["users", user_name])
         return UnrealPerforceUserInfo(users_str)
 
@@ -114,8 +123,9 @@ class UnrealPerforce:
             return path + "/..."
         return path
 
+
 if __name__ == "__main__":
     p4 = UnrealPerforce()
     print("Current CL:", p4.get_current_cl())
     print("Current Stream:", p4.get_current_stream())
-    #print("All Users:\n", "\n".join([f"\t{user}" for _, user in p4.get_user_map().items()]))
+    # print("All Users:\n", "\n".join([f"\t{user}" for _, user in p4.get_user_map().items()]))

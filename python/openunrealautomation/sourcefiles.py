@@ -1,13 +1,15 @@
 """
+#TODO This is a stub
+
 Manage Unreal C++ source files.
 - Based on raw files?
 - Based on meta data?
     -> not possible outside of UE -> requires commandlet
     -> only has compiled files as foundation :/
-
 """
 
 import enum
+from typing import Optional
 
 
 class SourceFileVisibility(enum.Enum):
@@ -26,6 +28,6 @@ class ClassType (enum.Enum):
 
 
 class UnrealSourceFiles:
-
-    def create_class_file(class_name: str, class_type: ClassType, module_root: str, visibility: SourceFileVisibility, parent_class_name: str = None):
+    @staticmethod
+    def create_class_file(class_name: str, class_type: ClassType, module_root: str, visibility: SourceFileVisibility, parent_class_name: Optional[str] = None):
         pass

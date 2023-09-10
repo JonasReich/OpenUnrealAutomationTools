@@ -1,9 +1,5 @@
+"""
+Open Unreal Utilities - Automation tooling for Unreal Engine
 
-from .config import *
-from .core import *
-from .descriptor import *
-from .environment import *
-from .setuptools import *
-from .unrealengine import *
-from .util import *
-from .version import *
+Previous versions supported wildcard importing (import *), but it has been deliberately removed.
+"""

@@ -3,19 +3,24 @@ Utilitiy functions to setup tools related to Unreal Engine (e.g. Visual Studio).
 """
 
 import json
+import os
 import re
 import subprocess
 import time
 import urllib
 import urllib.error
+import urllib.request
+from enum import Enum
+from pathlib import Path
+from typing import Any, Optional
 
 import requests
-from pathlib import Path
-
 import vswhere
 
+from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import *
+from openunrealautomation.util import (add_startup, set_system_env_var,
+                                       which_checked)
 
 
 class VisualStudioCode:
@@ -55,7 +60,7 @@ class VisualStudioCode:
         with open(self._get_settings_path(), "w") as config_file:
             json.dump(config_data, config_file, indent=4)
 
-    def install_extension(self, identifier) -> None:
+    def install_extension(self, identifier) -> Any:
         """
         Install an extension by its identifier.
         (e.g. "ms-vscode.cpptools" for Microsoft C/C++ tools)
@@ -76,7 +81,7 @@ class VisualStudio:
     Utilities to setup Visual Studio
     """
 
-    environment: UnrealEnvironment = None
+    environment: UnrealEnvironment
 
     # Version number (e.g. "16.11.14" for my current install of VS2019)
     version: str = ""
@@ -89,7 +94,7 @@ class VisualStudio:
 
     installation_path: str = ""
 
-    def __init__(self, environment: UnrealEnvironment, version: str = None) -> None:
+    def __init__(self, environment: UnrealEnvironment, version: Optional[str] = None) -> None:
         """
         version: A version range for instances to find. Example: '[15.0,16.0)' will find versions 15.*.
         Note that version numbers diverge from version 
@@ -98,8 +103,9 @@ class VisualStudio:
 
         # vswhere is a python wrapper for the offical Microsoft tool of the same name to locate VS installations.
         # See https://github.com/microsoft/vswhere
+        latest_applicable_version: dict
         latest_applicable_version = vswhere.get_latest(
-            legacy=True, version=version)
+            legacy=True, version=version)  # type: ignore
         if latest_applicable_version is None:
             raise VisualStudioNotFoundException(
                 "No applicable installation of VisualStudio found")
@@ -109,29 +115,30 @@ class VisualStudio:
 
         version_match = re.search(
             r"(?P<major>\d+).(?P<minor>\d+).(?P<patch>\d+)", self.version)
-        self.major_version = int(version_match.group("major"))
-        self.minor_version = int(version_match.group("minor"))
-        self.patch_version = int(version_match.group("patch"))
+        if version_match is not None:
+            self.major_version = int(version_match.group("major"))
+            self.minor_version = int(version_match.group("minor"))
+            self.patch_version = int(version_match.group("patch"))
 
         self.installation_path = latest_applicable_version["installationPath"]
 
         print(
             f"Found Visual Studio {self.product_line_version} Installation ({self.version}): {self.installation_path}")
 
-    def install_extension(self, vsix_path: str) -> int:
+    def install_extension(self, vsix_path: str) -> None:
         vsix_installer = os.path.join(
             self.installation_path,
-            "Common7\IDE\VSIXInstaller.exe")
+            "Common7\\IDE\\VSIXInstaller.exe")
 
         print("Installing", os.path.basename(vsix_path), "...")
-        return subprocess.run([vsix_installer, "/quiet", vsix_path], check=True)
+        subprocess.run([vsix_installer, "/quiet", vsix_path], check=True)
 
     def get_extension_cache_path(self, name: str, cache_root: str) -> str:
         downloads_dir = os.path.join(cache_root, self.product_line_version)
         os.makedirs(downloads_dir, exist_ok=True)
         return os.path.join(downloads_dir, name)
 
-    def download_and_install_extension(self, name: str, download_url: str, retries: int = 3, download_cache: str = None) -> int:
+    def download_and_install_extension(self, name: str, download_url: str, retries: int = 3, download_cache: Optional[str] = None) -> None:
         # to get content after redirection
         download_src = requests.get(
             download_url, allow_redirects=True).url
@@ -147,7 +154,7 @@ class VisualStudio:
         if not os.path.exists(download_target):
             print("Downloading", name, "...")
             num_retries = 0
-            while(True):
+            while (True):
                 num_retries += 1
                 try:
                     download_success = True
@@ -168,7 +175,7 @@ class VisualStudio:
                 if download_success:
                     break
 
-        return self.install_extension(download_target)
+        self.install_extension(download_target)
 
     def install_unrealvs(self):
         """Install the unrealvs extension shipped with UE"""
@@ -193,12 +200,12 @@ class FASTBuildCacheMode(Enum):
 
 
 class FASTBuild:
-    environment: UnrealEnvironment = None
+    environment: UnrealEnvironment
 
     def __init__(self, environment: UnrealEnvironment) -> None:
         self.environment = environment
 
-    def setup(self, brokerage_path: str = None, cache_path: str = None, cache_mode: FASTBuildCacheMode = None) -> None:
+    def setup(self, brokerage_path: str, cache_path: str, cache_mode: Optional[FASTBuildCacheMode] = None) -> None:
         """Perform complete setup (brokerage path, startup registration, """
         self.set_environment_variables(brokerage_path=brokerage_path,
                                        cache_path=cache_path,
@@ -211,7 +218,7 @@ class FASTBuild:
         add_startup("FBuildWorker", self.get_buildworker_exe(),
                     ["-nosubprocess"])
 
-    def set_environment_variables(self, brokerage_path: str = None, cache_path: str = None, cache_mode: FASTBuildCacheMode = None) -> None:
+    def set_environment_variables(self, brokerage_path: Optional[str] = None, cache_path:  Optional[str] = None, cache_mode: Optional[FASTBuildCacheMode] = None) -> None:
         """
         Permanently store the brokerage path, cache path and cache setting to the system environment.
         Alternatively you can also set those settings in the command line environment only.
@@ -236,4 +243,5 @@ class FASTBuild:
 
 
 if __name__ == "__main__":
-    VisualStudio("[16.0,18.0)")
+    env = UnrealEnvironment(str(Path(__file__).parent))
+    VisualStudio(env, "[16.0,18.0)")
