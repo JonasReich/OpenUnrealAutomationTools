@@ -92,7 +92,7 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_str) -> str:
         for line in lines:
             update_progress_bar()
 
-            matches = re.match(
+            matches = re.search(
                 r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)", line)
             if matches:
                 indent = len(matches.group("Indent")) / 2
