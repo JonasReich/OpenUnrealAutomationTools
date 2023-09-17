@@ -108,6 +108,13 @@ class UnrealPerforce:
         users_str = self._p4_get_output(["users", user_name])
         return UnrealPerforceUserInfo(users_str)
 
+    def get_last_change_user(self, path:str) -> Optional[str]:
+        output = self._p4_get_output(["filelog", "-m1", "-s", path])
+        match = re.search(r"by (?P<user>.+)@", output)
+        if match:
+            return match.group("user")
+        return None
+
     def _p4(self, args):
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd

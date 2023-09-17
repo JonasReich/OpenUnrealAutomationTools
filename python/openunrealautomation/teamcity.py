@@ -56,7 +56,10 @@ def service_message(message_name: str, value_or_named_attributes: Union[None, st
             raise OUAException(
                 "Service message values may not contain single quotes")
         value_str = f"'{value_or_named_attributes}'"
-    print(f"##teamcity[{message_name} {value_str}]")
+
+    print(f"##teamcity[{message_name} {value_str}]",
+          # Flush the lines, so TeamCity is more like to be updated when we ask for stats via RestAPI
+          flush=True)
 
 
 def set_build_parameter(name: str, value: str) -> None:

@@ -37,7 +37,8 @@ def _generate_html_inline_source_log(source_file: str, source_file_count: int, s
 
             padded_line_number = str(line_number).rjust(
                 len(str(log_file_line_count)), "0")
-            html_lines.append(f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
+            html_lines.append(
+                f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
 
     log_file_str_html = "".join(html_lines)
 
@@ -169,8 +170,11 @@ def generate_html_report(
             log_file_str)
         parsed_log_dict = parsed_log.json()
         source_file_name = Path(log_file_path).name
-        source_file_id = source_file_name.replace(".", "_").replace(
-            " ", "_").replace("(", "_").replace(")", "_")
+
+        source_file_id = source_file_name
+        prohibited_chars = ". ()@;[]#,"
+        for prohibited_char in prohibited_chars:
+            source_file_id = source_file_id.replace(prohibited_char, "_")
         parsed_log_dict["source_file"] = source_file_id
         parsed_log_dicts[source_file_id] = parsed_log_dict
         inline_source_log += _generate_html_inline_source_log(

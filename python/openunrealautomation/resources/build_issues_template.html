@@ -331,6 +331,10 @@
             parent.append(match_list_row);
             match_list_row.data("json", match_list);
 
+            if (match_list.hidden) {
+                match_list_row.hide();
+            }
+
             updateSeverityCSS(match_list_row, match_list.severity);
 
             return match_list_row.find(".code-container");
@@ -378,6 +382,10 @@
 
         function updateScopeCounters() {
             $(".issue-scope").each(function () {
+                if ($(this).data("json").hidden) {
+                    $(this).hide();
+                    return;
+                }
                 num_children = 0;
                 num_active_children = 0;
                 $(this).find("code").each(function () {

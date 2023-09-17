@@ -320,7 +320,8 @@ class UnrealLogFilePatternList_MatchList:
             "name": self.source_list.group_name,
             "severity": self.source_list.severity.json(),
             "tags": list(self.source_list.tags),
-            "lines": lines_json_objs
+            "lines": lines_json_objs,
+            "hidden" : self.source_list.hidden
         }
 
     def _check_and_add(self, line: str, line_number: int) -> bool:
@@ -728,7 +729,7 @@ class UnrealLogFilePatternScopeInstance:
         result["end"] = self.end_line_match.json(
         ) if self.end_line_match is not None else ""
         match_lists_jsons = [list.json()
-                             for list in self.pattern_match_lists if not list.source_list.hidden]
+                             for list in self.pattern_match_lists]
         result["match_lists"] = [
             list_json for list_json in match_lists_jsons if list_json is not None]
         result["child_scopes"] = [scope.json()
