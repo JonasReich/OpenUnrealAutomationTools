@@ -1,0 +1,135 @@
+#filter-btns {
+    display: block;
+}
+
+.filter-btn {
+    font-weight: unset;
+    font-size: 0.7em;
+    margin-right: 0.4em;
+}
+
+.scope-container {
+    background-color: #6f6f6f17;
+    border: 1px;
+    border-color: var(--bs-info);
+    color: var(--bs-info);
+    border-style: solid;
+    margin: 0;
+    padding: 0.3em !important;
+    margin-top: .2em;
+}
+
+.scope-success {
+    background-color: #36ff0e17;
+    border-color: var(--bs-success);
+    color: var(--bs-success);
+}
+
+.scope-failure {
+    background-color: #9527271a;
+    border-color: var(--bs-danger);
+    color: var(--bs-danger);
+}
+
+.scope-container>div:first-of-type {
+    font-size: 0.8em;
+    font-variant: small-caps;
+    box-shadow: 0 +1px 0 #ffffff2e;
+    padding-bottom: 2px;
+    margin: -0.3em;
+    padding-top: 2px;
+    padding-left: 1em;
+    padding-right: 0;
+    width: calc(110% + 1.3em);
+    right: 0;
+    left: 0;
+    position: relative;
+    min-width: calc(100% + .6em);
+    background: #ffffff12;
+}
+
+.highlight-line {
+    margin-top: -100px;
+    position: relative;
+    display: inline;
+    padding-top: 100px;
+    z-index: +1;
+}
+
+.highlight-line::after {
+    content: "";
+    background-color: #b4b4f2;
+    position: relative;
+    top: 0.3em;
+    /*Arbitrary large number that hopefully fits an entire line. Anchoring on the left side would be preferred.*/
+    width: 20000px;
+    height: 1.5em;
+    display: inline-block;
+    bottom: 0;
+    right: 0;
+    left: -20000px;
+    z-index: -1;
+}
+
+.code-container {
+    overflow: scroll;
+    max-height: 600px;
+    max-width: 98%;
+    background-color: #1c1c1c;
+}
+
+.warning {
+    color: rgb(233, 233, 15);
+}
+
+.severe-warning {
+    color: #e9a00f;
+}
+
+.error {
+    color: rgb(225, 21, 21);
+}
+
+.message {
+    color: white;
+}
+
+#stats-chart-root canvas {
+    max-width: 800px;
+    max-height: 400px;
+}
+
+.code-tag {
+    display: inline-block;
+    color: #737373;
+    padding-right: 5px;
+}
+
+a.file-path {
+    cursor: pointer;
+    /* Do not underline */
+    text-decoration: none;
+}
+
+.warning .file-path {
+    color: rgb(142, 142, 58);
+}
+
+.error .file-path {
+    color: rgb(151, 62, 58);
+}
+
+.message .file-path {
+    color: rgb(138, 138, 138);
+}
+
+.box-ouu {
+    position: relative;
+    padding: 1rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: .25rem;
+    background-color: #25262bba;
+    color: inherit;
+    border-color: #f0f8ff24;
+}

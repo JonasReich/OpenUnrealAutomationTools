@@ -183,10 +183,20 @@ def generate_html_report(
     json_str = _parsed_log_dict_to_json(parsed_log_dicts, out_json_path)
 
     if html_report_template_path is None:
-        html_report_template_path = os.path.join(
-            Path(__file__).parent, "resources/build_issues_template.html")
+        # The default report isn't even a single template, but a set of files that are combined to a template.
+        # This could potentially be replaced with some static site builder, but most of them do not support building
+        # monolithic html files without any external css/js files.
+        def read_default_template(extension) -> str:
+            return read_text_file(os.path.join(
+                Path(__file__).parent, f"resources/build_issues_template.{extension}"))
+        html_template = read_default_template("html")
+        js_template = read_default_template("js")
+        css_template = read_default_template("css")
 
-    html_template = read_text_file(html_report_template_path)
+        html_template = html_template.replace(
+            "MAIN_JAVASCRIPT", js_template).replace("/*REPORT_CSS*/", css_template)
+    else:
+        html_template = read_text_file(html_report_template_path)
 
     output_html = html_template.\
         replace("INLINE_JSON", json_str).\
