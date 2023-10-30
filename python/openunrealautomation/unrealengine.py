@@ -10,12 +10,10 @@ from typing import List, Optional, Set, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
-                                       UnrealBuildTarget, UnrealProgram)
+from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import (args_str, run_subprocess, walk_level,
-                                       which_checked)
+from openunrealautomation.util import args_str, run_subprocess, walk_level, which_checked
 
 
 class UnrealEngine:
@@ -317,8 +315,7 @@ class UnrealEngine:
 
     def build(self,
               target: UnrealBuildTarget,
-              build_configuration:
-              UnrealBuildConfiguration,
+              build_configuration: UnrealBuildConfiguration,
               platform: Optional[str] = None,
               program_name: str = "") -> int:
         """
@@ -378,6 +375,25 @@ class UnrealEngine:
     def update_local_version(self) -> int:
         return self.run(UnrealProgram.UAT, ["UpdateLocalVersion", "-P4", "-Licensee", "-Promoted=0"])
 
+    def target_json_export(self, skip_export : bool = False) -> str:
+        all_arguments = self._get_ubt_arguments(
+            target=UnrealBuildTarget.EDITOR,
+            build_configuration=UnrealBuildConfiguration.DEVELOPMENT,
+            platform=self.environment.host_platform,
+            program_name="")
+        all_arguments += ["-mode=jsonexport"]
+
+        if not skip_export:
+            self.run(UnrealProgram.UBT, arguments=all_arguments)
+
+        json_filename = f"{self._get_target_name(target=UnrealBuildTarget.EDITOR)}.json"
+        return os.path.abspath(os.path.join(self.environment.project_root, "Binaries/Win64", json_filename))
+
+    def get_target_json_dict(self, skip_export : bool = False) -> dict:
+        path = self.target_json_export(skip_export=skip_export)
+        with open(path, "r") as file:
+            return json.load(file)
+
     def _get_generate_project_files_path(self) -> Tuple[str, bool]:
         """
         Returns a tuple of
@@ -422,11 +438,7 @@ class UnrealEngine:
             return ["-utf8output", "-unattended", project_arg]
         return []
 
-    def _get_ubt_arguments(self,
-                           target: UnrealBuildTarget,
-                           build_configuration: UnrealBuildConfiguration,
-                           platform: str,
-                           program_name: str):
+    def _get_target_name(self, target: UnrealBuildTarget, program_name: str = "") -> str:
         project_name = str(self.environment.project_name)
         target_args = {
             UnrealBuildTarget.GAME: self.environment.project_name,
@@ -435,8 +447,14 @@ class UnrealEngine:
             UnrealBuildTarget.EDITOR: project_name + "Editor",
             UnrealBuildTarget.PROGRAM: program_name,
         }
+        return target_args[target]
 
-        all_arguments = [target_args[target],
+    def _get_ubt_arguments(self,
+                           target: UnrealBuildTarget,
+                           build_configuration: UnrealBuildConfiguration,
+                           platform: str,
+                           program_name: str) -> List[str]:
+        all_arguments = [self._get_target_name(target, program_name),
                          platform,
                          str(build_configuration),
                          "-WaitMutex"]

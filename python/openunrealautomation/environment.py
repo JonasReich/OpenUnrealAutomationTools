@@ -285,6 +285,14 @@ class UnrealEnvironment:
     def get_project_version(self) -> Optional[UnrealConfigValue]:
         return self.config().read(category="Game", section="/Script/EngineSettings.GeneralProjectSettings", key="ProjectVersion")
 
+    def get_engine_solution(self) -> str:
+        # assume UE5
+        return os.path.join(self.engine_root, "UE5.sln")
+
+    def get_project_solution(self) -> str:
+        return os.path.join(self.project_root, f"{self.project_name}.sln")
+
+
     # Static utility functions
 
     @staticmethod
