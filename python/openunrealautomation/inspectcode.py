@@ -12,7 +12,6 @@ from xml.etree.ElementTree import fromstring as xml_fromstring
 from xml.etree.ElementTree import tostring as xml_tostring
 from xml.sax.saxutils import escape as __xml_escape
 
-from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import read_text_file, run_subprocess, which_checked, write_text_file
@@ -311,7 +310,7 @@ def get_all_active_sources(engine: UnrealEngine, skip_export: bool) -> List[str]
     return all_sources
 
 
-def _run_inspectcode(env: UnrealEnvironment):
+def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str):
     root_relative_project_path = os.path.relpath(
         env.project_root, env.engine_root)
     include_paths = [f"{root_relative_project_path}\\Source\\**",
@@ -326,7 +325,7 @@ def _run_inspectcode(env: UnrealEnvironment):
     solution_wide_analysis = False
     swea_param = "--swea" if solution_wide_analysis else "--no-swea"
 
-    command_line = ["inspectcode.exe",
+    command_line = [inspectcode_exe,
                     "--build",
                     f'--project="{env.project_name}"',
                     # This target name is required or otherwise the ENTIRE solution is built. May need to be adjusted for non-game targets or samples, etc that end up in other dirs
@@ -345,7 +344,15 @@ def inspectcode(engine: UnrealEngine, skip_build: bool, include_paths: List[str]
     Runs inspectcode on all project and plugin source files.
     """
 
-    which_checked("inspectcode.exe")
+    # TQ2 specific auto-detection of portable inspectcode folder
+    tq2_inspectcode_path = f"{engine.environment.engine_root}/Tools/ReSharperCodeInspect/inspectcode.exe"
+    if os.path.exists(tq2_inspectcode_path):
+        inspectcode_exe = tq2_inspectcode_path
+    else:
+        # If the binary is not found, we assume it's on PATH
+        inspectcode_exe = "inspectcode.exe"
+        which_checked(inspectcode_exe)
+
     env = engine.environment
 
     if not skip_build:
@@ -355,7 +362,7 @@ def inspectcode(engine: UnrealEngine, skip_build: bool, include_paths: List[str]
 
         # Run the main inspectcode exe.
         # This is most likely the most time consuming part, because it may have to rebuild the entire project and then analyze all the source files.
-        _run_inspectcode(env)
+        _run_inspectcode(env, inspectcode_exe)
 
     # If the target was not rebuilt, the module list also doesn't need to be re-exported.
     all_sources = get_all_active_sources(engine, skip_export=skip_build)
