@@ -210,7 +210,32 @@ def _generate_inspectcode_html_report(env: UnrealEnvironment, xml_report_path: s
             $(this).addClass('clipboard-notify').delay('2000').queue(function(){$(this).removeClass('clipboard-notify').dequeue(); });
             navigator.clipboard.writeText($(this).text());
         });
+         $('#search-input').on('keypress', function (e) {
+            if(e.which === 13){
+                search($(this).val());
+            }
+        });
     });
+
+    function search(search_term) {
+        $("code.src-path").each(function(){
+            let bullet = $(this).closest("li");
+            if (search_term == "") {
+                $(bullet).show().addClass("bullet-visible");
+            } else if ($(this).text().includes(search_term)) {
+                $(bullet).show().addClass("bullet-visible");
+            } else {
+                $(bullet).hide().removeClass("bullet-visible");
+            }
+        });
+        $("code.issue-count").each(function(){
+            let container = $(this).closest("details");
+            let num_active_bullets = $(container).find(".bullet-visible").length;
+            $(this).text(num_active_bullets);
+            $(container).toggle(num_active_bullets > 0);
+        });
+        $("#issues-root").show();
+    }
     """
 
     logo_svg = """<svg fill="none" viewBox="0 0 70 70" class="resharper-logo" style="width: 1em;margin-right: 0.3em;padding-bottom: 0.2em;height: 1em;"><defs><linearGradient id="__JETBRAINS_COM__LOGO_PREFIX__2" x1="34.448" x2="64.631" y1="70.146" y2="26.155" gradientUnits="userSpaceOnUse"><stop offset="0.016" stop-color="#FF45ED"></stop><stop offset="0.4" stop-color="#DD1265"></stop><stop offset="1" stop-color="#FDB60D"></stop></linearGradient><linearGradient id="__JETBRAINS_COM__LOGO_PREFIX__1" x1="1.828" x2="48.825" y1="53.428" y2="9.226" gradientUnits="userSpaceOnUse"><stop offset="0.016" stop-color="#FF45ED"></stop><stop offset="0.661" stop-color="#DD1265"></stop></linearGradient><linearGradient id="__JETBRAINS_COM__LOGO_PREFIX__0" x1="47.598" x2="48.08" y1="-1.658" y2="26.117" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#DD1265"></stop><stop offset="0.055" stop-color="#DF1961"></stop><stop offset="0.701" stop-color="#F46330"></stop><stop offset="1" stop-color="#FC801D"></stop></linearGradient></defs><path fill="url(#__JETBRAINS_COM__LOGO_PREFIX__2)" d="M51.197 15.72 26.38 47.07 20.782 70h37.666L70 23.067 51.197 15.72Z"></path><path fill="url(#__JETBRAINS_COM__LOGO_PREFIX__1)" d="M48.986 0H11.613L0 47.07h55.607L48.986 0Z"></path><path fill="url(#__JETBRAINS_COM__LOGO_PREFIX__0)" d="M50.934 13.316 48.986 0l-4.204 13.316h6.152Z"></path><path fill="#000" d="M56 14H14v42h42V14Z"></path><path fill="#FFF" d="M34.417 48.65h-15.75v2.683h15.75V48.65Zm1.661-17.29H34.37v-2.877h2.203l.561-3.326h-1.977v-2.876h2.472l.561-3.28h2.967l-.562 3.28h3.259l.56-3.28h2.967l-.561 3.28h1.707v2.877h-2.202l-.562 3.325h1.978v2.877H45.27l-.585 3.37H41.72l.584-3.37h-3.258l-.585 3.37h-2.966l.584-3.37Zm6.72-2.877.561-3.326H40.1l-.561 3.326h3.258ZM19 19h7.187c1.991 0 3.519.532 4.582 1.594a4.86 4.86 0 0 1 1.347 3.593v.046a4.927 4.927 0 0 1-.932 3.11 5.398 5.398 0 0 1-2.437 1.763l3.841 5.615h-4.042l-3.254-4.829H22.44l.02 4.828H19V19Zm6.962 7.635a2.872 2.872 0 0 0 1.966-.606 2.054 2.054 0 0 0 .685-1.617v-.045a2.009 2.009 0 0 0-.72-1.684 3.176 3.176 0 0 0-1.998-.561h-3.436v4.513h3.503Z"></path></svg>"""
@@ -247,6 +272,9 @@ def _generate_inspectcode_html_report(env: UnrealEnvironment, xml_report_path: s
         Excluded:
         {exclude_paths_html}
     </div>
+    <br/>
+    <input type="text" class="form-control bg-dark-subtle" id="search-input" aria-describedby="search-help" placeholder="Search..." style="max-width:500px;">
+    <small id="search-help" class="form-text text-muted">Search by source file.</small>
     <br/>
     {issue_tree_str}
 
