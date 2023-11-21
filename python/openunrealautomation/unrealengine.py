@@ -4,9 +4,10 @@ Interact with Unreal Engine executables (editor, build tools, etc).
 
 import json
 import os
+import re
 import subprocess
 import winreg
-from typing import List, Optional, Set, Tuple
+from typing import Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -375,7 +376,8 @@ class UnrealEngine:
     def update_local_version(self) -> int:
         return self.run(UnrealProgram.UAT, ["UpdateLocalVersion", "-P4", "-Licensee", "-Promoted=0"])
 
-    def target_json_export(self, skip_export : bool = False) -> str:
+    def target_json_export(self, skip_export: bool = False) -> str:
+        """Generate json with info about modules in current target (for Development Editor target)"""
         all_arguments = self._get_ubt_arguments(
             target=UnrealBuildTarget.EDITOR,
             build_configuration=UnrealBuildConfiguration.DEVELOPMENT,
@@ -389,10 +391,35 @@ class UnrealEngine:
         json_filename = f"{self._get_target_name(target=UnrealBuildTarget.EDITOR)}.json"
         return os.path.abspath(os.path.join(self.environment.project_root, "Binaries/Win64", json_filename))
 
-    def get_target_json_dict(self, skip_export : bool = False) -> dict:
+    def get_target_json_dict(self, skip_export: bool = False) -> dict:
+        """Get dictionary with info about modules in current target (for Development Editor target)"""
         path = self.target_json_export(skip_export=skip_export)
+        print(f"Reading target information from {path}...")
         with open(path, "r") as file:
             return json.load(file)
+
+    def get_all_module_dirs(self, skip_export:bool = False) -> Generator[str, None, None]:
+        target_info = self.get_target_json_dict(skip_export=skip_export)
+        solution_dir = self.environment.engine_root if self.environment.is_source_engine else self.environment.project_root
+        for _, module in target_info["Modules"].items():
+            module_dir: str = module["Directory"]
+            if module_dir.startswith(self.environment.project_root):
+                root_relative_path = os.path.relpath(
+                    module_dir, solution_dir)
+                yield root_relative_path
+
+    def get_all_active_source_dirs(self, skip_export: bool = False) -> List[str]:
+        """Get solution relative active source directories (for Development Editor target)"""
+        all_modules = self.get_all_module_dirs(skip_export=skip_export)
+        all_sources = set()
+        for module_path in all_modules:
+            match = re.match(r"^(?P<source>.*Source\\).*$", module_path)
+            if match:
+                all_sources.add(match.group("source"))
+
+        all_sources = list(all_sources)
+        all_sources.sort()
+        return all_sources
 
     def _get_generate_project_files_path(self) -> Tuple[str, bool]:
         """
