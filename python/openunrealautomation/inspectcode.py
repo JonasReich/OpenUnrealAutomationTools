@@ -68,31 +68,6 @@ def _generate_analysis_results(xml_report_path: str) -> StaticAnalysisResults:
     return results
 
 
-def get_all_active_sources(engine: UnrealEngine, skip_export: bool) -> List[str]:
-    """
-    Get all active source directories
-    """
-    target_info = engine.get_target_json_dict(skip_export=skip_export)
-
-    def get_all_module_folders() -> Generator[str, None, None]:
-        engine_root_prefix = str(engine.environment.engine_root) + "\\"
-        for _, module in target_info["Modules"].items():
-            module_dir: str = module["Directory"]
-            if module_dir.startswith(engine.environment.project_root):
-                root_relative_path = module_dir.removeprefix(
-                    engine_root_prefix)
-                yield root_relative_path
-
-    all_modules = get_all_module_folders()
-    all_sources = set()
-    for module_path in all_modules:
-        match = re.match(r"^(?P<plugin>.*Source\\).*$", module_path)
-        if match:
-            all_sources.add(match.group("plugin"))
-
-    all_sources = list(all_sources)
-    all_sources.sort()
-    return all_sources
 
 
 def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str):
@@ -171,7 +146,7 @@ def inspectcode_report(engine: UnrealEngine, skip_build: bool, include_paths: Li
 
     # TODO move to inspectcode and filter out results on that level?
     # If the target was not rebuilt, the module list also doesn't need to be re-exported.
-    all_sources = get_all_active_sources(engine, skip_export=skip_build)
+    all_sources = engine.get_all_active_source_dirs(skip_export=skip_build)
 
     report_include_paths = include_paths if len(
         include_paths) > 0 else all_sources

@@ -277,8 +277,8 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         for rule in sorted(category.rules):
             type_id = rule.id
             type_header = type_headers[type_id]
-            type_content = "\n".join(items_per_type[type_id])
-            num_issues_in_type = len(items_per_type[type_id])
+            type_content = "\n".join(items_per_type[type_id]) if type_id in items_per_type else ""
+            num_issues_in_type = len(items_per_type[type_id]) if type_id in items_per_type else 0
             category_content += get_section(type_id,
                                             type_header,
                                             num_issues_in_type, f"<ol>{type_content}</ol>") + "\n"
