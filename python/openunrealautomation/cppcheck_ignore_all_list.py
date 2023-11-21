@@ -18,6 +18,7 @@ all_error_ids = []
 for error in xml.findall(".//error"):
     all_error_ids.append(error.get("id"))
 
+all_error_ids.remove("preprocessorErrorDirective") # we need this one
 #all_error_ids += ["missingInclude", "unknownMacro"]
 
 out_path = os.path.join(Path(__file__).parent, "resources",
