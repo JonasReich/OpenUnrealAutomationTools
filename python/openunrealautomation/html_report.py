@@ -220,10 +220,12 @@ if __name__ == "__main__":
 
     all_logs = []
     for target, file in files:
+        if file is None:
+            continue
         parsed_log = parse_log(
             file, patterns_xml, target)
         all_logs.append((file, parsed_log))
 
     report_path = os.path.join(temp_dir, "test_report")
     generate_html_report(None, report_path + ".html", all_logs,
-                         report_path + ".json", "OUA Test Report", "", {})
+                         report_path + ".json", "OUA Test Report", "", {"CODE":"🤖 Code", "ART": "🎨 Art"})
