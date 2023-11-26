@@ -10,10 +10,13 @@ from typing import Dict, Generator, List
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import fromstring as xml_fromstring
 
-from openunrealautomation.staticanalysis_common import _generate_html_report, StaticAnalysisResults, StaticAnalysisSeverity
 from openunrealautomation.environment import UnrealEnvironment
+from openunrealautomation.staticanalysis_common import (StaticAnalysisResults,
+                                                        StaticAnalysisSeverity,
+                                                        static_analysis_html_report)
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import read_text_file, run_subprocess, which_checked
+from openunrealautomation.util import (read_text_file, run_subprocess,
+                                       which_checked, write_text_file)
 
 
 def _parse_inspectcode_severity(severity_str: str) -> StaticAnalysisSeverity:
@@ -36,8 +39,6 @@ def _generate_analysis_results(xml_report_path: str) -> StaticAnalysisResults:
         "inspectCode", "All issues from ReSharper InspectCode", None)
 
     xml_tree = xml_fromstring(read_text_file(xml_report_path))
-
-    category_titles: Dict[str, str] = {}
 
     def get_prop(xml_node: XmlNode, prop_name: str) -> str:
         return str(xml_node.get(prop_name))
@@ -68,9 +69,7 @@ def _generate_analysis_results(xml_report_path: str) -> StaticAnalysisResults:
     return results
 
 
-
-
-def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str):
+def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str, output_path: str):
     # Include / exclude paths have to be relative to the solution directory,
     # which is either the engine root or the project root itself (which means an empty path)
     sln_relative_project_path = os.path.relpath(
@@ -99,7 +98,7 @@ def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str):
                     f'--properties="Configuration=Development Editor;Platform=Win64"',
                     f'--include="{includes_str}"',
                     f'--exclude="{excludes_str}"',
-                    '-o="./resharperReport.xml"',
+                    f'-o="{output_path}"',
                     solution_file
                     ]
     exit_code = run_subprocess(command_line, print_args=True)
@@ -107,7 +106,7 @@ def _run_inspectcode(env: UnrealEnvironment, inspectcode_exe: str):
         raise Exception(f"Invalid exit code {exit_code} from InspectCode")
 
 
-def inspectcode(engine: UnrealEngine, skip_build: bool) -> StaticAnalysisResults:
+def inspectcode(engine: UnrealEngine, may_skip_build: bool) -> StaticAnalysisResults:
     """
     Runs inspectcode on all project and plugin source files.
     """
@@ -123,39 +122,40 @@ def inspectcode(engine: UnrealEngine, skip_build: bool) -> StaticAnalysisResults
 
     env = engine.environment
 
-    if not skip_build:
+    output_path = "./resharperReport.xml"
+
+    if not may_skip_build or not os.path.exists(output_path):
         # InspectCode needs solution for analysis.
         # It should already be present, but we can't be 100% sure in a CI context, so better safe than sorry.
         # engine.generate_project_files(engine_sln=True)
 
         # Run the main inspectcode exe.
         # This is most likely the most time consuming part, because it may have to rebuild the entire project and then analyze all the source files.
-        _run_inspectcode(env, inspectcode_exe)
+        _run_inspectcode(env, inspectcode_exe, output_path)
 
     analysis_results = _generate_analysis_results(f"./resharperReport.xml")
 
     return analysis_results
 
 
-def inspectcode_report(engine: UnrealEngine, skip_build: bool, include_paths: List[str] = [], exclude_paths: List[str] = []) -> None:
+def inspectcode_report(engine: UnrealEngine, may_skip_build: bool, include_paths: List[str] = [], exclude_paths: List[str] = [], embeddable=False) -> str:
     """
     Runs inspectcode and generates an HTML report filtered by actively used sources
     (active plugins + modules for the editor target).
     """
-    analysis_results = inspectcode(engine, skip_build)
 
-    # TODO move to inspectcode and filter out results on that level?
-    # If the target was not rebuilt, the module list also doesn't need to be re-exported.
-    all_sources = engine.get_all_active_source_dirs(skip_export=skip_build)
+    analysis_results = inspectcode(engine, may_skip_build)
+    return static_analysis_html_report(engine.environment,
+                                 analysis_results,
+                                 embeddable=embeddable,
+                                 include_paths=include_paths,
+                                 exclude_paths=exclude_paths)
 
-    report_include_paths = include_paths if len(
-        include_paths) > 0 else all_sources
-    report_exclude_paths = exclude_paths
-    _generate_html_report(engine.environment,
-                          analysis_results,
-                          f"./inspectCodeReport.html",
-                          include_paths=report_include_paths,
-                          exclude_paths=report_exclude_paths)
+
+def write_inspectcode_report(engine: UnrealEngine, may_skip_build: bool, include_paths: List[str] = [], exclude_paths: List[str] = []) -> None:
+    report_str = inspectcode_report(engine, may_skip_build, include_paths,
+                                    exclude_paths, embeddable=False)
+    write_text_file(f"./inspectCodeReport.html", report_str)
 
 
 if __name__ == "__main__":
@@ -176,16 +176,12 @@ if __name__ == "__main__":
     include_paths = array_arg(args.include)
     exclude_paths = array_arg(args.exclude)
 
-    # These terms are always excluded (as we assume no games project is interested in messing with
-    # RiderLink plugin source, the Lyra source code)
-    exclude_paths += ["RiderLink", "Lyra"]
-
     print("skip build:", skip_build)
     print("include:", include_paths)
     print("exclude:", exclude_paths)
 
     ue = UnrealEngine.create_from_parent_tree(os.getcwd())
-    inspectcode_report(ue,
-                       skip_build=skip_build,
-                       include_paths=include_paths,
-                       exclude_paths=exclude_paths)
+    write_inspectcode_report(ue,
+                             may_skip_build=skip_build,
+                             include_paths=include_paths,
+                             exclude_paths=exclude_paths)

@@ -2,16 +2,16 @@
 import glob
 import json
 import os
-import subprocess
 import re
+import subprocess
 from pathlib import Path
 from typing import Optional
 from xml.etree import ElementTree
 
-from openunrealautomation.util import run_subprocess
+import openunrealautomation.staticanalysis_common as ouu_sa
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
-import openunrealautomation.staticanalysis_common as ouu_sa
+from openunrealautomation.util import run_subprocess, write_text_file
 
 # TODOs
 # Semi-important:
@@ -187,7 +187,7 @@ def _run_test():
 
 
             # we already exported before
-            target_dict = ue.get_target_json_dict(skip_export=True)
+            target_dict = ue.get_target_json_dict(may_skip_export=True)
 
             include_dirs = []
             modules_dict = target_dict["Modules"]
@@ -199,7 +199,8 @@ def _run_test():
             include_dirs = list(set(include_dirs))
 
             results = run_cppcheck(test_source_files, include_dirs=include_dirs,force_includes=includes)
-            ouu_sa._generate_html_report(env, results, "./cppcheck_report.html", test_source_files)
+            html_str = ouu_sa.static_analysis_html_report(env, results, embeddable=False, include_paths=test_source_files)
+            write_text_file("./cppcheck_report.html", html_str)
 
             exit()
 

@@ -245,9 +245,6 @@ class UnrealEnvironment:
         if program == UnrealProgram.PROGRAM:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/{program_name}.exe")
 
-    def get_default_test_report_directory(self) -> str:
-        return f"{self.project_root}/Saved/Automation/Reports/TestReport-{self.creation_time_str}"
-
     def get_native_projects(self) -> List[UnrealProjectDescriptor]:
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
         projectdirs_files = glob.glob(

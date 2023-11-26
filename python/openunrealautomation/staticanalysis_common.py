@@ -2,16 +2,15 @@
 Common classes required for all static code analysis utils.
 """
 
-from enum import Enum
 import os
-from typing import Dict, Generator, List, Optional
-from xml.etree.ElementTree import Element as XmlNode
+from enum import Enum
+from typing import Dict, List, Optional
 from xml.etree.ElementTree import fromstring as xml_fromstring
 from xml.etree.ElementTree import tostring as xml_tostring
 from xml.sax.saxutils import escape as __xml_escape
 
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import read_text_file, write_text_file
+from openunrealautomation.unrealengine import UnrealEngine
 
 # TODO implement sorting for a stable results list (by category > severity > rule > file > line)
 
@@ -221,11 +220,21 @@ def _xml_escape(xml_str: str) -> str:
     return __xml_escape(xml_str).replace("\n", "<br/>")
 
 
-def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalysisResults, html_report_path: str, include_paths: List[str], exclude_paths: List[str] = []):
+def static_analysis_html_report(env: UnrealEnvironment, analysis_results: StaticAnalysisResults, embeddable: bool = False, include_paths: List[str] = [], exclude_paths: List[str] = []) -> str:
+
+    # These terms are always excluded (as we assume no games project is interested in messing with
+    # RiderLink plugin source, the Lyra source code)
+    exclude_paths += ["RiderLink", "Lyra"]
+
+    if len(include_paths) == 0:
+        # TODO never forcing export of module list may filter out too much. But hey... this is a first version after all.
+        include_paths = UnrealEngine(env).get_all_active_source_dirs(
+            may_skip_export=True)
+
     def _is_included(path) -> bool:
         if len(exclude_paths) > 0 and any(exclude in path for exclude in exclude_paths):
             return False
-        return len(include_paths) == 0 or any(include in path for include in include_paths)
+        return len(include_paths) == 0 or len(path) == 0 or any(include in path for include in include_paths)
 
     include_paths = [os.path.relpath(path, env.project_root)
                      for path in include_paths]
@@ -254,14 +263,15 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         type_headers[type_id] = f"<span class='type-header severity-{issue_type.severity}'>{type_description}</span>"
 
         for issue in sorted(issue_type.issues):
-            issue.file = os.path.relpath(issue.file, env.project_root)
+            issue.file = os.path.relpath(
+                issue.file, env.project_root) if len(issue.file) > 0 else ""
             issue_file_path = issue.file
             if not _is_included(issue_file_path):
                 continue
             does_overflow = issue.message.count("\n") > 3
 
             line_from_file = _read_single_line_from_file(
-                issue_file_path, issue.line)
+                issue_file_path, issue.line) if os.path.exists(issue_file_path) else ""
 
             add_item(
                 type_id, f"<li><code class='src-path'>{_xml_escape(issue_file_path)}:{issue.line}</code><br/><code style='background-color:#15181c;'>{_xml_escape(line_from_file)}</code><span class=\"{'overflow-hider' if does_overflow else ''}\">{_xml_escape(issue.message)}</span>{get_overflow_button(does_overflow)}</li>")
@@ -277,8 +287,10 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         for rule in sorted(category.rules):
             type_id = rule.id
             type_header = type_headers[type_id]
-            type_content = "\n".join(items_per_type[type_id]) if type_id in items_per_type else ""
-            num_issues_in_type = len(items_per_type[type_id]) if type_id in items_per_type else 0
+            type_content = "\n".join(
+                items_per_type[type_id]) if type_id in items_per_type else ""
+            num_issues_in_type = len(
+                items_per_type[type_id]) if type_id in items_per_type else 0
             category_content += get_section(type_id,
                                             type_header,
                                             num_issues_in_type, f"<ol>{type_content}</ol>") + "\n"
@@ -297,7 +309,7 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         issue_list_str += get_catgeory_report_str(root_category)
 
     issue_tree_str = get_section(
-        "issues-root", "Total issues", analysis_results.get_num_issues_recursive(), issue_list_str, default_open=True)
+        "staticanalysis-issues-root", "Total issues", analysis_results.get_num_issues_recursive(), issue_list_str, default_open=True)
 
     style = """
     code { color: var(--bs-gray-500); }
@@ -391,14 +403,14 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
             $(this).addClass('clipboard-notify').delay('2000').queue(function(){$(this).removeClass('clipboard-notify').dequeue(); });
             navigator.clipboard.writeText($(this).text());
         });
-         $('#search-input').on('keypress', function (e) {
+         $('#staticanalysis-search-input').on('keypress', function (e) {
             if(e.which === 13){
-                search($(this).val());
+                staticanalysis_search($(this).val());
             }
         });
     });
 
-    function search(search_term) {
+    function staticanalysis_search(search_term) {
         $("code.src-path").each(function(){
             let bullet = $(this).closest("li");
             if (search_term == "") {
@@ -415,7 +427,7 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
             $(this).text(num_active_bullets);
             $(container).toggle(num_active_bullets > 0);
         });
-        $("#issues-root").show();
+        $("#staticanalysis-issues-root").show();
     }
     """
 
@@ -442,7 +454,7 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
     </head>
     <body class="bg-dark text-light">
     <div class="p-3">
-    <h1>{title}</h1>
+    <h5>{title}</h5>
 
     <span>Report for Unreal Project {env.project_name}</span><br/>
     <div style="border: var(--bs-gray-700) solid 1px; border-radius: 0.5em; padding: 0.5em; margin: 0.5em;">
@@ -453,7 +465,7 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         {exclude_paths_html}
     </div>
     <br/>
-    <input type="text" class="form-control bg-dark-subtle" id="search-input" aria-describedby="search-help" placeholder="Search..." style="max-width:500px;">
+    <input type="text" class="form-control bg-dark-subtle" id="staticanalysis-search-input" aria-describedby="search-help" placeholder="Search..." style="max-width:500px;">
     <small id="search-help" class="form-text text-muted">Search by source file.</small>
     <br/>
     {issue_tree_str}
@@ -470,7 +482,7 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
 
     prettify = False
     if not prettify:
-        write_text_file(html_report_path, html_str)
+        return html_str
     else:
         def _prettyfy_xml(current, parent=None, index=-1, depth=0):
             for i, node in enumerate(current):
@@ -488,4 +500,4 @@ def _generate_html_report(env: UnrealEnvironment, analysis_results: StaticAnalys
         _prettyfy_xml(xml_data)
         html_str_tidy = bytes.decode(
             xml_tostring(xml_data, method="html"), "utf-8")
-        write_text_file(html_report_path, html_str_tidy)
+        return html_str_tidy

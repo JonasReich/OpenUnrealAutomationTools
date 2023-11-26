@@ -11,10 +11,12 @@ from typing import Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
+from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
+                                       UnrealBuildTarget, UnrealProgram)
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import args_str, run_subprocess, walk_level, which_checked
+from openunrealautomation.util import (args_str, run_subprocess, walk_level,
+                                       which_checked, write_text_file)
 
 
 class UnrealEngine:
@@ -159,73 +161,6 @@ class UnrealEngine:
                         raise_on_error=raise_on_error,
                         add_default_parameters=add_default_parameters,
                         generate_coverage_reports=generate_coverage_reports)
-
-    def run_tests(self, test_filter: Optional[str] = None,
-                  game_test_target: bool = True,
-                  arguments: "list[str]" = [],
-                  generate_report_file: bool = False,
-                  report_directory: Optional[str] = None,
-                  convert_junit: bool = True,
-                  setup_report_viewer: bool = False,
-                  generate_coverage_reports: bool = False):
-        """
-        Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
-
-        test_filter                 Optional string that specifies which test categories shall be executed. Seprated by pluses.
-        game_test_target            If true, the editor is launched in game mode (significantly faster). If false in editor mode. The test selection is updated accordingly.
-        arguments                   Additional commandline arguments to pass to UE.
-        generate_report_file        If true, a test report (json + html) is saved by UE into the project's Saved directory.
-        report_directory            Optional path to a directory to place automation reports. By defautl a generated folder in the projects Saved directory is used. 
-        convert_junit               If true, the test results json file is converted into a JUnit xml file (e.g. to report test status to Jenkins/TeamCity).
-        setup_report_viewer         If true, all bower_components required for Epic's test viewer html page are installed into the report directory. This requires bower to be installed and on PATH.
-        generate_coverage_reports   If true, the application is launched via opencppcoverage to generate code coverage reports in the project's Saved directory.
-        """
-
-        setup_report_viewer_actual = generate_report_file and setup_report_viewer
-        # Already check for requirements at the start, so there are no surprises after running tests.
-        bower_path = None
-        if setup_report_viewer_actual:
-            bower_path = which_checked("bower", "Bower (available via npm)")
-
-        if report_directory is None:
-            report_directory = self.environment.get_default_test_report_directory()
-
-        if test_filter is None:
-            optional_ouu_tests = "+OpenUnrealUtilities" if self.environment.has_open_unreal_utilities() else ""
-            test_filter = f"{self.environment.project_name}+Project.Functional{optional_ouu_tests}"
-
-        all_args = ["-game", "-gametest"] if game_test_target \
-            else ["-editor", "-editortest"]
-        all_args.append(
-            f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
-        if generate_report_file:
-            os.makedirs(report_directory, exist_ok=True)
-            all_args.append(f"-ReportExportPath={report_directory}")
-        all_args.append("-nullrhi")
-        all_args += arguments
-
-        # run
-        unreal_exit_code = self.run(UnrealProgram.EDITOR_CMD,
-                                    arguments=all_args,
-                                    map=None,
-                                    raise_on_error=True,
-                                    add_default_parameters=True,
-                                    generate_coverage_reports=generate_coverage_reports)
-
-        if generate_report_file and convert_junit:
-            json_path = os.path.join(report_directory, "index.json")
-            junit_path = os.path.join(report_directory, "JUnitTestResults.xml")
-            self._convert_test_results_to_junit(
-                json_path=json_path, junit_path=junit_path)
-
-        if setup_report_viewer_actual and bower_path is not None:
-            bower_json = os.path.join(
-                self.environment.engine_root, "Engine/Content/Automation/bower.json")
-            # Install bower components to report directory
-            run_subprocess([bower_path, "install", bower_json],
-                           cwd=report_directory)
-
-        return unreal_exit_code
 
     def run_buildgraph(self,
                        script: str,
@@ -376,7 +311,7 @@ class UnrealEngine:
     def update_local_version(self) -> int:
         return self.run(UnrealProgram.UAT, ["UpdateLocalVersion", "-P4", "-Licensee", "-Promoted=0"])
 
-    def target_json_export(self, skip_export: bool = False) -> str:
+    def target_json_export(self, may_skip_export: bool = False) -> str:
         """Generate json with info about modules in current target (for Development Editor target)"""
         all_arguments = self._get_ubt_arguments(
             target=UnrealBuildTarget.EDITOR,
@@ -385,21 +320,23 @@ class UnrealEngine:
             program_name="")
         all_arguments += ["-mode=jsonexport"]
 
-        if not skip_export:
-            self.run(UnrealProgram.UBT, arguments=all_arguments)
-
         json_filename = f"{self._get_target_name(target=UnrealBuildTarget.EDITOR)}.json"
-        return os.path.abspath(os.path.join(self.environment.project_root, "Binaries/Win64", json_filename))
+        json_filepath = os.path.abspath(os.path.join(
+            self.environment.project_root, "Binaries/Win64", json_filename))
+        if not may_skip_export or not os.path.exists(json_filepath):
+            self.run(UnrealProgram.UBT, arguments=all_arguments)
+        return json_filepath
 
-    def get_target_json_dict(self, skip_export: bool = False) -> dict:
+    def get_target_json_dict(self, may_skip_export: bool = False) -> dict:
         """Get dictionary with info about modules in current target (for Development Editor target)"""
-        path = self.target_json_export(skip_export=skip_export)
+        path = self.target_json_export(may_skip_export=may_skip_export)
         print(f"Reading target information from {path}...")
         with open(path, "r") as file:
             return json.load(file)
 
-    def get_all_module_dirs(self, skip_export:bool = False) -> Generator[str, None, None]:
-        target_info = self.get_target_json_dict(skip_export=skip_export)
+    def get_all_module_dirs(self, may_skip_export: bool = False) -> Generator[str, None, None]:
+        target_info = self.get_target_json_dict(
+            may_skip_export=may_skip_export)
         solution_dir = self.environment.engine_root if self.environment.is_source_engine else self.environment.project_root
         for _, module in target_info["Modules"].items():
             module_dir: str = module["Directory"]
@@ -408,9 +345,9 @@ class UnrealEngine:
                     module_dir, solution_dir)
                 yield root_relative_path
 
-    def get_all_active_source_dirs(self, skip_export: bool = False) -> List[str]:
+    def get_all_active_source_dirs(self, may_skip_export: bool = False) -> List[str]:
         """Get solution relative active source directories (for Development Editor target)"""
-        all_modules = self.get_all_module_dirs(skip_export=skip_export)
+        all_modules = self.get_all_module_dirs(may_skip_export=may_skip_export)
         all_sources = set()
         for module_path in all_modules:
             match = re.match(r"^(?P<source>.*Source\\).*$", module_path)
@@ -517,62 +454,6 @@ class UnrealEngine:
         # Always last argument before UE program commandline
         result_args += ["--"]
         return result_args
-
-    def _convert_test_results_to_junit(self, json_path: str, junit_path: str) -> None:
-        print(f"Converting {json_path} to {junit_path}...")
-        with open(json_path, "r", encoding="utf-8-sig") as json_file:
-            json_results = json.loads(json_file.read())
-
-            test_platform = json_results['devices'][0]['platform']
-            report_created_on = json_results['reportCreatedOn']
-            testsuite_id = f"UnrealTest {test_platform} @ {report_created_on}"
-            num_failures = str(json_results["failed"])
-            num_tests = str(int(json_results["succeeded"]) + int(num_failures))
-            testsuite_time = str(json_results["totalDuration"])
-
-            testsuite_node = XmlNode("testsuite")
-            testsuite_node.set("id", testsuite_id)
-            testsuite_node.set("tests", num_tests)
-            testsuite_node.set("failures", num_failures)
-            testsuite_node.set("time", testsuite_time)
-
-            for test in json_results["tests"]:
-                test_node = XmlNode("testcase")
-                test_node.set("name", test["testDisplayName"])
-                test_node.set("classname", test["fullTestPath"])
-                test_node.set("status", test["state"])
-                test_node.set("time", str(test["duration"]))
-
-                for entry in test["entries"]:
-                    if entry["event"]["type"] == "Info":
-                        continue
-
-                    event_node = XmlNode("failure")
-                    event_node.set("message", entry["event"]["message"])
-                    event_type = entry["event"]["type"]
-                    event_node.set("type", event_type)
-                    event_node.text = event_type
-                    event_node.text += "\n" + entry["event"]["message"]
-                    event_node.text += "\n" + entry["filename"]
-                    event_node.text += "\n" + str(entry["lineNumber"])
-
-                testsuite_node.append(test_node)
-
-            # Use the same data as from the first testsuite
-            root_node = XmlNode("testsuites")
-            root_node.set("id", testsuite_id)
-            root_node.set("tests", num_tests)
-            root_node.set("failures", num_failures)
-            root_node.set("time", testsuite_time)
-            root_node.append(testsuite_node)
-
-            xml_tree = XmlTree(root_node)
-            xml_tree.write(junit_path, encoding="utf-8", xml_declaration=True)
-
-            # Always report tets back to TeamCity.
-            # This is not necessarily required, but should never hurt.
-            # See https://www.jetbrains.com/help/teamcity/service-messages.html#Importing+XML+Reports
-            print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
 if __name__ == "__main__":

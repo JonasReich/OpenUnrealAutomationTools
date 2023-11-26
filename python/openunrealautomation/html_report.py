@@ -12,9 +12,14 @@ from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
 
+from openunrealautomation.inspectcode import inspectcode
 from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
                                            _main_get_files, parse_log)
+from openunrealautomation.staticanalysis_common import (
+    StaticAnalysisResults, static_analysis_html_report)
+from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import read_text_file, write_text_file
+from openunrealautomation.automationtest import test_report
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -28,6 +33,7 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
 
 
 def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstance, source_file: str, source_file_count: int, source_file_display: str, log_file_str: str, include_all_lines: bool) -> str:
+    """HTML code for the sources with roots for issues of each file."""
     log_file_lines = log_file_str.splitlines()
     log_file_line_count = len(log_file_lines)
     html_lines = []
@@ -169,6 +175,7 @@ def generate_html_report(
     html_report_path: str,
     # Source path and parsed log file
     log_files: List[Tuple[str, UnrealLogFilePatternScopeInstance]],
+    embedded_reports : List[str],
     out_json_path: str,
     report_title: str,
     background_image_uri: str,
@@ -204,6 +211,10 @@ def generate_html_report(
 
     json_str = _parsed_log_dict_to_json(parsed_log_dicts, out_json_path)
 
+    embedded_reports_str = ""
+    for embedded_report in embedded_reports:
+        embedded_reports_str += f"""<div class="col-12 box-ouu p-0">{embedded_report}</div>"""
+
     if html_report_template_path is None:
         # The default report isn't even a single template, but a set of files that are combined to a template.
         # This could potentially be replaced with some static site builder, but most of them do not support building
@@ -222,16 +233,19 @@ def generate_html_report(
 
     output_html = html_template.\
         replace("INLINE_JSON", json_str).\
-        replace("INLINE_SOURCE_LOG", inline_source_log).\
+        replace("ISSUES_AND_SOURCES", inline_source_log).\
         replace("REPORT_TITLE", report_title).\
         replace("INLINE_JAVASCRIPT", injected_javascript).\
         replace("BACKGROUND_IMAGE_URI", background_image_uri).\
-        replace("FILTER_TAGS_AND_LABELS", str(filter_tags_and_labels))
+        replace("FILTER_TAGS_AND_LABELS", str(filter_tags_and_labels)).\
+        replace("EMBEDDED_REPORTS", embedded_reports_str)
 
     write_text_file(html_report_path, output_html)
 
 
 if __name__ == "__main__":
+    ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+
     files = _main_get_files()
 
     temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
@@ -249,5 +263,13 @@ if __name__ == "__main__":
         all_logs.append((file, parsed_log))
 
     report_path = os.path.join(temp_dir, "test_report")
-    generate_html_report(None, report_path + ".html", all_logs,
+
+    static_analysis_results = inspectcode(ue, may_skip_build=True)
+    static_analysis_report = static_analysis_html_report(ue.environment,
+                                 static_analysis_results,
+                                 embeddable=True)
+
+    test_report_html = test_report(ue, True)
+
+    generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report], 
                          report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})
