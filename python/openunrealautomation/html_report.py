@@ -27,18 +27,37 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
     return json_str
 
 
-def _generate_html_inline_source_log(source_file: str, source_file_count: int, source_file_display: str, log_file_str: str) -> str:
+def _generate_html_inline_source_log(parsed_log :UnrealLogFilePatternScopeInstance, source_file: str, source_file_count: int, source_file_display: str, log_file_str: str) -> str:
     log_file_lines = log_file_str.splitlines()
     log_file_line_count = len(log_file_lines)
     html_lines = []
+
+    include_all_lines = False
+
+    # Number of lines beofre and after match...
+    relevant_line_context_pad = 5
+    all_relevant_lines = set()
+    for line in parsed_log.all_matching_lines():
+        for i in range(line.line_nr - relevant_line_context_pad, line.line_nr + 1 + relevant_line_context_pad):
+            all_relevant_lines.add(i)
+
+
     with alive_bar(log_file_line_count, title="_generate_html_inline_source_log") as update_progress_bar:
+        last_line_was_relevant = True
         for line_number, line in enumerate(log_file_lines, 1):
             update_progress_bar()
 
-            padded_line_number = str(line_number).rjust(
-                len(str(log_file_line_count)), "0")
-            html_lines.append(
-                f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
+            if include_all_lines or line_number in all_relevant_lines:
+                padded_line_number = str(line_number).rjust(
+                    len(str(log_file_line_count)), "0")
+                html_lines.append(
+                    f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
+                last_line_was_relevant = True
+            else:
+                if last_line_was_relevant:
+                    html_lines.append("...<br/>\n")
+                last_line_was_relevant = False
+
 
     log_file_str_html = "".join(html_lines)
 
@@ -177,7 +196,7 @@ def generate_html_report(
             source_file_id = source_file_id.replace(prohibited_char, "_")
         parsed_log_dict["source_file"] = source_file_id
         parsed_log_dicts[source_file_id] = parsed_log_dict
-        inline_source_log += _generate_html_inline_source_log(
+        inline_source_log += _generate_html_inline_source_log(parsed_log,
             source_file_id, source_file_count, source_file_name, log_file_str)
 
     json_str = _parsed_log_dict_to_json(parsed_log_dicts, out_json_path)
