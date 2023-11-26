@@ -102,7 +102,7 @@ class UnrealLogFileLineMatch:
         self.line_nr = line_nr
         self.string_vars = string_vars
         self.numeric_vars = numeric_vars
-        self.occurences = 1
+        self.occurences = 0
         self.tags = set()
 
     def __str__(self) -> str:

@@ -59,6 +59,7 @@
         <Patterns Name="UAT Warnings" Severity="Warning">
             <Include Style="Regex">WARNING: </Include>
         </Patterns>
+        <Link Template="ExitCodes" />
     </Target>
 
 

@@ -27,12 +27,10 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
     return json_str
 
 
-def _generate_html_inline_source_log(parsed_log :UnrealLogFilePatternScopeInstance, source_file: str, source_file_count: int, source_file_display: str, log_file_str: str) -> str:
+def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstance, source_file: str, source_file_count: int, source_file_display: str, log_file_str: str, include_all_lines: bool) -> str:
     log_file_lines = log_file_str.splitlines()
     log_file_line_count = len(log_file_lines)
     html_lines = []
-
-    include_all_lines = False
 
     # Number of lines beofre and after match...
     relevant_line_context_pad = 5
@@ -40,7 +38,6 @@ def _generate_html_inline_source_log(parsed_log :UnrealLogFilePatternScopeInstan
     for line in parsed_log.all_matching_lines():
         for i in range(line.line_nr - relevant_line_context_pad, line.line_nr + 1 + relevant_line_context_pad):
             all_relevant_lines.add(i)
-
 
     with alive_bar(log_file_line_count, title="_generate_html_inline_source_log") as update_progress_bar:
         last_line_was_relevant = True
@@ -58,11 +55,11 @@ def _generate_html_inline_source_log(parsed_log :UnrealLogFilePatternScopeInstan
                     html_lines.append("...<br/>\n")
                 last_line_was_relevant = False
 
-
     log_file_str_html = "".join(html_lines)
 
     return f'<div class="col-12 box-ouu">'\
         f'<h5>Source File #{source_file_count}: {source_file_display}</h5>\n'\
+        f'<div id="{source_file}_code-summary" class="code-summary"></div>'\
         f'<div id="source-log" class="text-nowrap p-3 code-container">\n{log_file_str_html}\n</div>'\
         '</div>'
 
@@ -181,12 +178,12 @@ def generate_html_report(
     parsed_log_dicts = {}
 
     injected_javascript = ""
-    inline_source_log = ""
 
+    inline_source_log = ""
     for source_file_count, (log_file_path, parsed_log) in zip(range(1, len(log_files) + 1), log_files):
         log_file_str = read_text_file(log_file_path)
         injected_javascript += _generate_hierarchical_cook_timing_stat_html(Path(log_file_path).name,
-            log_file_str)
+                                                                            log_file_str)
         parsed_log_dict = parsed_log.json()
         source_file_name = Path(log_file_path).name
 
@@ -195,9 +192,15 @@ def generate_html_report(
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
         parsed_log_dict["source_file"] = source_file_id
+        parsed_log_dict["source_file_name"] = source_file_name
         parsed_log_dicts[source_file_id] = parsed_log_dict
+
         inline_source_log += _generate_html_inline_source_log(parsed_log,
-            source_file_id, source_file_count, source_file_name, log_file_str)
+                                                              source_file_id,
+                                                              source_file_count,
+                                                              source_file_name,
+                                                              log_file_str,
+                                                              include_all_lines=False)
 
     json_str = _parsed_log_dict_to_json(parsed_log_dicts, out_json_path)
 
@@ -247,4 +250,4 @@ if __name__ == "__main__":
 
     report_path = os.path.join(temp_dir, "test_report")
     generate_html_report(None, report_path + ".html", all_logs,
-                         report_path + ".json", "OUA Test Report", "", {"CODE":"🤖 Code", "ART": "🎨 Art"})
+                         report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})
