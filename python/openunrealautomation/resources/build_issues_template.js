@@ -123,7 +123,9 @@ function addLineDiv(line_obj, source_file, line_name = "") {
     for (tag_idx in line_obj.tags) {
         let tag = line_obj.tags[tag_idx];
         increment_tag_count(tag);
-        new_code_line.find(".code-tag").prepend(createTagButton(tag, false));
+        // Tags are usually added per category so we shouldn't need buttons per line.
+        // Only current exception: Department tags of last detected dev 
+        //new_code_line.find(".code-tag").prepend(createTagButton(tag, false));
     }
 
     let line_string_vars = line_obj.strings;
@@ -189,8 +191,10 @@ function addIssueScope(source_file, scope, ref_node) {
 
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
-for (const [source_file, scope] of Object.entries(json_obj)) {
-    addIssueScope(source_file, scope, $("#code-root")[0]);
+for (const [source_file, root_scope] of Object.entries(json_obj)) {
+    let code_root =  $(`#${source_file}_code-summary`)[0];
+    addIssueScope(source_file, root_scope, code_root);
+    $(code_root).children(".scope-container").addClass("my-3");
 }
 
 function updateScopeCounters() {
@@ -210,6 +214,7 @@ function updateScopeCounters() {
         summary = $(this).find("summary");
         json_data = $(this).data("json");
 
+        /*
         let tag_label_str = "";
         let first_label = true;
         for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
@@ -219,9 +224,15 @@ function updateScopeCounters() {
             first_label = false;
             tag_label_str += getTagLabel(tag);
         }
+        */
 
-        summary.text(json_data.name + ` (${num_active_children}/${num_children})`);
+        summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
         $(this).toggle(num_active_children > 0);
+
+        for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
+            let tag = json_data.tags[tag_idx];
+            $(summary).append(createTagButton(tag, false));
+        }
     })
 }
 updateScopeCounters();
@@ -230,14 +241,14 @@ function resetFilter() {
     filter.tags.clear();
     filter.strings.clear();
 
-    $("#code-root code").show();
+    $(".code-summary code").show();
     // Reset all filter buttons
     $(".filter-btn").toggleClass("btn-primary", false);
     $(".filter-btn").toggleClass("btn-secondary", true);
 }
 
 function applyFilter() {
-    $("#code-root code").each(function () {
+    $(".code-summary code").each(function () {
         let tags = $(this).data("json")["tags"];
         let has_all_tags = true;
         for (const filter_tag of filter.tags.keys()) {
@@ -274,8 +285,6 @@ $(show_all_button).click(function () {
 })
 $("#filter-btns").append(show_all_button);
 
-$("#filter-btns").append($("<div class='m-2'/>"));
-
 function filterTags(tag) {
     let filter_now = filter.tags.has(tag) == false;
     if (filter_now) {
@@ -287,6 +296,8 @@ function filterTags(tag) {
     $("#show-all-btn").toggleClass("btn-primary", false);
     $("#show-all-btn").toggleClass("btn-secondary", true);
 
+    applyFilter();
+
     $(".tag-btn").each(function () {
         let btn_tag = $(this).data("tag");
         if (btn_tag == tag) {
@@ -294,7 +305,6 @@ function filterTags(tag) {
             $(this).toggleClass("btn-secondary", !filter_now);
         }
     });
-    applyFilter();
 }
 
 function createTagButton(tag, add_count) {
@@ -366,9 +376,13 @@ addFilterButtonForStringVar("Developer", all_devs);
 //---------------------------
 // STATS
 
+function getStatsRoot() {
+    return $("#stats-chart-root")[0];
+}
+
 // Craete a chart canvas context
 function createChartContext() {
-    let canvasRoot = $("#stats-chart-root")[0];
+    let canvasRoot = getStatsRoot();
     var canvasTemplate = '<canvas id="stats-chart" class="p-2 m-3 bg-dark"></canvas>';
     let canvas = $(canvasTemplate).appendTo(canvasRoot)[0];
     $(canvas).css("display", "inline-block");
@@ -398,7 +412,7 @@ function createIssuesPerTagChart() {
         let warning_count_total = 0;
         let severe_warning_count_total = 0;
         let message_count_total = 0;
-        count = $("#code-root code").each(function () {
+        count = $(".code-summary code").each(function () {
             if ($(this).data("json").tags.includes(tag) == false) {
                 return;
             }
@@ -465,15 +479,15 @@ const ChartPreset = {
 // stats are the individual numerics -> 1 data set per stat
 // lables are display names for the data sets
 function createNumericsChart(preset, chart_title, item_key_variable, stats, labels) {
-    let datamap = new Map();
     let datasets = [];
     let item_labels = [];
+    let has_min_1_datapoint = false;
 
     for (let i = 0; i < stats.length; i++) {
         const stat = stats[i];
         let data = [];
         let code_idx = 0;
-        $("#code-root code").each(function (index, element) {
+        $(".code-summary code").each(function (index, element) {
             const json = $(this).data("json");
             let datapoint_key = json.strings[item_key_variable];
             if (datapoint_key === undefined) {
@@ -485,6 +499,7 @@ function createNumericsChart(preset, chart_title, item_key_variable, stats, labe
             item_labels[code_idx] = datapoint_key;
             data.push(data_point);
             code_idx++;
+            has_min_1_datapoint = true;
         })
         const color = preset == ChartPreset.PIE ? chart_colors : chart_colors[i];
         const label = labels[i];
@@ -496,6 +511,11 @@ function createNumericsChart(preset, chart_title, item_key_variable, stats, labe
             borderColor: color,
             //borderWidth: 1
         });
+    }
+
+    if (has_min_1_datapoint == false) {
+        $(getStatsRoot()).append(`<div><i>No datapoints for '${chart_title}' chart</i></div>`);
+        return;
     }
 
     let type = "bar";

@@ -9,7 +9,7 @@ import pathlib
 import platform
 import winreg
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
@@ -155,6 +155,10 @@ class UnrealEnvironment:
     def create_from_parent_tree(folder: str) -> 'UnrealEnvironment':
         """Recursively search through parents in the directory tree until either a project or engine root is found (project root is preferred)"""
 
+        # Resolve the folder so inconsistent drive letter casing is corrected.
+        # Casing is sometimes wrong in __file__ which we often use with this function.
+        folder = str(pathlib.Path(folder).resolve())
+
         def try_create(dir: str) -> Optional['UnrealEnvironment']:
             # Any folder with a uproject file can be reasonably considered an Unreal project directory
             if UnrealEnvironment.is_project_root(dir):
@@ -240,9 +244,6 @@ class UnrealEnvironment:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/UnrealEditor-Cmd.exe")
         if program == UnrealProgram.PROGRAM:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/{program_name}.exe")
-
-    def get_default_test_report_directory(self) -> str:
-        return f"{self.project_root}/Saved/Automation/Reports/TestReport-{self.creation_time_str}"
 
     def get_native_projects(self) -> List[UnrealProjectDescriptor]:
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
@@ -387,6 +388,23 @@ class UnrealEnvironment:
                 except OUAException as e:
                     pass
         return None
+
+    @staticmethod
+    def find_source_dir_for_file(search_path:str) -> Tuple[str, str]:
+        """
+        Find the encompassing Source/ directory for a source file - and the name of the corresponding module (folder).
+        Works for .cpp, .h and .cs files - anything that is inside Source/.
+        """
+        search_path = os.path.abspath(search_path)
+        module_name = ""
+        for _ in range(20):  # max 30 iterations
+            if search_path.endswith("\\Private") or search_path.endswith("\\Public"):
+                module_name = pathlib.Path(search_path).parent.name
+            break_now = search_path.endswith("\\Source")
+            if break_now:
+                break
+            search_path = os.path.abspath(pathlib.Path(search_path).parent)
+        return search_path, module_name
 
     def _set_project(self, project_file: Optional[UnrealProjectDescriptor], auto_detect: bool) -> None:
         self.project_file = project_file

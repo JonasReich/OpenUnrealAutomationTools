@@ -66,9 +66,9 @@ class UnrealBuildStepStatus(Enum):
     """
     Status of a single build step
     """
-    SUCCESS = 0, "?", "success"
-    FAILURE = 1, "?", "failure"
-    UNKNOWN = 2, "?", "unknown"
+    SUCCESS = 0, "✅", "success"
+    FAILURE = 1, "❌", "failure"
+    UNKNOWN = 2, "❓", "unknown"
 
     def __str__(self) -> str:
         return self.long_str()
@@ -102,7 +102,7 @@ class UnrealLogFileLineMatch:
         self.line_nr = line_nr
         self.string_vars = string_vars
         self.numeric_vars = numeric_vars
-        self.occurences = 1
+        self.occurences = 0
         self.tags = set()
 
     def __str__(self) -> str:
@@ -414,7 +414,7 @@ class UnrealLogFilePatternScopeDeclaration:
     There is only ever one topmost root scope.
     """
     scope_name: str
-    scope_display_name_var: str
+    scope_display_name_var: Optional[str]
     parent_target_name: Optional[str]
     root_scope: 'UnrealLogFilePatternScopeDeclaration'
     parent_scope: Optional['UnrealLogFilePatternScopeDeclaration']
@@ -427,7 +427,7 @@ class UnrealLogFilePatternScopeDeclaration:
 
     def __init__(self,
                  scope_name: str,
-                 scope_display_name_var: str,
+                 scope_display_name_var: Optional[str],
                  parent_target_name: Optional[str],
                  require_all_lines_match: bool,
                  parent_scope: Optional['UnrealLogFilePatternScopeDeclaration']) -> None:
@@ -489,7 +489,7 @@ class UnrealLogFilePatternScopeDeclaration:
         """
         result_scope = UnrealLogFilePatternScopeDeclaration(
             str(xml_node.get("Name")),
-            str(xml_node.get("DisplayNameVariable")),
+            xml_node.get("DisplayNameVariable"),
             parent_target_name,
             bool(xml_node.get("RequireAllLinesMatch")),
             parent_scope=parent_scope)

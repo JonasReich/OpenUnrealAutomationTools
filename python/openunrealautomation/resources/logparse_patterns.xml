@@ -17,6 +17,10 @@
     </Template>
 
     <Target Name="Unreal">
+        <Patterns Name="Exit Status" Severity="Message">
+            <Include SuccessFlags="auto">LogExit: Exiting.</Include>
+        </Patterns>
+
         <Patterns Name="Load Errors + Warnings" Tags="Code" Severity="Error">
             <Include Style="Literal">LogLinker: Warning: Unable to load</Include>
             <Include Style="Regex">Failed to load '.*': Can't find file</Include>
@@ -55,6 +59,7 @@
         <Patterns Name="UAT Warnings" Severity="Warning">
             <Include Style="Regex">WARNING: </Include>
         </Patterns>
+        <Link Template="ExitCodes" />
     </Target>
 
 
