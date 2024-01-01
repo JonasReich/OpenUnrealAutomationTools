@@ -13,7 +13,6 @@ from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
 from alive_progress import alive_bar
-
 from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
@@ -321,7 +320,7 @@ class UnrealLogFilePatternList_MatchList:
             "severity": self.source_list.severity.json(),
             "tags": list(self.source_list.tags),
             "lines": lines_json_objs,
-            "hidden" : self.source_list.hidden
+            "hidden": self.source_list.hidden
         }
 
     def _check_and_add(self, line: str, line_number: int) -> bool:
@@ -761,15 +760,18 @@ class UnrealLogFilePatternScopeInstance:
             for match_list in scope.pattern_match_lists:
                 yield match_list
 
-    def all_matching_lines(self) -> Iterator[UnrealLogFileLineMatch]:
+    def all_matching_lines(self, include_hidden=True) -> Iterator[UnrealLogFileLineMatch]:
         """Iterate all matching lines inside all lists inside all child scopes"""
         if self.start_line_match is not None:
-            yield self.start_line_match
+            if include_hidden or (self.start_line_match.owning_pattern and self.start_line_match.owning_pattern.owning_list and not self.start_line_match.owning_pattern.owning_list.hidden):
+                yield self.start_line_match
         if self.end_line_match is not None:
-            yield self.end_line_match
+            if include_hidden or (self.end_line_match.owning_pattern and self.end_line_match.owning_pattern.owning_list and not self.end_line_match.owning_pattern.owning_list.hidden):
+                yield self.end_line_match
         for list in self.all_match_lists():
-            for line in list.matching_lines:
-                yield line
+            if include_hidden or not list.source_list.hidden:
+                for line in list.matching_lines:
+                    yield line
 
     def get_string_variable(self, variable_name: str) -> Optional[str]:
         """
@@ -848,7 +850,8 @@ def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternSco
     for target in root_node.findall("./Target"):
         if target.get("Name") == target_name:
             return UnrealLogFilePatternScopeDeclaration._from_xml_node(target, root_node, parent_scope=None, parent_target_name=target_name)
-    raise OUAException(f"No definition for log file target {target_name}")
+    raise OUAException(
+        f"No definition for log file target '{target_name}' in patterns from {xml_path}")
 
 
 class LogScopeChange(Enum):

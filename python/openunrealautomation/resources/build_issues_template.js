@@ -48,6 +48,9 @@ function getTagLabel(tag) {
 
 function goToSource(source_file, line) {
     let new_goto_line = `#source-log-${source_file}-${line}`;
+    // show / expand source container
+    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").hide();
+
     let last_goto_line = last_goto_lines.has(source_file) ? last_goto_lines.get(source_file) : null;
     if (last_goto_line === null) {
         // do nothing
@@ -61,6 +64,10 @@ function goToSource(source_file, line) {
     last_goto_lines.set(source_file, new_goto_line);
 }
 
+function expandSourceContainer(button) {
+    $(button).next(".source-log-container").show();
+    $(button).hide();
+}
 
 
 function increment_map_counter(map, key) {
@@ -151,6 +158,7 @@ function addMatchListCodeContainer(match_list, parent) {
     match_list_row.data("json", match_list);
 
     if (match_list.hidden) {
+        match_list_row.addClass("hidden");
         match_list_row.hide();
     }
 
@@ -194,12 +202,13 @@ console.log(json_obj);
 for (const [source_file, root_scope] of Object.entries(json_obj)) {
     let code_root =  $(`#${source_file}_code-summary`)[0];
     addIssueScope(source_file, root_scope, code_root);
-    $(code_root).children(".scope-container").addClass("my-3");
+    //$(code_root).children(".scope-container").addClass("my-3");
 }
 
 function updateScopeCounters() {
     $(".issue-scope").each(function () {
         if ($(this).data("json").hidden) {
+            $(this).addClass("hidden");
             $(this).hide();
             return;
         }

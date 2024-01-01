@@ -13,8 +13,8 @@ from typing import List, Optional, Tuple
 
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
-from openunrealautomation.descriptor import (UnrealPluginDescriptor,
-                                             UnrealProjectDescriptor)
+from openunrealautomation.descriptor import UnrealPluginDescriptor, UnrealProjectDescriptor
+from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.util import walk_level, walk_parents
 from openunrealautomation.version import UnrealVersionDescriptor
 
@@ -92,6 +92,10 @@ class UnrealEnvironment:
                 auto_detect = True
         # Always do this last. It includes path validation!
         self._set_project(project_file=project_file, auto_detect=auto_detect)
+
+        # Do not initialize the P4 connection. Downstream scripts might want to customize
+        # P4 environment / sync changes, before we can use this.
+        self._p4 = None
 
     def __str__(self) -> str:
         has_project_bool = self.has_project()
@@ -293,6 +297,10 @@ class UnrealEnvironment:
     def get_project_solution(self) -> str:
         return os.path.join(self.project_root, f"{self.project_name}.sln")
 
+    def p4(self) -> UnrealPerforce:
+        if not self._p4:
+            self._p4 = UnrealPerforce()
+        return self._p4
 
     # Static utility functions
 
@@ -390,7 +398,7 @@ class UnrealEnvironment:
         return None
 
     @staticmethod
-    def find_source_dir_for_file(search_path:str) -> Tuple[str, str]:
+    def find_source_dir_for_file(search_path: str) -> Tuple[str, str]:
         """
         Find the encompassing Source/ directory for a source file - and the name of the corresponding module (folder).
         Works for .cpp, .h and .cs files - anything that is inside Source/.

@@ -74,8 +74,11 @@
 .code-container {
     overflow: scroll;
     max-height: 300px;
-    max-width: 98%;
     background-color: #1c1c1c;
+}
+
+code {
+    color: #747474;
 }
 
 .warning {
@@ -125,11 +128,42 @@ a.file-path {
 
 .box-ouu {
     position: relative;
-    padding: 1rem 1rem;
+    padding: .3rem;
     margin-bottom: 1rem;
     border: 1px solid transparent;
     border-radius: .25rem;
     background-color: #25262bba;
     color: inherit;
     border-color: #f0f8ff24;
+}
+
+.source-file-title {
+    display: inline;
+    font-size: 1em;
+    background-color: #8e8e8e8e;
+    padding-left: .2em;
+    padding-right: .2em;
+    margin-bottom: 0;
+}
+
+h5 {
+    margin-bottom: -0.5em;
+}
+
+.btn-expand-source-container {
+    margin-top: .5em;
+}
+
+/* Hide scope containers that have a single scope, no visible items and no errors. Same for the code summary button. */
+.scope-container:not(:has(.issue-scope:not(.hidden))):not(:has(.error)),
+.code-summary:not(:has(.issue-scope:not(.hidden))):not(:has(.error))+.btn-expand-source-container {
+    display: none;
+}
+
+/* Marker for one file. Could be a nicer rule if we introduce some more classes */
+.box-ouu:has(.issue-scope):not(:has(.issue-scope:not(.hidden))):not(:has(.error))>div:nth-of-type(1)::after {
+    content: "ok - no special events ✅";
+    padding-left: 1em;
+    color: #16c60c;
+    float: right;
 }

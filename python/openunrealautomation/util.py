@@ -246,7 +246,7 @@ def args_str(*args):
     return subprocess.list2cmdline(flatten_args(args))
 
 
-def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
+def run_subprocess(*popenargs, check=False, print_args=False, suppress_output:bool=False, **kwargs) -> int:
     """
     Runs a process while forwarding the output to stdout automatically.
 
@@ -265,20 +265,31 @@ def run_subprocess(*popenargs, check=False, print_args=False, **kwargs) -> int:
     if print_args:
         print(args_str(popenargs))
 
-    with subprocess.Popen(*popenargs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, **kwargs) as p:
+    stdout = subprocess.DEVNULL if suppress_output else None
+
+    # I suspect the below code is not needed anymore on TeamCity. So let's try this simple version out instead...
+    if check:
+        return subprocess.check_call(*popenargs, stdout=stdout, universal_newlines=True, **kwargs)
+    else:
+        return subprocess.call(*popenargs, stdout=stdout, universal_newlines=True, **kwargs)
+
+    stdout = subprocess.DEVNULL if suppress_output else subprocess.PIPE
+    stderr = subprocess.PIPE if suppress_output else subprocess.STDOUT
+    with subprocess.Popen(*popenargs, stdout=stdout, stderr=stderr, universal_newlines=True, **kwargs) as p:
+        output_stream = p.stderr if suppress_output else p.stdout
         try:
-            assert p.stdout is not None
+            assert output_stream is not None
             # Grab stdout line by line as it becomes available.  This will loop until
             # p terminates.
             while p.poll() is None:
                 # This blocks until it receives a newline.
-                output = p.stdout.readline()
+                output = output_stream.readline()
                 output = "\n".join(output.splitlines())
                 if output.strip() != "":
                     print(output)
             # When the subprocess terminates there might be unconsumed output
             # that still needs to be processed.
-            remaining_out = p.stdout.read()
+            remaining_out = output_stream.read()
             remaining_out = "\n".join(remaining_out.splitlines())
             if remaining_out.strip() != "":
                 print(remaining_out)

@@ -4,19 +4,18 @@ Interact with Unreal Engine executables (editor, build tools, etc).
 
 import json
 import os
+import pathlib
 import re
+import shutil
 import subprocess
 import winreg
-from typing import Generator, List, Optional, Set, Tuple
-from xml.etree.ElementTree import Element as XmlNode
+from typing import Dict, Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
-                                       UnrealBuildTarget, UnrealProgram)
+from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import (args_str, run_subprocess, walk_level,
-                                       which_checked, write_text_file)
+from openunrealautomation.util import args_str, run_subprocess, walk_level, which_checked, write_text_file
 
 
 class UnrealEngine:
@@ -58,7 +57,8 @@ class UnrealEngine:
             program_name: str = "",
             raise_on_error: bool = True,
             add_default_parameters: bool = True,
-            generate_coverage_reports: bool = False) -> int:
+            generate_coverage_reports: bool = False,
+            suppress_output: bool = False) -> int:
         """
         Run an Unreal program.
 
@@ -126,12 +126,13 @@ class UnrealEngine:
             return 0
 
         # TODO: Expose working directory?
-        exit_code = run_subprocess(all_arguments, check=raise_on_error)
+        exit_code = run_subprocess(
+            all_arguments, check=raise_on_error, suppress_output=suppress_output)
         return exit_code
 
     def run_commandlet(self,
                        commandlet_name: str,
-                       arguments: "list[str]" = [],
+                       arguments: List[str] = [],
                        map: Optional[str] = None,
                        raise_on_error: bool = True,
                        add_default_parameters: bool = True,
@@ -165,8 +166,8 @@ class UnrealEngine:
     def run_buildgraph(self,
                        script: str,
                        target: str,
-                       variables: "dict[str, str]" = {},
-                       arguments: "list[str]" = []) -> int:
+                       variables: Dict[str, str] = {},
+                       arguments: List[str] = []) -> int:
         """
         Run BuildGraph via UAT.
 
@@ -176,11 +177,91 @@ class UnrealEngine:
                         this function resolves the -set:key=value syntax.
         arguments       (optional) Additonal arguments to pass to UAT (like -buildmachine, -P4, etc.) Include the dash!
         """
+        return self._run_buildgraph_internal(script=script, target=target, variables=variables, arguments=arguments, suppress_output=False)
+
+    def run_buildgraph_nodes_distributed(self, script: str,
+                                         target: str,
+                                         variables: Dict[str, str] = {},
+                                         arguments: List[str] = [],
+                                         agent_group_name: Optional[str] = None,
+                                         allowed_agent_types=["Win64"],
+                                         shared_storage_dir: str = "",
+                                         write_to_shared_storage: bool = True,
+                                         log_output_dir: Optional[str] = None):
+        """
+        Run all nodes for a buildgraph target individually in the "single node" mode required for distributed builds.
+        Can filter and only execute some agent groups by name.
+        Assumes that it's usually run with a shared storage directory for distributed builds.
+        """
+
+        node_names = list(self.get_all_buildgraph_node_names(
+            script, target, variables, arguments, agent_group_name=agent_group_name, allowed_agent_types=allowed_agent_types))
+
+        print(
+            f"Starting sequential BuildGraph runs for the following nodes in agent group {agent_group_name}: {node_names}")
+        for node_idx, node_name in enumerate(node_names):
+            print(
+                f"Starting single build graph node '{node_name}' ({node_idx} / {len(node_names)})")
+            single_node_arguments = list(arguments)
+            single_node_arguments += [
+                f'-SingleNode={node_name}',
+                f'-SharedStorageDir={shared_storage_dir}'
+            ]
+            if write_to_shared_storage:
+                single_node_arguments.append("-WriteToSharedStorage")
+            try:
+                self._run_buildgraph_internal(
+                    script, target, variables, single_node_arguments, suppress_output=False)
+            finally:
+                # always copy the UAT log to the network location
+                if log_output_dir:
+                    os.makedirs(log_output_dir, exist_ok=True)
+                    src_log_path = os.path.join(
+                        self.environment.engine_root, "Engine/Programs/AutomationTool/Saved/Logs/Log.txt")
+                    target_log_path = os.path.join(
+                        log_output_dir, f"{node_name}.log")
+                    shutil.copy2(src_log_path, target_log_path)
+                pass
+
+    def _run_buildgraph_internal(self, script: str,
+                                 target: str,
+                                 variables: Dict[str, str],
+                                 arguments: List[str], suppress_output: bool):
         all_arguments = ["BuildGraph",
                          f"-script={script}", f"-target={target}"] + arguments
         for key, value in variables.items():
             all_arguments.append(f"-Set:{key}={value}")
-        return self.run(UnrealProgram.UAT, arguments=all_arguments)
+        return self.run(UnrealProgram.UAT, arguments=all_arguments, suppress_output=suppress_output, raise_on_error=True)
+
+    def get_all_buildgraph_node_names(self, script: str, target: str, variables: Dict[str, str], arguments: List[str] = [], agent_group_name: Optional[str] = None, allowed_agent_types=["Win64"]) -> Generator[str, None, None]:
+        """
+        Get all nodes for a target. You can filter by an agent group name or allowed agent type labels.
+        """
+        script_name = os.path.basename(script)
+        export_dir = os.path.join(
+            self.environment.project_root, "Saved/BuildGraph")
+        os.makedirs(export_dir, exist_ok=True)
+        export_file_path = os.path.join(
+            export_dir, f"{script_name}+{target}.json")
+        self._run_buildgraph_internal(script, target, variables, arguments + [
+                                      "-ListOnly", f"-Export={export_file_path}"], suppress_output=True)
+        with open(export_file_path) as export_file:
+            bg_export = json.load(export_file)
+            for agent_group in bg_export["Groups"]:
+                agent_name = agent_group["Name"]
+                if agent_group_name:
+                    if not agent_name == agent_group_name:
+                        continue
+
+                agent_types = agent_group["Agent Types"]
+                for agent_type in agent_types:
+                    if not agent_type in allowed_agent_types:
+                        raise OUAException(
+                            f"Agent Types {agent_type} is not in allowed type list")
+
+                agent_nodes = agent_group["Nodes"]
+                for node in agent_nodes:
+                    yield node["Name"]
 
     def get_buildgraph_files(self, tag: str) -> Set[str]:
         """

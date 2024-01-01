@@ -116,10 +116,11 @@ class UnrealVersionDescriptor(UnrealDescriptor):
         """
         Update the local version file (equivalent to UpdateLocalVersion UAT script).
         """
+        p4 = UnrealPerforce()
         if cl is None:
-            cl = UnrealPerforce().get_current_cl()
+            cl = p4.get_current_cl()
 
-        UnrealPerforce().sync(self.file_path, cl=cl, force=True)
+        p4.sync(self.file_path, cl=cl, force=True)
         version_json = self.read()
         version_json["Changelist"] = cl
         if compatible_cl:
@@ -134,14 +135,14 @@ class UnrealVersionDescriptor(UnrealDescriptor):
         version_json["IsPromotedBuild"] = int(promoted)
 
         if branch is None:
-            branch = UnrealPerforce().get_current_stream()
+            branch = p4.get_current_stream()
         branch = branch.replace("/", "+")
         version_json["BranchName"] = branch
 
         if build_id:
             version_json["BuildId"] = build_id
 
-        UnrealPerforce().sync(self.file_path, cl=0)
+        p4.sync(self.file_path, cl=0)
         self.write(version_json)
 
     def get_current(self) -> UnrealVersion:

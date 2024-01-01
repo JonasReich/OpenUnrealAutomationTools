@@ -11,15 +11,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-
+from openunrealautomation.automationtest import test_report
 from openunrealautomation.inspectcode import inspectcode
-from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
-                                           _main_get_files, parse_log)
-from openunrealautomation.staticanalysis_common import (
-    StaticAnalysisResults, static_analysis_html_report)
+from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
+from openunrealautomation.staticanalysis_common import StaticAnalysisResults, static_analysis_html_report
 from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import read_text_file, write_text_file
-from openunrealautomation.automationtest import test_report
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -41,7 +38,7 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
     # Number of lines beofre and after match...
     relevant_line_context_pad = 5
     all_relevant_lines = set()
-    for line in parsed_log.all_matching_lines():
+    for line in parsed_log.all_matching_lines(include_hidden=True):
         for i in range(line.line_nr - relevant_line_context_pad, line.line_nr + 1 + relevant_line_context_pad):
             all_relevant_lines.add(i)
 
@@ -63,11 +60,13 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
 
     log_file_str_html = "".join(html_lines)
 
-    return f'<div class="col-12 box-ouu">'\
-        f'<h5>Source File #{source_file_count}: {source_file_display}</h5>\n'\
+    return \
+        f'<div class="col-12 box-ouu">'\
+        f'<div>File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre></div>\n'\
         f'<div id="{source_file}_code-summary" class="code-summary"></div>'\
-        f'<div id="source-log" class="text-nowrap p-3 code-container">\n{log_file_str_html}\n</div>'\
-        '</div>'
+        f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="expandSourceContainer(this);">Show source log</button>'\
+        f'<div class="source-log-container text-nowrap p-3 code-container" style="display:none;">\n{log_file_str_html}\n</div>'\
+        f'</div>'
 
 
 def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: str) -> str:
@@ -175,7 +174,7 @@ def generate_html_report(
     html_report_path: str,
     # Source path and parsed log file
     log_files: List[Tuple[str, UnrealLogFilePatternScopeInstance]],
-    embedded_reports : List[str],
+    embedded_reports: List[str],
     out_json_path: str,
     report_title: str,
     background_image_uri: str,
@@ -195,7 +194,7 @@ def generate_html_report(
         source_file_name = Path(log_file_path).name
 
         source_file_id = source_file_name
-        prohibited_chars = ". ()@;[]#,"
+        prohibited_chars = ". ()@;[]#,="
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
         parsed_log_dict["source_file"] = source_file_id
@@ -266,10 +265,10 @@ if __name__ == "__main__":
 
     static_analysis_results = inspectcode(ue, may_skip_build=True)
     static_analysis_report = static_analysis_html_report(ue.environment,
-                                 static_analysis_results,
-                                 embeddable=True)
+                                                         static_analysis_results,
+                                                         embeddable=True)
 
     test_report_html = test_report(ue, True)
 
-    generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report], 
+    generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report],
                          report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})

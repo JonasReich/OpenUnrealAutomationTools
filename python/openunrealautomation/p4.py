@@ -46,12 +46,18 @@ class UnrealPerforce:
     def __init__(self, cwd: Optional[str] = None, check: bool = True) -> None:
         self.check = check
         self.cwd = cwd
+        self._current_cl = None
 
-    def get_current_cl(self) -> int:
+    def get_current_cl(self, force_refresh = False) -> int:
+        if self._current_cl and not force_refresh:
+            # returned cached value
+            return self._current_cl
+
         result_str = self._p4_get_output(["changes", "-m1", "//...#have"])
         result = re.match(r"Change (?P<CL>\d+) on \d+/\d+/\d+", result_str)
         if result:
-            return atoi(result["CL"])
+            self._current_cl = atoi(result["CL"])
+            return self._current_cl
         return 0
 
     def get_current_stream(self) -> str:
@@ -114,6 +120,17 @@ class UnrealPerforce:
         if match:
             return match.group("user")
         return None
+
+    def set_uat_env_vars(self) -> None:
+        current_cl = self.get_current_cl()
+        assert current_cl > 0
+
+        # Setting these variables speeds up UAT quite a lot, because it doesn't have to look up this changelist info.
+        os.environ["uebp_CL"] = str(current_cl)
+        # We don't really care about a distinction of code and content changelists with our scripts (yet).
+        # Running BuildGraph for UGS distributed binaries would need this, but regular Steam builds should not need to care,
+        # because they use the plain CL info 99% of the time.
+        os.environ["uebp_CodeCL"] = str(current_cl)
 
     def _p4(self, args):
         _args = ["p4"] + args
