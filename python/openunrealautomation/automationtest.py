@@ -14,8 +14,8 @@ from xml.etree.ElementTree import ElementTree as XmlTree
 from openunrealautomation.core import UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (run_subprocess, which_checked,
-                                       write_text_file)
+from openunrealautomation.util import (ouu_temp_file, run_subprocess,
+                                       which_checked, write_text_file)
 
 
 def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
@@ -77,7 +77,7 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
         print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
-def _convert_test_results_to_html_snippet(json_path: str) -> str:
+def automation_test_html_report(json_path: str) -> str:
     with open(json_path, "r", encoding="utf-8-sig") as json_file:
         json_results = json.loads(json_file.read())
         results = ""
@@ -196,34 +196,21 @@ def find_last_test_report(engine: UnrealEngine,
         report_directory = get_root_report_directory(engine.environment)
 
     search_path = f"{report_directory}/**/index.json"
-    found_files = glob.glob(search_path)
+    found_files = glob.glob(search_path, recursive=True)
     found_files = [os.path.normpath(file) for file in found_files]
     found_files.sort(key=os.path.getctime)
     return found_files[0] if len(found_files) > 0 else None
 
 
-def test_report(engine: UnrealEngine, may_skip_build: bool, embeddable=False) -> str:
-    # TODO execute tests
-    report_path = find_last_test_report(engine)
-    if report_path is None:
-        raise FileNotFoundError(report_path)
-
-    # TODO we probably do not want to use the static code analysis report for this but a more custom solution that is catered to automation tests.
-    # compare
-    return _convert_test_results_to_html_snippet(report_path)
-
-
-def write_test_report(engine: UnrealEngine, may_skip_build: bool) -> None:
-    report_str = test_report(engine, may_skip_build, embeddable=False)
-    write_text_file(f"./automationTestReport.html", report_str)
-
-
 if __name__ == "__main__":
     ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
 
-    write_test_report(ue, True)
-    exit()
+    json_report_path = find_last_test_report(ue)
+    if json_report_path is None:
+        run_tests(ue, generate_coverage_reports=True,
+                  generate_report_file=True, setup_report_viewer=True)
+        json_report_path = find_last_test_report(ue)
 
-    run_tests(ue, generate_coverage_reports=True,
-              generate_report_file=True, setup_report_viewer=True)
-    print("Last test report:", find_last_test_report(ue))
+    assert json_report_path
+    report_str = automation_test_html_report(json_report_path)
+    write_text_file(ouu_temp_file(f"automationTestReport.html"), report_str)

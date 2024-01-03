@@ -840,11 +840,12 @@ class UnrealLogFilePatternScopeInstance:
                         full_scope_name, UnrealBuildStepStatus.FAILURE)
 
 
-def get_log_patterns(xml_path: str, target_name: str) -> UnrealLogFilePatternScopeDeclaration:
+def get_log_patterns(xml_path: Optional[str], target_name: str) -> UnrealLogFilePatternScopeDeclaration:
     """
     Import a list of log file patterns from an xml file.
     Groups are assigned to a target that must match to the input target_name.
     """
+    xml_path = xml_path if xml_path else _get_default_patterns_xml()
     print("Importing log file pattern list from", xml_path)
     root_node = XmlTree(file=xml_path)
     for target in root_node.findall("./Target"):
@@ -860,7 +861,7 @@ class LogScopeChange(Enum):
     CLOSE = 2
 
 
-def parse_log(log_path: str, logparse_patterns_xml: str, target_name: str) -> UnrealLogFilePatternScopeInstance:
+def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: str) -> UnrealLogFilePatternScopeInstance:
     """
     Parse the log file into a dictionary.
     Each key of the dict represents a named group of patterns.
@@ -996,13 +997,16 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
     return files
 
 
+def _get_default_patterns_xml():
+    return os.path.join(
+        Path(__file__).parent, "resources/logparse_patterns.xml")
+
+
 if __name__ == "__main__":
     files = _main_get_files()
-    patterns_xml = os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml")
 
     for target, file in files:
         if file is not None:
-            print_parsed_log(file, patterns_xml, target)
+            print_parsed_log(file, _get_default_patterns_xml(), target)
         else:
             print("no file for target", target)

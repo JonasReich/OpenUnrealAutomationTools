@@ -11,11 +11,11 @@ from xml.etree import ElementTree
 import openunrealautomation.staticanalysis_common as ouu_sa
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import run_subprocess, write_text_file
+from openunrealautomation.util import (ouu_temp_file, run_subprocess,
+                                       write_text_file)
 
 # TODOs
 # Semi-important:
-# - Combine results of runs?
 # - gather UE include lists, run cppcheck per file and pass include list + generated macros
 # Nice-to-have:
 # - Allow building library file for UE source
@@ -41,10 +41,11 @@ def parse_cppcheck_serverity(severity_str: str) -> ouu_sa.StaticAnalysisSeverity
     else:
         return ouu_sa.StaticAnalysisSeverity.IGNORE
 
-def crate_analysis_results_from_cppcheck_xml(cppcheck_output_str):
+
+def create_analysis_results_from_cppcheck_xml(env, cppcheck_output_str):
     cppcheck_xml_results = ElementTree.fromstring(cppcheck_output_str)
 
-    results = ouu_sa.StaticAnalysisResults()
+    results = ouu_sa.StaticAnalysisResults(env)
     cppcheck_cat = results.find_or_add_category(
         "cppcheck", "Issues from cppcheck", None)
 
@@ -53,7 +54,7 @@ def crate_analysis_results_from_cppcheck_xml(cppcheck_output_str):
     for error_node in cppcheck_xml_results.findall(".//error"):
         error_full_id = str(error_node.get("id"))
         last_cat = cppcheck_cat
-            
+
         id_parts = error_full_id.split("-")
         if len(id_parts) > 0:
             for id_part in id_parts[0:-2]:
@@ -80,7 +81,7 @@ def crate_analysis_results_from_cppcheck_xml(cppcheck_output_str):
     return results
 
 
-def run_cppcheck(target_paths, output_path="./cppcheck.xml", addon_rules_file: Optional[str] = None, include_dirs = [], force_includes = []) -> ouu_sa.StaticAnalysisResults:
+def run_cppcheck(env, target_paths, output_path="./cppcheck.xml", addon_rules_file: Optional[str] = None, include_dirs=[], force_includes=[]) -> ouu_sa.StaticAnalysisResults:
     suppression_file = os.path.join(
         _resources_folder, "all_issues.suppress.cppcheck")
     if addon_rules_file is None:
@@ -95,17 +96,17 @@ def run_cppcheck(target_paths, output_path="./cppcheck.xml", addon_rules_file: O
         "--xml",
         "--quiet",
         # f"--output-file={output_path}",
-        #f"--suppressions-list={suppression_file}",
+        # f"--suppressions-list={suppression_file}",
         f"--addon={addon_rules_file}",
         "--enable=all",
-        #"--disable=information",
+        # "--disable=information",
         "--language=c++",
         "--platform=native",
         # explicitly suppress missing include files (this can be done, but might be a cuase of unknownMacros)
         "--suppress=missingInclude",
         # DO NOT explicitly suppress missing macro errors -> this hides why no other errors are reported
-        #"--suppress=unknownMacro",
-        #"--check-config"
+        # "--suppress=unknownMacro",
+        # "--check-config"
 
         # TEMP
         # "-DPRAGMA_DISABLE_DEPRECATION_WARNINGS",
@@ -124,9 +125,10 @@ def run_cppcheck(target_paths, output_path="./cppcheck.xml", addon_rules_file: O
     while True:
         cppcheck_output_str = bytes.decode(subprocess.run(
             args, shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout, "utf-8")
-        #print(cppcheck_output_str)
+        # print(cppcheck_output_str)
         if "unknownMacro" in cppcheck_output_str:
-            match = re.search(r"If (?P<macro>.*?) is a macro then please configure it", cppcheck_output_str)
+            match = re.search(
+                r"If (?P<macro>.*?) is a macro then please configure it", cppcheck_output_str)
             if match:
                 macro = match.group("macro")
                 print("macro " + macro)
@@ -138,22 +140,21 @@ def run_cppcheck(target_paths, output_path="./cppcheck.xml", addon_rules_file: O
             break
 
     print(cppcheck_output_str)
-    
-    return crate_analysis_results_from_cppcheck_xml(cppcheck_output_str)
+
+    return create_analysis_results_from_cppcheck_xml(env, cppcheck_output_str)
 
 
 def _run_test():
     ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
     env = ue.environment
     env.project_root
-    test_source_files = []# [os.path.join(_resources_folder, "Test.cpp")]
+    test_source_files = []  # [os.path.join(_resources_folder, "Test.cpp")]
     ouu_path = "D:\\projects\\OUU_SampleProject\\Plugins\\OUUCodingStandard\\Source\\OUUCodingStandard\\Private\\OUUCodingStandard.cpp"
     solution_dir = env.engine_root if env.is_source_engine else env.project_root
-    
-    
-    for module_path in ue.get_all_module_dirs(skip_export=True):
+
+    for module_path in ue.get_all_module_dirs(may_skip_export=True):
         # I know this name doesn't always match, but please let me keep my sanity while I try to wrestle this demon
-        module_name = Path(module_path).name 
+        module_name = Path(module_path).name
         src_path, _ = env.find_source_dir_for_file(module_path)
         intermediate_path = os.path.join(Path(src_path).parent, "Intermediate")
 
@@ -166,7 +167,7 @@ def _run_test():
 
             with open(json_path, "r") as json_file:
                 compile_info = json.load(json_file)["Data"]
-            includes:list = compile_info["Includes"]
+            includes: list = compile_info["Includes"]
             # includes.append(compile_info["PCH"])
             # includes = [str(Path(include).resolve()) if os.path.exists(include) else "" for include in includes]
             real_includes = []
@@ -178,13 +179,12 @@ def _run_test():
                     print("WARN: not file", include)
             includes = real_includes
 
-            #print(includes)
+            # print(includes)
 
             test_source_files = [compile_info["Source"]]
 
             # if os.path.exists(ouu_path):
-                # test_source_files.append(ouu_path)
-
+            # test_source_files.append(ouu_path)
 
             # we already exported before
             target_dict = ue.get_target_json_dict(may_skip_export=True)
@@ -198,11 +198,13 @@ def _run_test():
             # filter unique entries
             include_dirs = list(set(include_dirs))
 
-            results = run_cppcheck(test_source_files, include_dirs=include_dirs,force_includes=includes)
-            html_str = ouu_sa.static_analysis_html_report(env, results, embeddable=False, include_paths=test_source_files)
-            write_text_file("./cppcheck_report.html", html_str)
+            results = run_cppcheck(env,
+                                   test_source_files,
+                                   include_dirs=include_dirs,
+                                   force_includes=includes)
+            results.html_report(report_path=ouu_temp_file("cppcheck_report.html"),
+                                include_paths=test_source_files)
 
-            exit()
 
 if __name__ == "__main__":
     _run_test()
