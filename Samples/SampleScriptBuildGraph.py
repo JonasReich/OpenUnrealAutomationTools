@@ -40,26 +40,38 @@ if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--dry-run", action="store_true")
+    argparser.add_argument("--bg-shared-storage",
+                           default="F:\\BuildGraphStorage")
+    argparser.add_argument("--bg-network-share",
+                           default="F:\\BuildGraphNetworkShare")
+    argparser.add_argument("--unique-build-id", default="OUASample")
     args = argparser.parse_args()
     ue.dry_run = args.dry_run
+    bg_shared_storage = args.bg_shared_storage
+    bg_network_share = args.bg_network_share
+    unique_build_id = args.unique_build_id
 
     step_header("BuildGraph execution")
     buildgraph_script = os.path.join(
         pathlib.Path(__file__).parent, "Graph.xml")
 
-    log_dir = os.path.join(ue.environment.project_root,
-                           "Saved/Logs/OUUBuildGraphLogs")
+    log_dir = os.path.join(bg_network_share,
+                           "Builds/Logs",
+                           unique_build_id)
 
     ue.run_buildgraph_nodes_distributed(
         buildgraph_script, "Package Game Win64", {
             "ProjectDir": ue.environment.project_root,
             "ProjectName": str(ue.environment.project_name)
-        }, log_output_dir=log_dir)
+        },
+        shared_storage_dir=bg_shared_storage,
+
+        log_output_dir=log_dir)
 
     step_header("Tests + Static Analysis")
 
     report_dir = os.path.join(
-        ue.environment.project_root, "Saved/Automation/BuildGraphTest")
+        bg_network_share, "Automation/Reports", unique_build_id)
     inspectcode_xml = os.path.join(report_dir, "InspectCode.xml")
     inspectcode = InspectCode(ue.environment, inspectcode_xml, None)
     inspectcode.run(may_skip=True)
@@ -70,8 +82,7 @@ if __name__ == "__main__":
                   setup_report_viewer=False)
 
     step_header("Report generation")
-    temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
-    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(report_dir, exist_ok=True)
 
     parsed_logs = []
 
@@ -94,8 +105,8 @@ if __name__ == "__main__":
     # -----
 
     html_file = os.path.join(
-        temp_dir, "SampleBuildReport.html")
-    json_file = os.path.join(temp_dir, "SampleBuildReport.json")
+        report_dir, "SampleBuildReport.html")
+    json_file = os.path.join(report_dir, "SampleBuildReport.json")
 
     # This could be started with additional parameters for build distribution.
     # To make the script more portable we omit those params.
