@@ -9,8 +9,10 @@ The python tools don't have any dependencies to the Powershell tools.
 import argparse
 import os
 
-# For some reason this import won't work (in VSCode) if the python package is installed in developer mode?
-from openunrealautomation import *
+from openunrealautomation.automationtest import run_tests
+from openunrealautomation.core import (UnrealBuildConfiguration,
+                                       UnrealBuildTarget)
+from openunrealautomation.unrealengine import UnrealEngine
 
 step_num = 0
 
@@ -30,7 +32,7 @@ if __name__ == "__main__":
         os.path.realpath(os.path.dirname(__file__)))
 
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--dry_run", action="store_true")
+    argparser.add_argument("--dry-run", action="store_true")
     args = argparser.parse_args()
     ue.dry_run = args.dry_run
 
@@ -39,7 +41,7 @@ if __name__ == "__main__":
              build_configuration=UnrealBuildConfiguration.DEVELOPMENT)
 
     step_header("Automation Tests")
-    ue.run_tests(generate_coverage_reports=True)
+    run_tests(ue, generate_coverage_reports=True)
 
     exit()
 

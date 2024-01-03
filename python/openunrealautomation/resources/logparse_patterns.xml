@@ -90,4 +90,14 @@
         </Scope>
         <Link Template="UAT" />
     </Target>
+
+    <!-- Generic BuildGraph template -->
+    <Target Name="BuildGraph">
+        <Patterns Name="BuildGraph UAT Exit Code" Severity="Message" Hidden="true">
+            <Include SuccessFlags="auto" Style="Literal">AutomationTool exiting with ExitCode=0 (Success)</Include>
+            <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Failure</Include>
+            <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Error</Include>
+        </Patterns>
+        <Link Template="Unreal" />
+    </Target>
 </Root>
