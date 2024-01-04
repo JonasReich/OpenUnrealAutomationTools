@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
-Import-Module -Name "$ScriptDirectory/IniContent.psm1" -Force -Verbose
+Import-Module -Name "$ScriptDirectory/IniContent.psm1" -Force -Verbose:$false
 
 $UEEnvironmentVariables = @(
     "CurrentProjectName",
@@ -408,7 +408,7 @@ function Set-UEProjectVersion {
     $Version | Set-UEConfigValue -ConfigName "Game" -Key "ProjectVersion" -Section "/Script/EngineSettings.GeneralProjectSettings"
 }
 
-Export-ModuleMember -Function Open-UEProject, Get-UEProgramPath, Write-UEProjectFiles, Start-UEBuild, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
+Export-ModuleMember -Verbose:$false -Function Open-UEProject, Get-UEProgramPath, Write-UEProjectFiles, Start-UEBuild, Start-UE, Start-UETests, Start-UECommandlet, Get-UEConfig, Set-UEConfig, Set-UEConfigValue, Get-UEProjectVersion, Set-UEProjectVersion
 foreach ($VariableName in $UEEnvironmentVariables) {
-    Export-ModuleMember -Variable $VariableName
+    Export-ModuleMember  -Verbose:$false -Variable $VariableName
 }

@@ -206,4 +206,4 @@ function Set-IniValue {
     $NewFileContent | Set-Content -Path $Path
 }
 
-Export-ModuleMember -Function *
+Export-ModuleMember -Verbose:$false -Function *

@@ -29,7 +29,7 @@ $global:VerbosePreference = 'continue'
 $Host.PrivateData.VerboseForegroundColor = 'Cyan'
 
 $HasCore7Features = -not ($PSVersionTable.PSEdition -eq "Desktop" -or $PSVersionTable.PSVersion -lt "7.0.0")
-if ($HasCore7Features) {
+if (-not $HasCore7Features) {
     Write-Warning "This script requires Powershell Core 7 or later for all functionality.
     You are likely still using an old Desktop version that is shipped with Windows (e.g. Windows PowerShell 5.1).
     Please visit https://github.com/PowerShell/PowerShell for more information on PowerShell Core and how to get it."
@@ -39,10 +39,10 @@ $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
 $TimeStamp = Get-Date -Format "yyyy-MM-dd_HH-mm"
 
 $UProjectPath = ""
-Import-Module -Name "$ScriptDirectory/../OpenUnrealAutomationTools.psm1" -Verbose -Force
+Import-Module -Name "$ScriptDirectory/../powershell/OpenUnrealAutomationTools.psm1" -Force -Verbose:$false
 
 if ([string]::IsNullOrEmpty($RootFolder)) {
-    $RootFolder = Resolve-Path "$ScriptDirectory/.."
+    $RootFolder = Resolve-Path "$ScriptDirectory/../.."
     $UProjectPath = Resolve-Path "$RootFolder/*.uproject"
     while ([string]::IsNullOrEmpty($UProjectPath)) {
         
@@ -53,7 +53,8 @@ if ([string]::IsNullOrEmpty($RootFolder)) {
         }
         $RootFolder = $ParentDirectory.FullName
     }
-} else {
+}
+else {
     $RootFolder = Resolve-Path $RootFolder
     $UProjectPath = Resolve-Path "$RootFolder/*.uproject"
 }
@@ -66,7 +67,8 @@ Write-Output "Resolved uproject path as '$UProjectPath'"
 
 if ($UProjectPath -match "(?<ProjectName>[a-zA-Z0-9]+).uproject") {
     $ProjectName = $Matches["ProjectName"]
-} else {
+}
+else {
     Write-Error "Project name not found in uproject file path '$UProjectPath'"
 }
 
@@ -81,7 +83,8 @@ if ($UseBuildGraph) {
     # Buildgraph parameter names that contain colons (e.g. '-set:ProjectName') must be quoted.
     # Otherwise powershell inserts an unwanted space
     Start-UE UAT BuildGraph -script="$ScriptDirectory\Graph.xml" -target="Compile Game Editor" "-Set:ProjectName=`"$ProjectName`"" "-Set:ProjectDir=`"$RootFolder`"" "-Set:BuildConfig=Development"
-} else {
+}
+else {
     Write-Output "-------------------------------------------------"
     Write-Output "Compiling Game (UBT)"
     Write-Output "-------------------------------------------------"
@@ -90,7 +93,7 @@ if ($UseBuildGraph) {
     Write-UEProjectFiles
 
     # Compile editor binaries
-    $EditorTarget = "$ProjectName"+"Editor"
+    $EditorTarget = "$ProjectName" + "Editor"
     Start-UEBuild "$EditorTarget" Development
 
     # Compile standalone binaries
@@ -124,7 +127,8 @@ if ($UpdateProjectVersion) {
         # Could be extended to actuallz change the semver, replace it, etc.
         # Powershell 7 Core introduces SemanticVersion class (see above) that allows properly incrementing Minor/Patch components
         Set-UEProjectVersion $SemVer
-    } else {
+    }
+    else {
         Write-Output "Skipped because of too low PowerShell version"
     }
 }

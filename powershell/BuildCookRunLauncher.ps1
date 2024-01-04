@@ -23,7 +23,7 @@ $global:VerbosePreference = 'continue'
 $Host.PrivateData.VerboseForegroundColor = 'Cyan'
 
 $ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
-Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Verbose -Force
+Import-Module -Name "$ScriptDirectory/OpenUnrealAutomationTools.psm1" -Force -Verbose:$false
 
 #--------------
 # GET CONFIG FROM UE
