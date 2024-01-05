@@ -998,8 +998,8 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
 
 
 def _get_default_patterns_xml():
-    return os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml")
+    return os.path.normpath(os.path.join(
+        Path(__file__).parent, "resources/logparse_patterns.xml"))
 
 
 if __name__ == "__main__":

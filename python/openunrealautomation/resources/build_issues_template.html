@@ -26,19 +26,25 @@
                 <h2>REPORT_TITLE</h2>
             </div>
             <div class="col-12 col-xxl-8">
-                <div class="col-12 box-ouu p-0">
-                    <!-- anchor for filter button hotbar -->
-                    <div class="justify-content-start btn-group btn-group-sm p-2 pb-0" role="group" id="filter-btns">
-                        <button class="btn btn-sm btn-primary filter-btn string-filter-btn" id="show-all-btn">👁 Show
-                            All</button>
-                        <button class="btn btn-sm btn-secondary" id="expand-all-btn"
-                            onclick="$('details').attr('open', true)">🔽 Expand</button>
-                        <button class="btn btn-sm btn-secondary" id="collapse-all-btn"
-                            onclick="$('details').attr('open', false)">🔼 Collapse</button>
+                <div class="col-12 box-ouu p-3 pb-0">
+                    <h5>Log Files</h5>
+                    <!-- Box for all log file related stuff (excluding diagram bar on right) -->
+                    <div class="col-12 box-ouu p-0">
+                        <!-- anchor for filter button hotbar -->
+                        <div class="justify-content-start btn-group btn-group-sm p-2 pb-0" role="group"
+                            id="filter-btns">
+                            <button class="btn btn-sm btn-primary filter-btn string-filter-btn" id="show-all-btn">👁
+                                Show
+                                All</button>
+                            <button class="btn btn-sm btn-secondary" id="expand-all-btn"
+                                onclick="$('details').attr('open', true)">🔽 Expand</button>
+                            <button class="btn btn-sm btn-secondary" id="collapse-all-btn"
+                                onclick="$('details').attr('open', false)">🔼 Collapse</button>
+                        </div>
                     </div>
-                </div>
 
-                ISSUES_AND_SOURCES
+                    ISSUES_AND_SOURCES
+                </div>
 
                 EMBEDDED_REPORTS
             </div>

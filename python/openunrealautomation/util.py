@@ -185,6 +185,13 @@ def which_checked(command: str, display_name: Optional[str] = None) -> str:
     return exe_path
 
 
+def glob_latest(pathname: str) -> str:
+    found_files = glob.glob(pathname, recursive=True)
+    found_files = [os.path.normpath(file) for file in found_files]
+    found_files.sort(key=os.path.getctime)
+    return found_files[0] if len(found_files) > 0 else None
+
+
 def set_system_env_var(name: str, value: str) -> None:
     """
     Set a system wide environment variable (like PATH).

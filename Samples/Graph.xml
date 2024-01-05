@@ -15,6 +15,9 @@
 	<Option Name="BuildConfig" Restrict="Debug|DebugGame|Development|Test|Shipping"
 		DefaultValue="Development" Description="Build Configuration to Use" />
 
+	<Option Name="GameTargetName" DefaultValue="$(ProjectName)"
+		Description="Project to compile for the standalone game" />
+
 	<Include Script="ProjectVariables.xml" />
 
 	<Property Name="EnginePlatform" Value="Win64" />
@@ -69,7 +72,7 @@
 				Requires="#$(ProjectName)Editor$(HostPlatform)"
 				Produces="#CompiledGame$(TargetPlatform)">
 
-				<Compile Target="$(ProjectName)" Platform="$(TargetPlatform)"
+				<Compile Target="$(GameTargetName)" Platform="$(TargetPlatform)"
 					Arguments="$(BuildArguments)" Configuration="$(BuildConfig)"
 					Tag="#$(ProjectName)_$(TargetPlatform)Binaries" />
 			</Node>

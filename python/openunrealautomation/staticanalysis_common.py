@@ -475,8 +475,7 @@ class StaticAnalysisResults:
         <div class="p-3">
         <h5>{title}</h5>
 
-        <span>Report for Unreal Project {self.env.project_name}</span><br/>
-        <div style="border: var(--bs-gray-700) solid 1px; border-radius: 0.5em; padding: 0.5em; margin: 0.5em;">
+        <div class="small border border-secondary" style="border: var(--bs-gray-700) solid 1px; border-radius: 0.5em; padding: 0.5em; margin: 0.5em;">
             Included:
             {include_paths_html}
             <br/>

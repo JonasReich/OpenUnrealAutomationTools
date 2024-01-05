@@ -14,8 +14,9 @@ from xml.etree.ElementTree import ElementTree as XmlTree
 from openunrealautomation.core import UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (ouu_temp_file, run_subprocess,
-                                       which_checked, write_text_file)
+from openunrealautomation.util import (glob_latest, ouu_temp_file,
+                                       run_subprocess, which_checked,
+                                       write_text_file)
 
 
 def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
@@ -149,7 +150,7 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
 
     if test_filter is None:
         optional_ouu_tests = "+OpenUnrealUtilities" if engine.environment.has_open_unreal_utilities() else ""
-        test_filter = f"{engine.environment.project_name}+Project.Functional{optional_ouu_tests}"
+        test_filter = f"{engine.environment.project_name}+Project{optional_ouu_tests}"
 
     all_args = ["-game", "-gametest"] if game_test_target \
         else ["-editor", "-editortest"]
@@ -167,7 +168,8 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
                                   map=None,
                                   raise_on_error=False,
                                   add_default_parameters=True,
-                                  generate_coverage_reports=generate_coverage_reports)
+                                  generate_coverage_reports=generate_coverage_reports,
+                                  coverage_report_path=os.path.join(report_directory, "Coverage"))
 
     if generate_report_file and convert_junit:
         json_path = os.path.join(report_directory, "index.json")
@@ -195,11 +197,7 @@ def find_last_test_report(engine: UnrealEngine,
     if report_directory is None:
         report_directory = get_root_report_directory(engine.environment)
 
-    search_path = f"{report_directory}/**/index.json"
-    found_files = glob.glob(search_path, recursive=True)
-    found_files = [os.path.normpath(file) for file in found_files]
-    found_files.sort(key=os.path.getctime)
-    return found_files[0] if len(found_files) > 0 else None
+    return glob_latest(f"{report_directory}/**/index.json")
 
 
 if __name__ == "__main__":

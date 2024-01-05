@@ -33,6 +33,8 @@ def _parse_inspectcode_severity(severity_str: str) -> StaticAnalysisSeverity:
 
 
 def _generate_analysis_results(env: UnrealEnvironment, xml_report_path: str) -> StaticAnalysisResults:
+    print("Loading static analysis results from", xml_report_path)
+
     results = StaticAnalysisResults(env)
     root_category = results.find_or_add_category(
         "inspectCode", "All issues from ReSharper InspectCode", None)
@@ -86,6 +88,8 @@ class InspectCode():
 
     def run(self, may_skip: bool = False) -> None:
         if may_skip and os.path.exists(self.output_path):
+            print(
+                f"Skipping static analysis (file '{self.output_path}' exists)")
             return
 
         # Include / exclude paths have to be relative to the solution directory,

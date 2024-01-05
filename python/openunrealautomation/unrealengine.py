@@ -16,8 +16,7 @@ from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
                                        UnrealBuildTarget, UnrealProgram)
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
-from openunrealautomation.util import (args_str, run_subprocess, walk_level,
-                                       which_checked, write_text_file)
+from openunrealautomation.util import args_str, run_subprocess, walk_level
 
 
 class UnrealEngine:
@@ -60,6 +59,7 @@ class UnrealEngine:
             raise_on_error: bool = True,
             add_default_parameters: bool = True,
             generate_coverage_reports: bool = False,
+            coverage_report_path: Optional[str] = None,
             suppress_output: bool = False) -> int:
         """
         Run an Unreal program.
@@ -87,8 +87,16 @@ class UnrealEngine:
             if not (program in [UnrealProgram.EDITOR, UnrealProgram.EDITOR_CMD] and self.environment.has_project()):
                 raise OUAException(
                     "opencppcoverage can currently only be used with EDITOR and EDITOR_CMD targets and a project")
-            all_arguments += self._get_opencppcoverage_arguments(
-                program_name=program_exe_name)
+
+            if not coverage_report_path:
+                coverage_report_root = os.path.abspath(
+                    f"{ue.environment.project_root}/Saved/CoverageReports/")
+                coverage_report_path = f"{coverage_report_root}/{program_name}_{ue.environment.creation_time_str}"
+
+            import openunrealautomation.opencppcoverage as ouucoverage
+            all_arguments += ouucoverage._get_opencppcoverage_arguments(self,
+                                                                        program_name=program_exe_name,
+                                                                        coverage_report_path=coverage_report_path)
 
         # program
         all_arguments += [program_path]
@@ -343,13 +351,17 @@ class UnrealEngine:
         if extra_shell:
             cmd = args_str(generate_args)
             print(cmd)
-            # This creates an extra shell window that will remain open if the project file generation fails for the user to see.
-            subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            if not ue.dry_run:
+                # This creates an extra shell window that will remain open if the project file generation fails for the user to see.
+                subprocess.Popen(
+                    cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             generate_directory = os.path.dirname(self.environment.project_root)
-            run_subprocess(generate_args,
-                           cwd=generate_directory,
-                           print_args=True)
+            print(args_str(generate_args))
+            if not ue.dry_run:
+                run_subprocess(generate_args,
+                               cwd=generate_directory,
+                               print_args=True)
 
     def build(self,
               target: UnrealBuildTarget,
@@ -525,37 +537,6 @@ class UnrealEngine:
                          str(build_configuration),
                          "-WaitMutex"]
         return all_arguments
-
-    def _get_opencppcoverage_arguments(self, program_name: str):
-        """
-        Returns commandline parameters for opencpppcoverage.
-
-        program_name        Name of the program you want to launch with opencppcoverage.
-                            This is not the application path, but a short name to identify your launch in saved directory.
-        """
-
-        opencppcoverage_name = "opencppcoverage"
-        which_checked(opencppcoverage_name)
-
-        result_args = []
-        # directory args
-        result_args += [opencppcoverage_name, "--modules",
-                        self.environment.project_root, "--sources", self.environment.project_root]
-        result_args += ["--excluded_sources", "*Engine*", "--excluded_sources",
-                        "*Intermediate*", "--excluded_sources", "*.gen.cpp"]
-        result_args += ["--cover_children"]
-        result_args += ["--working_dir", self.environment.project_root]
-
-        # export paths
-        coverage_report_root = os.path.abspath(
-            f"{self.environment.project_root}/Saved/CoverageReports/")
-        coverage_report_path = f"{coverage_report_root}/{program_name}_{self.environment.creation_time_str}"
-        result_args += [f"--export_type=cobertura:{coverage_report_path}/cobertura.xml",
-                        f"--export_type=html:{coverage_report_path}"]
-
-        # Always last argument before UE program commandline
-        result_args += ["--"]
-        return result_args
 
 
 if __name__ == "__main__":
