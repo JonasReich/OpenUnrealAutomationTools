@@ -11,20 +11,88 @@
     xsi:noNamespaceSchemaLocation="openunreal_logparse_patterns.xsd">
 
     <Template Name="ExitCodes">
-        <Patterns Name="Exit Codes" Severity="Message">
-            <Include>Took \d+,\d+s to run .+, ExitCode=\d+</Include>
+        <Patterns Name="Exit Codes" Severity="Message" Hidden="true">
+            <Include Style="Regex" StringVariables="UAT_Command"
+                NumericVariables="Duration;ExitCode">Took (?P&lt;Duration&gt;\d+,\d+)s to run (?P&lt;UAT_Command&gt;.+), ExitCode=(?P&lt;ExitCode&gt;\d+)</Include>
+            <Include Style="Regex" StringVariables="ExitCode">subprocess.CalledProcessError: (?P&lt;Command&gt;.+) returned non-zero exit status (?P&lt;ExitCode&gt;-?\d+)</Include>
+            <Include Style="Regex">(?P&lt;Command&gt;.+) exiting with ExitCode=(?P&lt;ExitCode&gt;-?\d+)</Include>
         </Patterns>
     </Template>
 
-    <Target Name="Unreal">
+    <Template Name="Unreal">
+        <Scope Name="Exception Callstack">
+            <!-- TODO: Add ensure summary to display name -->
+            <Start>Error: begin: stack for UAT</Start>
+            <End>Error: end: stack for UAT</End>
+            <Patterns Name="Callstack" Tags="Code" Severity="Error">
+                <Include Style="Regex">.*</Include>
+            </Patterns>
+        </Scope>
+
+        <Patterns Name="CookParams" Severity="Message">
+            <Include Style="Regex" StringVariables="CookCultures">LogCookCommandlet: Display:\s+CookCultures: \((?P&lt;CookCultures&gt;.+)\)</Include>
+            <Include Style="Regex" StringVariables="IniMapSections">LogCookCommandlet: Display:\s+IniMapSections: \((?P&lt;IniMapSections&gt;.+)\)</Include>
+        </Patterns>
+
+        <Patterns Name="Command Line" Severity="Message">
+            <Include>LogInit: Command Line:</Include>
+        </Patterns>
+
         <Patterns Name="Exit Status" Severity="Message">
             <Include SuccessFlags="auto">LogExit: Exiting.</Include>
         </Patterns>
 
+        <Patterns Name="Suppressed Messages" Severity="Message" Hidden="true">
+            <!-- duplicate messages from map check message log -->
+            <Include>is not valid. See the MapCheck log messages for details</Include>
+        </Patterns>
+
+        <Patterns Name="Load Issues: One File Per Actor" Tags="Code" Severity="Error">
+            <Include Style="Regex">LoadErrors: Error: .* Failed import for</Include>
+        </Patterns>
+
+        <Patterns Name="Load Issues: One File Per Actor" Tags="Code" Severity="Severe_Warning">
+            <Include Style="Literal">LogEngine: Warning: Can't find actor</Include>
+            <Include Style="Regex">LogEngine: Warning: Failed to load .* from loaded package /Game/__ExternalActors__</Include>
+        </Patterns>
+
         <Patterns Name="Load Errors + Warnings" Tags="Code" Severity="Error">
-            <Include Style="Literal">LogLinker: Warning: Unable to load</Include>
             <Include Style="Regex">Failed to load '.*': Can't find file</Include>
+            <Include Style="Literal">LogLinker: Warning: Unable to load</Include>
             <Include Style="Literal">LogLinker: Warning: VerifyImport: Failed to load</Include>
+            <Include Style="Literal">Failed to load package for import object</Include>
+            <Include Style="Literal">LogLinker: Display: CreateExport: Failed to load Parent for ScriptStruct</Include>
+        </Patterns>
+
+        <Patterns Name="Developer Asset References" Severity="Warning">
+            <Include Style="Regex" StringVariables="Developer">imported Serialize:\/Game\/Developers\/(?P&lt;Developer&gt;.*?)\/</Include>
+        </Patterns>
+
+        <Patterns Name="Missing Cook Packages (JsonFiles)" Tags="Code" Severity="Warning">
+            <Include Style="Regex">Unable to find package for cooking /JsonData/.* Instigator</Include>
+        </Patterns>
+
+        <Patterns Name="Missing Cook Packages (other)" Severity="Warning">
+            <Include Style="Regex">Unable to find package for cooking</Include>
+        </Patterns>
+
+        <Patterns Name="Export Warnings" Severity="Warning">
+            <Include>but it was never saved as an export</Include>
+        </Patterns>
+
+        <Patterns Name="Blueprint Errors" Tags="Code" Severity="Error">
+            <Include>LogBlueprint: Error:</Include>
+            <Include>Error compiling pin</Include>
+            <Include Style="Regex">Error:.*\[AssetLog\] .* \[Compiler\]</Include>
+        </Patterns>
+
+        <Patterns Name="Blueprint Warnings" Tags="Code;Content" Severity="Warning">
+            <Include Style="Regex">Warning:.*\[AssetLog\] .* \[Compiler\]</Include>
+        </Patterns>
+
+        <Patterns Name="Invalid Gameplay Tags" Tags="Content" Severity="Severe_Warning">
+            <Include Style="Regex">Invalid GameplayTag .* found in property</Include>
+            <Include Style="Regex">Invalid GameplayTag .* found in object</Include>
         </Patterns>
 
         <Patterns Name="Material Errors" Tags="Art;Code" Severity="Error">
@@ -43,52 +111,103 @@
             <Include Style="Regex">LogPhysics: Warning: Scale for .* has a component set to zero</Include>
         </Patterns>
 
+        <!-- Generic issues -->
         <Patterns Name="Errors" Tags="Code" Severity="Error">
             <Include>Error:</Include>
-            <Include>Error compiling pin</Include>
         </Patterns>
         <Patterns Name="Warnings" Tags="Code" Severity="Warning">
             <Include>Warning:</Include>
         </Patterns>
-    </Target>
 
-    <Target Name="UAT">
+        <Scope Name="DDC Resource Stats" RequireAllLinesMatch="true">
+            <Start Style="Literal">LogCook: Display: DDC Resource Stats</Start>
+            <End Style="Literal"></End>
+            <Patterns Name="DDC Stats" Tags="Code" Severity="Message" Hidden="true">
+                <Include Style="Literal">LogCook: Display: DDC Resource Stats</Include>
+                <Include Style="Literal">LogCook: Display: ==========</Include>
+                <Include Style="Literal">LogCook: Display: Asset Type</Include>
+                <Include Style="Literal">LogCook: Display: ----------</Include>
+                <Include Style="Regex" StringVariables="DDC_Key"
+                    NumericVariables="DDC_TotalTime;DDC_GameThreadTime;DDC_AssetNum;DDC_MB">LogCook: Display: (?P&lt;DDC_Key&gt;.+?)\s+(?P&lt;DDC_TotalTime&gt;[+-]?[0-9]*[.]?[0-9]+)\s+(?P&lt;DDC_GameThreadTime&gt;[+-]?[0-9]*[.]?[0-9]+)\s+(?P&lt;DDC_AssetNum&gt;[+-]?[0-9]*[.]?[0-9]+)\s+(?P&lt;DDC_MB&gt;[+-]?[0-9]*[.]?[0-9]+)</Include>
+            </Patterns>
+        </Scope>
+
+        <Scope Name="Warning/Error Summary">
+            <Start Style="Literal">LogInit: Display: Warning/Error Summary (Unique only)</Start>
+            <End Style="Regex">LogInit: Display: Success - \d+ error\(s\), \d+ warning\(s\)</End>
+            <End Style="Regex">LogInit: Display: Failure - \d+ error\(s\), \d+ warning\(s\)</End>
+            <Patterns Name="Warning/Error Summary (Success)" Severity="Warning" SuccessFlags="auto">
+                <Include Style="Regex">LogInit: Display: Success - \d+ error\(s\), \d+ warning\(s\)</Include>
+            </Patterns>
+            <Patterns Name="Warning/Error Summary (Failure)" Severity="Error" FailureFlags="auto">
+                <Include Style="Regex">LogInit: Display: Failure - \d+ error\(s\), \d+ warning\(s\)</Include>
+            </Patterns>
+            <Patterns Name="Duplicate Issues (Ignore)" Severity="Message" Hidden="true">
+                <Include Style="Regex">.*</Include>
+            </Patterns>
+        </Scope>
+    </Template>
+
+    <Template Name="UAT">
         <Patterns Name="UAT Errors" Severity="Error">
             <Include Style="Regex">ERROR: </Include>
         </Patterns>
         <Patterns Name="UAT Warnings" Severity="Warning">
             <Include Style="Regex">WARNING: </Include>
         </Patterns>
+        <Patterns Name="UAT Runner Command Lines" Severity="Message" Hidden="true">
+            <Include Style="Regex">Running: .*</Include>
+        </Patterns>
         <Link Template="ExitCodes" />
-    </Target>
+    </Template>
 
-
-    <Target Name="Cook">
-        <Link Template="Unreal" />
-    </Target>
+    <Template Name="MSVC">
+        <Patterns Name="MSVC Compile Errors" Severity="Error" Tags="Code" FailureFlags="auto">
+            <Include Style="Regex" StringVariables="SourceFile;ErrorMessage"
+                NumericVariables="LineNumber">(?P&lt;SourceFile&gt;.+)\((?P&lt;LineNumber&gt;\d+)\): error C(?P&lt;ErrorCode&gt;[0-9]+): (?P&lt;ErrorMessage&gt;.+)</Include>
+        </Patterns>
+        <Patterns Name="MSVC Compile Warnings" Severity="Warning" Tags="Code">
+            <Include Style="Regex" StringVariables="SourceFile;ErrorMessage"
+                NumericVariables="LineNumber">(?P&lt;SourceFile&gt;.+)\((?P&lt;LineNumber&gt;\d+)\): warning C(?P&lt;ErrorCode&gt;[0-9]+): (?P&lt;ErrorMessage&gt;.+)</Include>
+        </Patterns>
+        <Patterns Name="MSVC Linker Errors" Severity="Error" Tags="Code" FailureFlags="auto">
+            <Include Style="Literal">error LNK</Include>
+        </Patterns>
+    </Template>
 
     <Target Name="BuildCookRun">
-        <Scope Name="🧱 Build">
-            <Start Style="Literal">********** BUILD COMMAND STARTED **********</Start>
-            <End Style="Literal">********** BUILD COMMAND COMPLETED **********</End>
+        <Scope Name="BuildCookRun">
+            <Start Style="Regex">Parsing command line: .*BuildCookRun</Start>
+            <End Style="Literal" FailureFlags="auto">BUILD FAILED</End>
+            <End Style="Literal" SuccessFlags="auto">BUILD SUCCESS</End>
+            <Scope Name="🧱 Build">
+                <Start Style="Literal">********** BUILD COMMAND STARTED **********</Start>
+                <End Style="Literal" SuccessFlags="auto">********** BUILD COMMAND COMPLETED **********</End>
+                <Link Template="MSVC" />
+            </Scope>
+            <Scope Name="🔥 Cook">
+                <Start Style="Literal">********** COOK COMMAND STARTED **********</Start>
+                <End Style="Literal" SuccessFlags="auto">********** COOK COMMAND COMPLETED **********</End>
+                <End Style="Literal" FailureFlags="auto">ERROR: Cook failed</End>
+                <Link Template="Unreal" />
+            </Scope>
+            <Scope Name="📁 Stage">
+                <Start Style="Literal">********** STAGE COMMAND STARTED **********</Start>
+                <End Style="Literal" SuccessFlags="auto">********** STAGE COMMAND COMPLETED **********</End>
+                <Link Template="Unreal" />
+            </Scope>
+            <Scope Name="📦 Package">
+                <Start Style="Literal">********** PACKAGE COMMAND STARTED **********</Start>
+                <End Style="Literal" SuccessFlags="auto">********** PACKAGE COMMAND COMPLETED **********</End>
+                <Link Template="Unreal" />
+            </Scope>
+            <Scope Name="🎮 Run">
+                <Start Style="Literal">********** RUN COMMAND STARTED **********</Start>
+                <End Style="Literal" SuccessFlags="Run">********** RUN COMMAND COMPLETED **********</End>
+                <Link Template="Unreal" />
+            </Scope>
             <Link Template="UAT" />
         </Scope>
-        <Scope Name="🔥 Cook">
-            <Start Style="Literal">********** COOK COMMAND STARTED **********</Start>
-            <End Style="Literal">********** COOK COMMAND COMPLETED **********</End>
-            <Link Template="Cook" />
-        </Scope>
-        <Scope Name="📁 Stage">
-            <Start Style="Literal">********** STAGE COMMAND STARTED **********</Start>
-            <End Style="Literal">********** STAGE COMMAND COMPLETED **********</End>
-            <Link Template="UAT" />
-        </Scope>
-        <Scope Name="📦 Package">
-            <Start Style="Literal">********** PACKAGE COMMAND STARTED **********</Start>
-            <End Style="Literal">********** PACKAGE COMMAND COMPLETED **********</End>
-            <Link Template="UAT" />
-        </Scope>
-        <Link Template="UAT" />
     </Target>
 
     <!-- Generic BuildGraph template -->
@@ -98,6 +217,9 @@
             <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Failure</Include>
             <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Error</Include>
         </Patterns>
+        <!-- Prefer template from BuildCookRun over direct inclusion of Unreal / UAT rules -->
+        <Link Template="BuildCookRun" />
         <Link Template="Unreal" />
+        <Link Template="UAT" />
     </Target>
 </Root>
