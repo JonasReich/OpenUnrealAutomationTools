@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from alive_progress import alive_bar
 from openunrealautomation.automationtest import (automation_test_html_report,
                                                  find_last_test_report)
+from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
 from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
                                            _main_get_files, parse_log)
@@ -174,7 +175,7 @@ def generate_html_report(
     html_report_path: str,
     # Source path and parsed log file
     log_files: List[Tuple[str, UnrealLogFilePatternScopeInstance]],
-    embedded_reports: List[str],
+    embedded_reports: List[Optional[str]],
     out_json_path: str,
     report_title: str,
     background_image_uri: str,
@@ -212,7 +213,8 @@ def generate_html_report(
 
     embedded_reports_str = ""
     for embedded_report in embedded_reports:
-        embedded_reports_str += f"""<div class="col-12 box-ouu">{embedded_report}</div>"""
+        if embedded_report:
+            embedded_reports_str += f"""<div class="col-12 box-ouu embedded-report">{embedded_report}</div>"""
 
     if html_report_template_path is None:
         # The default report isn't even a single template, but a set of files that are combined to a template.
@@ -240,6 +242,23 @@ def generate_html_report(
         replace("EMBEDDED_REPORTS", embedded_reports_str)
 
     write_text_file(html_report_path, output_html)
+
+
+def create_localization_report(env: UnrealEnvironment, localization_target: str) -> Optional[str]:
+    loca_status_file = os.path.join(
+        env.project_root, f"Content\\Localization\\{localization_target}\\{localization_target}.csv")
+    if os.path.exists(loca_status_file):
+        loca_status_csv = read_text_file(loca_status_file)
+        loca_status_report = f"""
+        <script type="text/javascript">
+        let loca_status_csv = `{loca_status_csv}`;
+        $( document ).ready( function() {{
+            createCsvChart(ChartPreset.LINE, "Localization Status", loca_status_csv);
+        }});
+        </script>
+        """
+        return loca_status_report
+    return None
 
 
 if __name__ == "__main__":
