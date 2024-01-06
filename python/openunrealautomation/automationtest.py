@@ -78,7 +78,10 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
         print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
-def automation_test_html_report(json_path: str) -> str:
+def automation_test_html_report(json_path: str) -> Optional[str]:
+    if not os.path.exists(json_path):
+        return None
+
     with open(json_path, "r", encoding="utf-8-sig") as json_file:
         json_results = json.loads(json_file.read())
         results = ""
@@ -124,7 +127,8 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
               report_directory: Optional[str] = None,
               convert_junit: bool = True,
               setup_report_viewer: bool = False,
-              generate_coverage_reports: bool = False):
+              generate_coverage_reports: bool = False,
+              may_skip: bool = False) -> int:
     """
     Execute game or editor tests in the editor cmd - Either in game or in editor mode (depending on game_test_target flag).
 
@@ -147,6 +151,9 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
     if report_directory is None:
         report_directory = get_default_test_report_directory(
             engine.environment)
+
+    if may_skip and find_last_test_report(ue, report_directory) is not None:
+        return 0
 
     if test_filter is None:
         optional_ouu_tests = "+OpenUnrealUtilities" if engine.environment.has_open_unreal_utilities() else ""
