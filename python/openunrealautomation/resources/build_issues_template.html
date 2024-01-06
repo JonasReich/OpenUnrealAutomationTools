@@ -16,14 +16,15 @@
 
 <body class="bg-dark text-light">
     <!-- Background -->
-    <div
-        style="position: fixed;width: 100%;height: 100%;background-image: url(&quot;BACKGROUND_IMAGE_URI&quot;);left: 0;top: 0;z-index: -1;background-color: #393c4f;background-blend-mode: multiply;background-size: cover;filter: blur(4px);">
+    <div style="position: fixed; width: 100%; height: 100%; background-color: #393c4f;">
     </div>
     <!-- Content container -->
     <div class="container-fluid w-100 p-3">
         <div class="row">
-            <div class="col-12 pb-3">
-                <h2>REPORT_TITLE</h2>
+            <div class="col-12 pb-2">
+                <h2 class="box-ouu m-0"
+                    style='background-repeat: no-repeat;background-size: cover;background-position: center;background-blend-mode: multiply;background-image: url("BACKGROUND_IMAGE_URI"), linear-gradient(90deg, var(--bs-dark) 0%, transparent 100%);padding: 1em;border-radius: 5px;'>
+                    REPORT_TITLE</h2>
             </div>
             <div class="col-12 col-xxl-8">
                 <div class="col-12 box-ouu p-3 pb-0">
@@ -50,7 +51,7 @@
             </div>
 
             <div class="col-12 col-xxl-4">
-                <div class="col-12 box-ouu">
+                <div class="col-12 box-ouu p-3 pb-0">
                     <h5>Build Stat Graphs</h5>
                     <!-- anchor for stats charts -->
                     <div id="stats-chart-root">
