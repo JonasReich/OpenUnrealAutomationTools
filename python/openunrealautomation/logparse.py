@@ -966,6 +966,16 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     return root_scope_instance
 
 
+def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str) -> List[UnrealLogFilePatternScopeInstance]:
+    parsed_logs = []
+    for path in os.scandir(log_dir):
+        if path.is_file():
+            parsed_log = parse_log(
+                path.path, logparse_patterns_xml, target_name)
+            parsed_logs.append((path, parsed_log))
+    return parsed_logs
+
+
 def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, max_lines: int = 20) -> None:
     header_divider = "\n==========================="
     print(header_divider, "\nParsing log file", path, "...", header_divider)
