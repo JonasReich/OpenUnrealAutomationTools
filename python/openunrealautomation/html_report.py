@@ -87,15 +87,12 @@ def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: s
         margin: {{l: 10, r: 10, b: 10, t: 40}},
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        // The size is adjusted for final layout with padding, etc.
-        // More responsive sizing would be preferable.
-        width: 773,
-        height: 378
     }};
 
-    $('#stats-chart-root').append("<div id='{plot_id}' class='p-2 m-3 bg-dark'></div>");
+    $('#stats-chart-root').append("<div class='stats-chart p-2 mb-2 bg-dark'><div id='{plot_id}'></div></div>");
 
-    Plotly.newPlot('{plot_id}', {plot_id}_data, {plot_id}_layout);
+    var config = {{responsive: true}};
+    Plotly.newPlot('{plot_id}', {plot_id}_data, {plot_id}_layout, config);
     """
 
     return injected_javascript
@@ -215,7 +212,7 @@ def generate_html_report(
 
     embedded_reports_str = ""
     for embedded_report in embedded_reports:
-        embedded_reports_str += f"""<div class="col-12 box-ouu p-0">{embedded_report}</div>"""
+        embedded_reports_str += f"""<div class="col-12 box-ouu">{embedded_report}</div>"""
 
     if html_report_template_path is None:
         # The default report isn't even a single template, but a set of files that are combined to a template.
