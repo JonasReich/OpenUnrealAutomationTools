@@ -51,20 +51,33 @@ def coverage_html_report(cobertura_xml_path: str) -> str:
     def get_line_rate(node) -> int:
         return int(float(get_prop(node, "line-rate")) * 100)
 
-    def make_line_rate_str(node, label, bg_style) -> str:
+    def make_line_rate_str(node, pre_label, file_label, bg_style) -> str:
         line_rate = get_line_rate(node)
-        return f'<div class="row">'\
-            f'<div class="col">{label}</div>'\
-            f'<div class="col">'\
-            f'<div class="progress border border-secondary bg-dark">'\
-            f'<div class="progress-bar {bg_style}" role="progressbar" style="width: {line_rate}%;" aria-valuenow="{line_rate}" aria-valuemin="0" aria-valuemax="100">{line_rate}%</div>'\
+        return f'<tr>'\
+            f'<td class="col-6">{pre_label}<pre class="mb-0">{file_label}</pre></td>'\
+            f'<td>'\
+            f'<div>'\
+            f'<div class="{bg_style} px-1" style="width: {line_rate}%;" aria-valuenow="{line_rate}" aria-valuemin="0" aria-valuemax="100">{line_rate}%</div>'\
             f'</div>'\
-            f'</div>'\
-            f'</div>'
+            f'</td>'\
+            f'</tr>'
+
+    all_package_names = []
+    for package in xml_tree.findall(".//package"):
+        all_package_names.append(get_prop(package, "name"))
+    common_package_prefix = os.path.commonprefix(all_package_names)
 
     result_str = ""
-    for package in xml_tree.findall(".//package"):
-        package_name = get_prop(package, "name")
-        result_str += make_line_rate_str(package, package_name, "bg-secondary")
+    for i, package in enumerate(xml_tree.findall(".//package")):
+        package_name = get_prop(package, "name").removeprefix(
+            common_package_prefix)
+        result_str += make_line_rate_str(package,
+                                         "", package_name, "bg-secondary")
 
-    return f'<div class="p-3 small"><h5>C++ Code Coverage</h5>{make_line_rate_str(xml_tree, "Total Coverage", "bg-success")}<hr>{result_str}</div>'
+    def wrap_table(table_content) -> str:
+        return f'<table class="table table-striped small table-dark table-sm table-bordered"><tbody>{table_content}</tbody></table>'
+
+    return f'<div class="p-3 small"><h5>C++ Code Coverage</h5>'\
+        f'{wrap_table(make_line_rate_str(xml_tree, "Total Coverage", "", "bg-success"))}'\
+        f'from <pre class="mb-0" style="display: inline;">{common_package_prefix}...</pre>'\
+        f'{wrap_table(result_str)}</div>'
