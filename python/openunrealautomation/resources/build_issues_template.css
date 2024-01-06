@@ -58,7 +58,7 @@
 
 .highlight-line::after {
     content: "";
-    background-color: #b4b4f2;
+    background-color: var(--bs-primary);
     position: relative;
     top: 0.3em;
     /*Arbitrary large number that hopefully fits an entire line. Anchoring on the left side would be preferred.*/
@@ -162,4 +162,9 @@ a.file-path {
     padding-left: 1em;
     color: #16c60c;
     float: right;
+}
+
+/* Hide embedded reports that only add javascript */
+.embedded-report:not(:has(:not(script))) {
+    display: none;
 }
