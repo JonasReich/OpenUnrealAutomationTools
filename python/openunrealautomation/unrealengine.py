@@ -12,8 +12,7 @@ import winreg
 from typing import Dict, Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
-                                       UnrealBuildTarget, UnrealProgram)
+from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.util import args_str, run_subprocess, walk_level
@@ -351,14 +350,14 @@ class UnrealEngine:
         if extra_shell:
             cmd = args_str(generate_args)
             print(cmd)
-            if not ue.dry_run:
+            if not self.dry_run:
                 # This creates an extra shell window that will remain open if the project file generation fails for the user to see.
                 subprocess.Popen(
                     cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             generate_directory = os.path.dirname(self.environment.project_root)
             print(args_str(generate_args))
-            if not ue.dry_run:
+            if not self.dry_run:
                 run_subprocess(generate_args,
                                cwd=generate_directory,
                                print_args=True)
