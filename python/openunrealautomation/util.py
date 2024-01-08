@@ -11,6 +11,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 from typing import Any, Generator, List, MutableSet, Optional, Tuple
 
 from openunrealautomation.core import OUAException
@@ -184,6 +185,13 @@ def which_checked(command: str, display_name: Optional[str] = None) -> str:
     return exe_path
 
 
+def glob_latest(pathname: str) -> str:
+    found_files = glob.glob(pathname, recursive=True)
+    found_files = [os.path.normpath(file) for file in found_files]
+    found_files.sort(key=os.path.getctime)
+    return found_files[0] if len(found_files) > 0 else None
+
+
 def set_system_env_var(name: str, value: str) -> None:
     """
     Set a system wide environment variable (like PATH).
@@ -246,7 +254,7 @@ def args_str(*args):
     return subprocess.list2cmdline(flatten_args(args))
 
 
-def run_subprocess(*popenargs, check=False, print_args=False, suppress_output:bool=False, **kwargs) -> int:
+def run_subprocess(*popenargs, check=False, print_args=False, suppress_output: bool = False, **kwargs) -> int:
     """
     Runs a process while forwarding the output to stdout automatically.
 
@@ -314,3 +322,7 @@ def write_text_file(path: str, content: str) -> None:
     with open(path, "w", encoding="utf8") as f:
         f.write(content)
         print("Wrote", (content.count("\n") + 1), "lines to", path)
+
+
+def ouu_temp_file(file_name: str) -> str:
+    return os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation", file_name)

@@ -11,12 +11,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import test_report
-from openunrealautomation.inspectcode import inspectcode
-from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
-from openunrealautomation.staticanalysis_common import StaticAnalysisResults, static_analysis_html_report
+from openunrealautomation.automationtest import (automation_test_html_report,
+                                                 find_last_test_report)
+from openunrealautomation.environment import UnrealEnvironment
+from openunrealautomation.inspectcode import InspectCode
+from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
+                                           _main_get_files, parse_log)
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import read_text_file, write_text_file
+from openunrealautomation.util import (ouu_temp_file, read_text_file,
+                                       write_text_file)
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -85,15 +88,12 @@ def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: s
         margin: {{l: 10, r: 10, b: 10, t: 40}},
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        // The size is adjusted for final layout with padding, etc.
-        // More responsive sizing would be preferable.
-        width: 773,
-        height: 378
     }};
 
-    $('#stats-chart-root').append("<div id='{plot_id}' class='p-2 m-3 bg-dark'></div>");
+    $('#stats-chart-root').append("<div class='stats-chart p-2 mb-2 bg-dark'><div id='{plot_id}'></div></div>");
 
-    Plotly.newPlot('{plot_id}', {plot_id}_data, {plot_id}_layout);
+    var config = {{responsive: true}};
+    Plotly.newPlot('{plot_id}', {plot_id}_data, {plot_id}_layout, config);
     """
 
     return injected_javascript
@@ -126,6 +126,7 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_name, log_file_str) ->
                 all_labels.add(label)
 
                 if indent < last_indent:
+                    assert (last_parent)
                     new_parent = last_parent["parent"]
                 elif indent > last_indent:
                     new_parent = last_node
@@ -174,7 +175,7 @@ def generate_html_report(
     html_report_path: str,
     # Source path and parsed log file
     log_files: List[Tuple[str, UnrealLogFilePatternScopeInstance]],
-    embedded_reports: List[str],
+    embedded_reports: List[Optional[str]],
     out_json_path: str,
     report_title: str,
     background_image_uri: str,
@@ -212,7 +213,8 @@ def generate_html_report(
 
     embedded_reports_str = ""
     for embedded_report in embedded_reports:
-        embedded_reports_str += f"""<div class="col-12 box-ouu p-0">{embedded_report}</div>"""
+        if embedded_report:
+            embedded_reports_str += f"""<div class="col-12 box-ouu embedded-report">{embedded_report}</div>"""
 
     if html_report_template_path is None:
         # The default report isn't even a single template, but a set of files that are combined to a template.
@@ -242,6 +244,23 @@ def generate_html_report(
     write_text_file(html_report_path, output_html)
 
 
+def create_localization_report(env: UnrealEnvironment, localization_target: str) -> Optional[str]:
+    loca_status_file = os.path.join(
+        env.project_root, f"Content\\Localization\\{localization_target}\\{localization_target}.csv")
+    if os.path.exists(loca_status_file):
+        loca_status_csv = read_text_file(loca_status_file)
+        loca_status_report = f"""
+        <script type="text/javascript">
+        let loca_status_csv = `{loca_status_csv}`;
+        $( document ).ready( function() {{
+            createCsvChart(ChartPreset.LINE, "Localization Status", loca_status_csv);
+        }});
+        </script>
+        """
+        return loca_status_report
+    return None
+
+
 if __name__ == "__main__":
     ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
 
@@ -250,25 +269,26 @@ if __name__ == "__main__":
     temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
     os.makedirs(temp_dir, exist_ok=True)
 
-    patterns_xml = os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml")
-
     all_logs = []
     for target, file in files:
         if file is None:
             continue
         parsed_log = parse_log(
-            file, patterns_xml, target)
+            file, None, target)
         all_logs.append((file, parsed_log))
 
     report_path = os.path.join(temp_dir, "test_report")
 
-    static_analysis_results = inspectcode(ue, may_skip_build=True)
-    static_analysis_report = static_analysis_html_report(ue.environment,
-                                                         static_analysis_results,
-                                                         embeddable=True)
+    inspectcode = InspectCode(ue.environment, ouu_temp_file(
+        "ResharperReport.xml"), None)
+    inspectcode.run(may_skip=True)
+    static_analysis_results = inspectcode.load()
+    static_analysis_report = static_analysis_results.html_report(
+        embeddable=True)
 
-    test_report_html = test_report(ue, True)
+    test_report_path = find_last_test_report(ue)
+    test_report_html = automation_test_html_report(
+        report_path) if test_report_path else ""
 
     generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report],
                          report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})

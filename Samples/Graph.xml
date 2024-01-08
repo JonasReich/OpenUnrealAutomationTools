@@ -1,38 +1,55 @@
-<?xml version='1.0' ?>
-<BuildGraph xmlns="http://www.epicgames.com/BuildGraph" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance" >
-    <!-- xsi:schemaLocation="https://www.epicgames.com/BuildGraph ../Schema.xsd" -->
+<?xml version='1.0'?>
+<BuildGraph xmlns="http://www.epicgames.com/BuildGraph"
+	xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance">
+	<!-- xsi:schemaLocation="https://www.epicgames.com/BuildGraph ../Schema.xsd" -->
 
-    <!-- SRC: https://github.com/jackknobel/UnrealBuildScripts/blob/master/BuildGraph/BuildProject.xml -->
+	<!-- SRC:
+	https://github.com/jackknobel/UnrealBuildScripts/blob/master/BuildGraph/BuildProject.xml -->
 
 
-    <!-- Properties -->
+	<!-- Properties -->
 
-    <Include Script="BuildEngine.xml"/>
-	<Include Script="ProjectVariables.xml"/>
-    <Property Name="Project" Value="$(ProjectDir)/$(ProjectName).uproject"/>
-	<Property Name="BuildArguments" Value="-project=&quot;$(Project)&quot; $(BuildArguments)"/>
+	<!--<Include
+	Script="BuildEngine.xml" />-->
 
-    <!--
+	<Option Name="BuildConfig" Restrict="Debug|DebugGame|Development|Test|Shipping"
+		DefaultValue="Development" Description="Build Configuration to Use" />
+
+	<Option Name="GameTargetName" DefaultValue="$(ProjectName)"
+		Description="Project to compile for the standalone game" />
+
+	<Include Script="ProjectVariables.xml" />
+
+	<Property Name="EnginePlatform" Value="Win64" />
+	<Property Name="Project" Value="$(ProjectDir)/$(ProjectName).uproject" />
+	<Property Name="ProjectArgument" Value="-project=&quot;$(Project)&quot;" />
+	<Property Name="BuildArguments" Value="$(ProjectArgument)" />
+
+	<!--
 	=======================================================
 	    Compile Editor
 	=======================================================
 	-->
 
-	<Agent Name="Compile Game Editor" Type="Any">
+	<Agent Name="Compile Game Editor" Type="Win64">
 		<!-- Loop and declare nodes for each of our valid editor platforms -->
 		<ForEach Name="EditorPlatform" Values="$(SupportedEditorPlatforms)">
 			<!-- Compile the basic components required to compile a project -->
-			<Node Name="Compile $(ProjectName)Editor $(EditorPlatform)" Produces="#$(ProjectName)Editor$(EditorPlatform)">
-				<Property Name="EditorBuildConfig" Value="$(BuildConfig)"/>
-				<!-- Be sure to adjust our Build Configs so we can't compile the editor in any form 'greater' then Development -->
-                <Do If="'$(BuildConfig)' == 'Test' OR '$(BuildConfig)' == 'Shipping'">
-                    <Property Name="EditorBuildConfig" Value="Development"/>
-                </Do>
+			<Node Name="Compile $(ProjectName)Editor $(EditorPlatform)"
+				Produces="#$(ProjectName)Editor$(EditorPlatform)">
+				<Property Name="EditorBuildConfig" Value="$(BuildConfig)" />
+				<!-- Be sure to adjust our Build Configs so we can't compile the editor in any form
+				'greater' then Development -->
+				<Do If="'$(BuildConfig)' == 'Test' OR '$(BuildConfig)' == 'Shipping'">
+					<Property Name="EditorBuildConfig" Value="Development" />
+				</Do>
 
-				<Log Message="Compiling Editor in $(EditorBuildConfig) for $(EnginePlatform)"/>
+				<Log Message="Compiling Editor in $(EditorBuildConfig) for $(EnginePlatform)" />
 
 				<!-- Compile Editor for Project -->
-				<Compile Target="$(ProjectName)Editor" Platform="$(EditorPlatform)" Arguments="$(ProjectArgument) $(BuildArguments)" Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles_$(EditorPlatform)"/>		
+				<Compile Target="$(ProjectName)Editor" Platform="$(EditorPlatform)"
+					Arguments="$(BuildArguments)"
+					Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles_$(EditorPlatform)" />
 			</Node>
 		</ForEach>
 	</Agent>
@@ -43,35 +60,32 @@
 	=======================================================
 	-->
 
-	<Agent Name="Target Windows" Type="Windows">
+	<Agent Name="Target Windows" Type="Win64">
 		<!-- Iterate over our Windows Targets -->
 		<ForEach Name="TargetPlatform" Values="$(SupportedWindowsPlatforms)">
-			<Property Name="PlatformCookArguments" Value=""/>
+			<Property Name="PlatformCookArguments" Value="" />
 
 			<!-- 
 				Compile Game for our Target Platform
 			-->
-			<Node Name="Compile Game $(TargetPlatform)" Requires="#$(ProjectName)Editor$(HostPlatform)" Produces="#CompiledGame$(TargetPlatform)">
-				<Do If="'$(TargetPlatform)' == 'Win64'">
-					<!-- Compile Bootstrap tool -->
-					<Compile Target="BootstrapPackagedGame" Platform="$(EnginePlatform)" Arguments="$(BuildArguments)" Configuration="Shipping" Tag="#UnrealBootstrapFiles"/>
-				</Do>
-				<Compile Target="$(ProjectName)" Platform="$(TargetPlatform)" Arguments="$(ProjectArgument) $(BuildArguments)" Configuration="$(BuildConfig)" Tag="#$(ProjectName)_$(TargetPlatform)Binaries"/>
+			<Node Name="Compile Game $(TargetPlatform)"
+				Requires="#$(ProjectName)Editor$(HostPlatform)"
+				Produces="#CompiledGame$(TargetPlatform)">
+
+				<Compile Target="$(GameTargetName)" Platform="$(TargetPlatform)"
+					Arguments="$(BuildArguments)" Configuration="$(BuildConfig)"
+					Tag="#$(ProjectName)_$(TargetPlatform)Binaries" />
 			</Node>
-		
+
 			<!-- 
 				Package our Platforms
 			-->
-			<Node Name="Package Game $(TargetPlatform)" Requires="#$(ProjectName)Editor$(HostPlatform);#CompiledGame$(TargetPlatform);#EditorForStandalone" Produces="#Game$(TargetPlatform)">
-				<Command Name="BuildCookRun" Arguments="$(ProjectArgument) -Platform=$(TargetPlatform) -Config=$(BuildConfig) -Cook -package $(DefaultCookerArguments) $(PlatformCookArguments) $(LevelArgument) -cmdline=&quot;$(Commandline)&quot; -stage -archive -archivedirectory=&quot;$(OutputDir)&quot;"/>
+			<Node Name="Package Game $(TargetPlatform)"
+				Requires="#$(ProjectName)Editor$(HostPlatform);#CompiledGame$(TargetPlatform)"
+				Produces="#Game$(TargetPlatform)">
+				<Command Name="BuildCookRun"
+					Arguments="$(ProjectArgument) -Platform=$(TargetPlatform) -Config=$(BuildConfig) -Cook -package $(DefaultCookerArguments) $(PlatformCookArguments) $(LevelArgument) -cmdline=&quot;$(Commandline)&quot; -stage -archive -archivedirectory=&quot;$(OutputDir)&quot;" />
 			</Node>
 		</ForEach>
 	</Agent>
-
-    <!--
-	=======================================================
-        Aggregates
-	=======================================================
-	-->
-    <Aggregate Name="Building Examples" Requires="Compile Game Editor"/>
 </BuildGraph>

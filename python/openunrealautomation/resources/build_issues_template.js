@@ -21,7 +21,29 @@ let chart_colors = [
     "#4444bb",
     "#bbbb44",
     "#44bbbb",
-    "#bb44bb"
+    "#bb44bb",
+
+    // -- repeat. not ideal may need to be replaced with actual colors
+    "#bb4444",
+    "#44bb44",
+    "#4444bb",
+    "#bbbb44",
+    "#44bbbb",
+    "#bb44bb",
+    //...
+    "#bb4444",
+    "#44bb44",
+    "#4444bb",
+    "#bbbb44",
+    "#44bbbb",
+    "#bb44bb",
+    //...
+    "#bb4444",
+    "#44bb44",
+    "#4444bb",
+    "#bbbb44",
+    "#44bbbb",
+    "#bb44bb",
 ];
 
 let string_var_prefixes = new Map();
@@ -390,9 +412,9 @@ function getStatsRoot() {
 }
 
 // Craete a chart canvas context
-function createChartContext() {
+function createChartJsContext() {
     let canvasRoot = getStatsRoot();
-    var canvasTemplate = '<canvas id="stats-chart" class="p-2 m-3 bg-dark"></canvas>';
+    var canvasTemplate = '<canvas class="stats-chart p-2 mb-2 bg-dark"></canvas>';
     let canvas = $(canvasTemplate).appendTo(canvasRoot)[0];
     $(canvas).css("display", "inline-block");
     return canvas.getContext('2d');
@@ -450,7 +472,7 @@ function createIssuesPerTagChart() {
     })
 
     function createIssueCountChart(title, error_counts_var, warning_counts_var, severe_warning_counts_var, message_counts_var) {
-        new Chart(createChartContext(), {
+        new Chart(createChartJsContext(), {
             type: "bar",
             data: {
                 labels: labels,
@@ -482,12 +504,50 @@ const ChartPreset = {
     LINE: "line",
     PIE: "pie"
 };
+function getChartTypeStr(preset) {
+    let type = "bar";
+    switch (preset) {
+        case ChartPreset.BAR:
+        case ChartPreset.BAR_HORIZONTAL:
+            type = "bar"
+            break
+        case ChartPreset.LINE:
+            type = "line"
+            break
+        case ChartPreset.PIE:
+            type = "pie"
+            break
+    }
+    return type;
+}
+
+function createNumericsChart(preset, chart_title, datasets, item_labels) {
+    let indexAxis = (preset == ChartPreset.BAR_HORIZONTAL ? 'y' : 'x');
+    new Chart(createChartJsContext(), {
+        type: getChartTypeStr(preset),
+        data: {
+            labels: Array.from(item_labels),
+            datasets: datasets
+        },
+        options: {
+            color: "white",
+            backgroundColor: "transparent",
+            indexAxis: indexAxis,
+            plugins: {
+                title: {
+                    display: true,
+                    text: chart_title
+                }
+            }
+        }
+    });
+}
 
 // Create a dynamic chart based on numerics data
 // item_key_variable is the string variable name to use as label for data points
 // stats are the individual numerics -> 1 data set per stat
 // lables are display names for the data sets
-function createNumericsChart(preset, chart_title, item_key_variable, stats, labels) {
+function createNumericsChartFromJsonData(preset, chart_title, item_key_variable, stats, labels) {
     let datasets = [];
     let item_labels = [];
     let has_min_1_datapoint = false;
@@ -517,8 +577,7 @@ function createNumericsChart(preset, chart_title, item_key_variable, stats, labe
             data: data,
             backgroundColor: color,
             color: color,
-            borderColor: color,
-            //borderWidth: 1
+            borderColor: color
         });
     }
 
@@ -527,44 +586,47 @@ function createNumericsChart(preset, chart_title, item_key_variable, stats, labe
         return;
     }
 
-    let type = "bar";
-    switch (preset) {
-        case ChartPreset.BAR:
-        case ChartPreset.BAR_HORIZONTAL:
-            type = "bar"
-            break
-        case ChartPreset.LINE:
-            type = "line"
-            break
-        case ChartPreset.PIE:
-            type = "pie"
-            break
-    }
-    let indexAxis = (preset == ChartPreset.BAR_HORIZONTAL ? 'y' : 'x');
-
-    new Chart(createChartContext(), {
-        type: type,
-        data: {
-            labels: Array.from(item_labels),
-            datasets: datasets
-        },
-        options: {
-            color: "white",
-            backgroundColor: "transparent",
-            indexAxis: indexAxis,
-            plugins: {
-                title: {
-                    display: true,
-                    text: chart_title
-                }
-            }
-        }
-    });
+    createNumericsChart(preset, chart_title, datasets, item_labels);
 }
 let ddc_stats = ["DDC_TotalTime", "DDC_GameThreadTime", "DDC_AssetNum", "DDC_MB"];
 let ddc_labels = ["Total Time", "Game Thread Time", "Asset Number", "MB"];
-createNumericsChart(ChartPreset.LINE, "DDC Resource Stats", "DDC_Key", ddc_stats, ddc_labels);
+createNumericsChartFromJsonData(ChartPreset.LINE, "DDC Resource Stats", "DDC_Key", ddc_stats, ddc_labels);
+createNumericsChartFromJsonData(ChartPreset.PIE, "UAT Command Times", "UAT_Command", ["Duration"], ["Duration"]);
 
-createNumericsChart(ChartPreset.PIE, "UAT Command Times", "UAT_Command", ["Duration"], ["Duration"]);
-// No good way to display exit codes in a chart
-// createNumericsChart(ChartPreset.LINE_HORIZONTAL, "UAT Commands", "UAT_Command", ["ExitCode"], ["ExitCode"])
+
+function createCsvChart(preset, chart_title, csv_str) {
+    let datasets = [];
+    let item_labels = [];
+
+    let csv_rows = csv_str.split('\n');
+    let csv_array = csv_rows.map(col => col.split(','));
+    let csv_header_row = csv_rows[0].split(',');
+
+    let num_cols = csv_header_row.length;
+    let num_rows = csv_rows.length;
+
+    for (let col_idx = 0; col_idx < num_cols; col_idx++) {
+        let data = [];
+        for (let row_idx = 1; row_idx < num_rows; row_idx++) {
+            let datapoint = csv_array[row_idx][col_idx];
+            data.push(datapoint);
+        }
+
+        if (col_idx == 0) {
+            item_labels = data;
+            continue;
+        }
+
+        let data_label = csv_array[0][col_idx];
+        const color = preset == ChartPreset.PIE ? chart_colors : chart_colors[col_idx];
+        datasets.push({
+            label: data_label,
+            data: data,
+            backgroundColor: color,
+            color: color,
+            borderColor: color
+        });
+    }
+    
+    createNumericsChart(preset, chart_title, datasets, item_labels);
+}

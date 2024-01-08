@@ -93,9 +93,10 @@
             <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
         </xs:sequence>
         <xs:attribute name="Name" type="xs:string" use="required" />
-        <!-- Exit scope if a line does not match. Useful if you don't have a specific scope exit point. -->
+        <!-- Exit scope if a line does not match. Useful if you don't have a specific scope exit
+        point. -->
         <xs:attribute name="RequireAllLinesMatch" type="xs:boolean" use="optional" />
-        <xs:attribute name="DisplayNameVariable" type="xs:string" use="optional"/>
+        <xs:attribute name="DisplayNameVariable" type="xs:string" use="optional" />
     </xs:complexType>
 
     <xs:complexType name="TargetType">
