@@ -11,6 +11,7 @@ import winreg
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+import semver
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.descriptor import UnrealPluginDescriptor, UnrealProjectDescriptor
@@ -289,6 +290,11 @@ class UnrealEnvironment:
 
     def get_project_version(self) -> Optional[UnrealConfigValue]:
         return self.config().read(category="Game", section="/Script/EngineSettings.GeneralProjectSettings", key="ProjectVersion")
+
+    def get_project_version_semver(self) -> semver.VersionInfo:
+        build_version = self.get_project_version()
+        return semver.VersionInfo.parse(
+            build_version.value) if build_version else semver.VersionInfo(0, 1, 0, "unknown")
 
     def get_engine_solution(self) -> str:
         # assume UE5

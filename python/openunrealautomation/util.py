@@ -326,3 +326,12 @@ def write_text_file(path: str, content: str) -> None:
 
 def ouu_temp_file(file_name: str) -> str:
     return os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation", file_name)
+
+
+def get_oua_version() -> str:
+    import pkg_resources
+    return pkg_resources.require("openunrealautomation")[0].version
+
+
+if __name__ == "__main__":
+    print("OpenUnrealAutomation version:", get_oua_version())

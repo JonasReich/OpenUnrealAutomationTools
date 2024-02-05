@@ -11,15 +11,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import (automation_test_html_report,
-                                                 find_last_test_report)
+from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
-                                           _main_get_files, parse_log)
+from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (ouu_temp_file, read_text_file,
-                                       write_text_file)
+from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -179,7 +176,8 @@ def generate_html_report(
     out_json_path: str,
     report_title: str,
     background_image_uri: str,
-    filter_tags_and_labels: Dict[str, str]
+    filter_tags_and_labels: Dict[str, str],
+    html_meta_tags: Optional[Dict[str, str]] = None
 ):
 
     parsed_log_dicts = {}
@@ -232,7 +230,20 @@ def generate_html_report(
     else:
         html_template = read_text_file(html_report_template_path)
 
+    generated_meta_tags = {
+        # Always add a generator tag for our tools
+        "generator": f"openunrealautomation {get_oua_version()}"
+    }
+
+    if html_meta_tags:
+        generated_meta_tags = generated_meta_tags | html_meta_tags
+
+    generated_meta_tags_str = ""
+    for meta_key, meta_value in generated_meta_tags.items():
+        generated_meta_tags_str += f'<meta name="{meta_key}" content="{meta_value}">\n'
+
     output_html = html_template.\
+        replace("GENERATED_META_TAGS", generated_meta_tags_str).\
         replace("INLINE_JSON", json_str).\
         replace("ISSUES_AND_SOURCES", inline_source_log).\
         replace("REPORT_TITLE", report_title).\
