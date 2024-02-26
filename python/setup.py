@@ -19,6 +19,7 @@ setuptools.setup(
         "pytest",
         "requests",
         "alive_progress",
+        "semver"
     ],
     include_package_data=True
 )
