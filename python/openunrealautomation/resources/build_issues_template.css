@@ -9,7 +9,6 @@
 }
 
 .scope-container {
-    background-color: #6f6f6f17;
     border: 1px;
     border-color: var(--bs-info);
     color: var(--bs-info);
@@ -20,13 +19,13 @@
 }
 
 .scope-success {
-    background-color: #36ff0e17;
+    background-color: #283a2a;
     border-color: var(--bs-success);
     color: var(--bs-success);
 }
 
 .scope-failure {
-    background-color: #9527271a;
+    background-color: #4a1d1d;
     border-color: var(--bs-danger);
     color: var(--bs-danger);
 }
@@ -37,6 +36,7 @@
     box-shadow: 0 +1px 0 #ffffff2e;
     padding-bottom: 2px;
     margin: -0.3em;
+    margin-bottom: 1px;
     padding-top: 2px;
     padding-left: 1em;
     padding-right: 0;
