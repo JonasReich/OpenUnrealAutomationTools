@@ -11,12 +11,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
+from openunrealautomation.automationtest import (automation_test_html_report,
+                                                 find_last_test_report)
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
+from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
+                                           _main_get_files, parse_log)
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
+from openunrealautomation.util import (get_oua_version, ouu_temp_file,
+                                       read_text_file, write_text_file)
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -61,8 +64,8 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
     log_file_str_html = "".join(html_lines)
 
     return \
-        f'<div class="col-12 box-ouu">'\
-        f'<div>File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre></div>\n'\
+        f'<div class="col-12 box-ouu source-file-container">'\
+        f'<div class="source-file-summary">File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre></div>\n'\
         f'<div id="{source_file}_code-summary" class="code-summary"></div>'\
         f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="expandSourceContainer(this);">Show source log</button>'\
         f'<div class="source-log-container text-nowrap p-3 code-container" style="display:none;">\n{log_file_str_html}\n</div>'\
