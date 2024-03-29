@@ -871,6 +871,8 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     if log_path is None:
         raise OUAException("Cannot parse None logfile")
 
+    print(f"Parsing log file '{log_path}'")
+
     root_scope_declaration = get_log_patterns(
         logparse_patterns_xml, target_name)
     if root_scope_declaration.num_patterns() == 0:
@@ -967,12 +969,16 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
 
 
 def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str) -> List[UnrealLogFilePatternScopeInstance]:
-    parsed_logs = []
+    log_file_paths = []
     for path in os.scandir(log_dir):
         if path.is_file():
-            parsed_log = parse_log(
-                path.path, logparse_patterns_xml, target_name)
-            parsed_logs.append((path, parsed_log))
+            log_file_paths.append(path.path)
+    log_file_paths.sort(key=lambda path: os.path.getctime(path))
+    parsed_logs = []
+    for log_file_path in log_file_paths:
+        parsed_log = parse_log(
+            log_file_path, logparse_patterns_xml, target_name)
+        parsed_logs.append((log_file_path, parsed_log))
     return parsed_logs
 
 
