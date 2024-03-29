@@ -74,10 +74,11 @@ if __name__ == "__main__":
     report_dir = os.path.join(
         bg_network_share, "Builds/Automation/Reports", unique_build_id)
 
-    # clean
-    force_rmtree(log_dir)
-    if clean:
-        force_rmtree(report_dir)
+    if not ue.dry_run:
+        # clean
+        force_rmtree(log_dir)
+        if clean:
+            force_rmtree(report_dir)
 
     # setup tools
     os.makedirs(report_dir, exist_ok=True)

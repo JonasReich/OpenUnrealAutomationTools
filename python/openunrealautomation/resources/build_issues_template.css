@@ -151,13 +151,13 @@ a.file-path {
 }
 
 /* Hide scope containers that have a single scope, no visible items and no errors. Same for the code summary button. */
-.scope-container:not(:has(.issue-scope:not(.hidden))):not(:has(.error)),
-.code-summary:not(:has(.issue-scope:not(.hidden))):not(:has(.error))+.btn-expand-source-container {
+.scope-container:not(:has(.issue-scope)),
+.code-summary:not(:has(.issue-scope))+.btn-expand-source-container {
     display: none;
 }
 
 /* Marker for one file. Could be a nicer rule if we introduce some more classes */
-.source-file-container:not(:has(.error))>.source-file-summary::after {
+.source-file-container:not(:has(.issue-scope))>.source-file-summary::after {
     content: "ok - no special events ✅";
     padding-left: 1em;
     color: #16c60c;

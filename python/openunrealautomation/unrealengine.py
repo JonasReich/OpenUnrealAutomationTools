@@ -545,6 +545,8 @@ class UnrealEngine:
             return os.path.join(self.environment.engine_root, "Engine/Programs/AutomationTool/Saved/Logs")
 
     def _archive_uat_log(self, log_output_dir: str, log_name: str) -> None:
+        if self.dry_run:
+            return
         os.makedirs(log_output_dir, exist_ok=True)
 
         src_log_path = os.path.join(self._get_uat_log_dir(), "Log.txt")

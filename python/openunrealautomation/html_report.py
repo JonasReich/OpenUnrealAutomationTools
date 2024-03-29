@@ -102,7 +102,7 @@ def _generate_plotly_icicle_chart(plot_id: str, plot_title: str, js_data_dict: s
     return injected_javascript
 
 
-def _generate_hierarchical_cook_timing_stat_html(log_file_name, log_file_str) -> str:
+def _generate_hierarchical_cook_timing_stat_html(source_file_id, log_file_name, log_file_str) -> str:
     root_node = None
     last_node = None
     last_parent = None
@@ -168,7 +168,7 @@ def _generate_hierarchical_cook_timing_stat_html(log_file_name, log_file_str) ->
         f"values : {[node['value'] for node in all_nodes]}"
 
     return _generate_plotly_icicle_chart(
-        plot_id="cook_hierarchy_timer_info",
+        plot_id=f"cook_hierarchy_timer_info_{source_file_id}",
         plot_title=f"Hierarchical Cook Timing ({log_file_name})",
         js_data_dict=js_data_dict)
 
@@ -192,16 +192,19 @@ def generate_html_report(
 
     inline_source_log = ""
     for source_file_count, (log_file_path, parsed_log) in zip(range(1, len(log_files) + 1), log_files):
-        log_file_str = read_text_file(log_file_path)
-        injected_javascript += _generate_hierarchical_cook_timing_stat_html(Path(log_file_path).name,
-                                                                            log_file_str)
-        parsed_log_dict = parsed_log.json()
         source_file_name = Path(log_file_path).name
-
         source_file_id = source_file_name
         prohibited_chars = ". ()@;[]#,="
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
+
+        log_file_str = read_text_file(log_file_path)
+        injected_javascript += _generate_hierarchical_cook_timing_stat_html(source_file_id,
+                                                                            Path(
+                                                                                log_file_path).name,
+                                                                            log_file_str)
+        parsed_log_dict = parsed_log.json()
+
         parsed_log_dict["source_file"] = source_file_id
         parsed_log_dict["source_file_name"] = source_file_name
         parsed_log_dicts[source_file_id] = parsed_log_dict
