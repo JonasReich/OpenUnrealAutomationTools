@@ -7,7 +7,7 @@ import glob
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -45,8 +45,8 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
             test_node.set("time", str(test["duration"]))
 
             for entry in test["entries"]:
-                if entry["event"]["type"] == "Info":
-                    continue
+                # if entry["event"]["type"] == "Info":
+                #     continue
 
                 event_node = XmlNode("failure")
                 event_node.set("message", entry["event"]["message"])
@@ -84,7 +84,6 @@ def automation_test_html_report(json_path: str) -> Optional[str]:
 
     with open(json_path, "r", encoding="utf-8-sig") as json_file:
         json_results = json.loads(json_file.read())
-        results = ""
 
         test_platform = json_results['devices'][0]['platform']
         report_created_on = json_results['reportCreatedOn']
@@ -93,23 +92,53 @@ def automation_test_html_report(json_path: str) -> Optional[str]:
         num_tests = str(int(json_results["succeeded"]) + int(num_failures))
         testsuite_time = str(json_results["totalDuration"])
 
-        for test in json_results["tests"]:
-            if test["state"] == "Fail":
-                # not really a display name in most cases, but just the last name after the dot
-                display_name = test["testDisplayName"]
-                test_path = test["fullTestPath"]
-                str(test["duration"])
+        results_dict = {}
 
+        def add_test_result(path_elems: List[str], result_str: str):
+            iter_dict = results_dict
+            for idx, elem in zip(range(len(path_elems)), path_elems):
+                if idx == len(path_elems) - 1:
+                    break
+                if elem in iter_dict:
+                    iter_dict = iter_dict[elem]
+                else:
+                    iter_dict[elem] = {}
+            iter_dict[path_elems[-1]] = result_str
+
+        for test in json_results["tests"]:
+            # not really a display name in most cases, but just the last name after the dot
+            display_name = test["testDisplayName"]
+            test_path = test["fullTestPath"].replace(
+                "<", "&lt;").replace(">", "&gt;")
+            str(test["duration"])
+            if test["state"] == "Fail":
                 error_lines = ""
                 for entry in test["entries"]:
                     event = entry["event"]
                     event_type = event["type"].lower()
                     if event_type in ["error", "warning"]:
                         message = event["message"]
-                        error_lines += f"<code class='{event_type}'>{message}</code><br>"
+                        error_lines += f"<code class='{event_type}'>{message}</code><br>\n"
                 if len(error_lines) > 0:
-                    results += f"<div class='error'>{test_path}<br/><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>"
-        return f"<div class='p-3'><h5>{testsuite_id}</h5>Tests: <code>{num_tests}</code> Failed: <code>{num_failures}</code> Duration: <code>{testsuite_time}s</code><div>{results}</div></div>"
+                    add_test_result(test_path.split(
+                        "."), f"<div class='error'>{test_path}<br/><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>\n")
+                    continue
+            # do not add positive test results as long as we don't have a way to collapse / filter them.
+            # add_test_result(test_path.split("."), f"SUCCESS")
+
+        def get_results_str(_results_dict: dict) -> str:
+            result = "<ul>\n"
+            for key, value in _results_dict.items():
+                if isinstance(value, dict):
+                    result += f"<li>{key}{get_results_str(value)}</li>\n"
+                else:
+                    result += f"<li>{key} : {value}</li>\n"
+            result += "</ul>\n"
+            return result
+
+        results = get_results_str(results_dict)
+
+        return f"<div class='p-3'><h5>{testsuite_id}</h5>Tests: <code>{num_tests}</code> Failed: <code>{num_failures}</code> Duration: <code>{testsuite_time}s</code><div>\n{results}\n</div></div>"
 
 
 def get_root_report_directory(environment: UnrealEnvironment) -> str:
@@ -120,7 +149,8 @@ def get_default_test_report_directory(environment: UnrealEnvironment) -> str:
     return os.path.join(get_root_report_directory(environment), f"TestReport-{environment.creation_time_str}")
 
 
-def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
+def run_tests(engine: UnrealEngine,
+              test_filter: Optional[str] = None,
               game_test_target: bool = True,
               arguments: "list[str]" = [],
               generate_report_file: bool = False,
@@ -152,7 +182,7 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
         report_directory = get_default_test_report_directory(
             engine.environment)
 
-    if may_skip and find_last_test_report(ue, report_directory) is not None:
+    if may_skip and find_last_test_report(engine, report_directory) is not None:
         return 0
 
     if test_filter is None:
