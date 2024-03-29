@@ -135,6 +135,7 @@ function updateSeverityCSS(element, severity) {
 function addLineDiv(line_obj, source_file, line_name = "") {
     let line_str = line_obj.line;
 
+    // Add clickable links to assets (click -> copy to clipboard)
     // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
     // if (file_path_matches) {
     //     for (let i = 0; i < file_path_matches.length; i++) {
@@ -254,18 +255,6 @@ function updateScopeCounters() {
         summary = $(this).find("summary");
         json_data = $(this).data("json");
 
-        /*
-        let tag_label_str = "";
-        let first_label = true;
-        for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
-            let tag = json_data.tags[tag_idx];
-            if (!first_label)
-                tag_label_str += ", ";
-            first_label = false;
-            tag_label_str += getTagLabel(tag);
-        }
-        */
-
         summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
         $(this).toggle(num_active_children > 0);
 
@@ -357,7 +346,6 @@ function createTagButton(tag, add_count) {
 }
 
 // Add buttons
-// #TODO this is hardcoded -> need to make dynamic but still have all POSSIBLE tags
 for (let [tag, label] of Object.entries(tags_and_labels)) {
     $("#filter-btns").append(createTagButton(tag, true));
 }
