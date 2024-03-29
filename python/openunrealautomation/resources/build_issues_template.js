@@ -159,10 +159,15 @@ function addLineDiv(line_obj, source_file, line_name = "") {
 
     let line_string_vars = line_obj.strings;
 
+    let string_vars_with_filter_btns = ["Developer"];
+
     for (string_key in line_string_vars) {
-        let string_value = line_string_vars[string_key];
-        incrementStringVar(string_key, string_value);
-        new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
+        if (string_vars_with_filter_btns.includes(string_key))
+        {
+            let string_value = line_string_vars[string_key];
+            incrementStringVar(string_key, string_value);
+            new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
+        }
     }
 
     let tagged_dev = line_string_vars["Developer"] ?? "";
