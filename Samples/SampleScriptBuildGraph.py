@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # argparse
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--dry-run", action="store_true")
-    argparser.add_argument("--clean", action="store-true")
+    argparser.add_argument("--clean", action="store_true")
     argparser.add_argument("--bg-shared-storage",
                            default="F:\\BuildGraphStorage")
     argparser.add_argument("--bg-network-share",
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # common paths
     buildgraph_script = os.path.join(
-        pathlib.Path(__file__).parent, "Graph.xml")
+        pathlib.Path(__file__).parent, "SampleBuildGraph.xml")
 
     if not unique_build_id:
         unique_build_id = ue.environment.project_name + "TestBuild"
@@ -75,8 +75,8 @@ if __name__ == "__main__":
         bg_network_share, "Builds/Automation/Reports", unique_build_id)
 
     # clean
+    force_rmtree(log_dir)
     if clean:
-        force_rmtree(log_dir)
         force_rmtree(report_dir)
 
     # setup tools
@@ -95,21 +95,24 @@ if __name__ == "__main__":
         if game_target_name:
             bg_options["GameTargetName"] = game_target_name
 
+        print("Starting distributed buildgraph...")
         ue.run_buildgraph_nodes_distributed(
-            buildgraph_script, "Package Game Win64", bg_options,
+            buildgraph_script, "AllGamePackages", bg_options,
             shared_storage_dir=bg_shared_storage,
             log_output_dir=log_dir,
             arguments=["-NoP4"]
         )
-    except:
+    except Exception as e:
+        print(e)
         pass
 
     try:
         # TODO move to BuildGraph sample ??
         step_header("Static Analysis")
-        ue.generate_project_files()
+        # ue.generate_project_files()
         inspectcode.run(may_skip=True)
-    except:
+    except Exception as e:
+        print(e)
         pass
 
     # TODO move to BuildGraph sample
@@ -117,7 +120,8 @@ if __name__ == "__main__":
         step_header("Automation Tests")
         run_tests(ue, generate_coverage_reports=True, generate_report_file=True,
                   report_directory=report_dir, setup_report_viewer=False, may_skip=True)
-    except:
+    except Exception as e:
+        print(e.with_traceback())
         pass
 
     # On CI this should be a separate "run always" build step after all previous steps concluded
