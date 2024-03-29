@@ -7,6 +7,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -32,7 +33,7 @@ def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> st
     return json_str
 
 
-def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstance, source_file: str, source_file_count: int, source_file_display: str, log_file_str: str, include_all_lines: bool) -> str:
+def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstance, log_file_path: str, source_file_id: str, source_file_count: int, source_file_display: str, log_file_str: str, include_all_lines: bool) -> str:
     """HTML code for the sources with roots for issues of each file."""
     log_file_lines = log_file_str.splitlines()
     log_file_line_count = len(log_file_lines)
@@ -54,7 +55,7 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
                 padded_line_number = str(line_number).rjust(
                     len(str(log_file_line_count)), "0")
                 html_lines.append(
-                    f'<code id="source-log-{source_file}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
+                    f'<code id="source-log-{source_file_id}-{line_number}">{padded_line_number}: {line}</code><br/>\n')
                 last_line_was_relevant = True
             else:
                 if last_line_was_relevant:
@@ -63,10 +64,12 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
 
     log_file_str_html = "".join(html_lines)
 
+    source_file_ctime = time.ctime(os.path.getctime(log_file_path))
+
     return \
         f'<div class="col-12 box-ouu source-file-container">'\
-        f'<div class="source-file-summary">File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre></div>\n'\
-        f'<div id="{source_file}_code-summary" class="code-summary"></div>'\
+        f'<div class="source-file-summary">File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre> - {source_file_ctime}</div>\n'\
+        f'<div id="{source_file_id}_code-summary" class="code-summary"></div>'\
         f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="expandSourceContainer(this);">Show source log</button>'\
         f'<div class="source-log-container text-nowrap p-3 code-container" style="display:none;">\n{log_file_str_html}\n</div>'\
         f'</div>'
@@ -204,6 +207,7 @@ def generate_html_report(
         parsed_log_dicts[source_file_id] = parsed_log_dict
 
         inline_source_log += _generate_html_inline_source_log(parsed_log,
+                                                              log_file_path,
                                                               source_file_id,
                                                               source_file_count,
                                                               source_file_name,
