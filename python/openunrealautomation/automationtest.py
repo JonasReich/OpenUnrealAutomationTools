@@ -90,7 +90,7 @@ def automation_test_html_report(json_path: str) -> Optional[str]:
         testsuite_id = f"Automation Tests {test_platform} @ {report_created_on}"
         num_failures = str(json_results["failed"])
         num_tests = str(int(json_results["succeeded"]) + int(num_failures))
-        testsuite_time = str(json_results["totalDuration"])
+        testsuite_time = "%.2f" % float(json_results["totalDuration"])
 
         results_dict = {}
 
