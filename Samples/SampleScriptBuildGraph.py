@@ -110,8 +110,9 @@ if __name__ == "__main__":
     try:
         # TODO move to BuildGraph sample ??
         step_header("Static Analysis")
-        # ue.generate_project_files()
-        inspectcode.run(may_skip=True)
+        if not ue.dry_run:
+            ue.generate_project_files()
+            inspectcode.run(may_skip=True)
     except Exception as e:
         print(e)
         pass
@@ -144,8 +145,13 @@ if __name__ == "__main__":
         find_coverage_file(os.path.join(report_dir, "Coverage"))))
 
     # Static C++ code analysis
-    embedded_reports.append(inspectcode.load().html_report(
-        embeddable=True))
+    try:
+        embedded_reports.append(inspectcode.load().html_report(
+            embeddable=True))
+    except BaseException as e:
+        print(e)
+        embedded_reports.append(
+            f"<div>Failed to generate InspectCode report. Exception encountered:<br>\n{e}</div>")
 
     # Localization status
     embedded_reports.append(create_localization_report(
