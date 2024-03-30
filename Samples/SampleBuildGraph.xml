@@ -32,26 +32,23 @@
 	-->
 
 	<Agent Name="Compile Game Editor" Type="Win64">
-		<!-- Loop and declare nodes for each of our valid editor platforms -->
-		<ForEach Name="EditorPlatform" Values="$(SupportedEditorPlatforms)">
-			<!-- Compile the basic components required to compile a project -->
-			<Node Name="Compile $(ProjectName)Editor $(EditorPlatform)"
-				Produces="#$(ProjectName)Editor$(EditorPlatform)">
-				<Property Name="EditorBuildConfig" Value="$(BuildConfig)" />
-				<!-- Be sure to adjust our Build Configs so we can't compile the editor in any form
+		<!-- Compile the basic components required to compile a project -->
+		<Node Name="Compile $(ProjectName)Editor"
+			Produces="#$(ProjectName)Editor">
+			<Property Name="EditorBuildConfig" Value="$(BuildConfig)" />
+			<!-- Be sure to adjust our Build Configs so we can't compile the editor in any form
 				'greater' then Development -->
-				<Do If="'$(BuildConfig)' == 'Test' OR '$(BuildConfig)' == 'Shipping'">
-					<Property Name="EditorBuildConfig" Value="Development" />
-				</Do>
+			<Do If="'$(BuildConfig)' == 'Test' OR '$(BuildConfig)' == 'Shipping'">
+				<Property Name="EditorBuildConfig" Value="Development" />
+			</Do>
 
-				<Log Message="Compiling Editor in $(EditorBuildConfig) for $(EnginePlatform)" />
+			<Log Message="Compiling Editor in $(EditorBuildConfig) for $(EnginePlatform)" />
 
-				<!-- Compile Editor for Project -->
-				<Compile Target="$(ProjectName)Editor" Platform="$(EditorPlatform)"
-					Arguments="$(BuildArguments)"
-					Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles_$(EditorPlatform)" />
-			</Node>
-		</ForEach>
+			<!-- Compile Editor for Project -->
+			<Compile Target="$(ProjectName)Editor" Platform="Win64"
+				Arguments="$(BuildArguments)"
+				Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles" />
+		</Node>
 	</Agent>
 
 	<!--
@@ -81,7 +78,7 @@
 			<Property Name="Generated_AllGamePackages"
 				Value="$(Generated_AllGamePackages);Package Game $(TargetPlatform)" />
 			<Node Name="Package Game $(TargetPlatform)"
-				Requires="#CompiledGame$(TargetPlatform)"
+				Requires="#$(ProjectName)Editor;#CompiledGame$(TargetPlatform)"
 				Produces="#Game$(TargetPlatform)">
 				<Command Name="BuildCookRun"
 					Arguments="$(ProjectArgument) -Platform=$(TargetPlatform) -Config=$(BuildConfig) -Cook -package -SkipCookingEditorContent -pak -compressed -stage" />
