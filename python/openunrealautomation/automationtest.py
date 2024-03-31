@@ -7,7 +7,7 @@ import glob
 import json
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -94,16 +94,15 @@ def automation_test_html_report(json_path: str) -> Optional[str]:
 
         results_dict = {}
 
-        def add_test_result(path_elems: List[str], result_str: str):
+        def add_test_result(path_elems: List[str], result_str: str, is_error: bool):
             iter_dict = results_dict
             for idx, elem in zip(range(len(path_elems)), path_elems):
                 if idx == len(path_elems) - 1:
                     break
-                if elem in iter_dict:
-                    iter_dict = iter_dict[elem]
-                else:
+                if elem not in iter_dict:
                     iter_dict[elem] = {}
-            iter_dict[path_elems[-1]] = result_str
+                iter_dict = iter_dict[elem]
+            iter_dict[path_elems[-1]] = (result_str, is_error)
 
         for test in json_results["tests"]:
             # not really a display name in most cases, but just the last name after the dot
@@ -121,24 +120,55 @@ def automation_test_html_report(json_path: str) -> Optional[str]:
                         error_lines += f"<code class='{event_type}'>{message}</code><br>\n"
                 if len(error_lines) > 0:
                     add_test_result(test_path.split(
-                        "."), f"<div class='error'>{test_path}<br/><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>\n")
+                        "."), f"<div><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>\n", True)
                     continue
-            # do not add positive test results as long as we don't have a way to collapse / filter them.
-            # add_test_result(test_path.split("."), f"SUCCESS")
+            add_test_result(test_path.split("."), f"SUCCESS", False)
 
-        def get_results_str(_results_dict: dict) -> str:
-            result = "<ul>\n"
+        def get_results_str(_results_dict: dict) -> Tuple[str, int, int]:
+            result_str = ""
+            num_total = 0
+            num_errors = 0
             for key, value in _results_dict.items():
                 if isinstance(value, dict):
-                    result += f"<li>{key}{get_results_str(value)}</li>\n"
+                    nested_result_str, nested_result_total, nested_result_errors = get_results_str(
+                        value)
+                    failure_suffix = f" ❌<div class='error' style='display:inline;'>{nested_result_errors}</div>" if nested_result_errors > 0 else ""
+                    result_str += f"<details><summary>{key} - {nested_result_total} {failure_suffix}</summary>\n{nested_result_str}\n</details>\n"
+                    num_total += nested_result_total
+                    num_errors += nested_result_errors
                 else:
-                    result += f"<li>{key} : {value}</li>\n"
-            result += "</ul>\n"
-            return result
+                    assert isinstance(value, tuple)
+                    message = value[0]
+                    is_error = value[1]
+                    num_total += 1
+                    if is_error:
+                        num_errors += 1
+                        result_str += f"<details><summary>❌ {key}</summary><div class='box-ouu px-2'>{message}</div>\n</details>\n"
+                    else:
+                        result_str += f"<ul><li>{key}</li></ul>\n"
+            return result_str, num_total, num_errors
 
-        results = get_results_str(results_dict)
+        results, _, _ = get_results_str(results_dict)
+        summary_table = f"""
+<table class="table table-dark table-sm small table-bordered">
+<thead>
+  <tr>
+    <th>Tests</th>
+    <th>Failed</th>
+    <th>Duration</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>{num_tests}</td>
+    <td>{num_failures}</td>
+    <td>{testsuite_time}s</td>
+  </tr>
+</tbody>
+</table>
+"""
 
-        return f"<div class='p-3'><h5>{testsuite_id}</h5>Tests: <code>{num_tests}</code> Failed: <code>{num_failures}</code> Duration: <code>{testsuite_time}s</code><div>\n{results}\n</div></div>"
+        return f"<div class='p-3'><h5>{testsuite_id}</h5>{summary_table}<div class='automation-test-results'>\n{results}\n</div></div>"
 
 
 def get_root_report_directory(environment: UnrealEnvironment) -> str:

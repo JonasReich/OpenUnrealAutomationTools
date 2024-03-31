@@ -158,7 +158,7 @@ a.file-path {
 
 /* Marker for one file. Could be a nicer rule if we introduce some more classes */
 .source-file-container:not(:has(.issue-scope))>.source-file-summary::after {
-    content: "ok - no special events ✅";
+    content: "ok ✅";
     padding-left: 1em;
     color: #16c60c;
     float: right;
