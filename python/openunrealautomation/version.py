@@ -3,6 +3,7 @@ Python implementation of Unreal Engine build versioning
 """
 
 from enum import Enum
+from functools import total_ordering
 from locale import atoi
 from re import search
 from typing import Optional
@@ -32,23 +33,31 @@ class UnrealVersionComparison(Enum):
     SECOND = 3
 
 
+@total_ordering
 class UnrealVersion():
     """
     One unique version of the engine. Used for version / compatibility checks.
     This is a python implementation of the FEngineVersionBase C++ class.
     """
 
-    major_version: int = 0
-    minor_version: int = 0
-    patch_version: int = 0
-    changelist: int = 0
-    compatible_changelist: int = 0
-    is_licensee_version: bool = False
-    is_promoted_build: bool = False
-    branch_name: str = ""
+    major_version: int
+    minor_version: int
+    patch_version: int
+    changelist: int
+    compatible_changelist: int
+    is_licensee_version: bool
+    is_promoted_build: bool
+    branch_name: str
 
-    def __init__(self):
-        pass
+    def __init__(self, major_version=0, minor_version=0, patch_version=0, changelist=0, compatible_changelist=None, is_licensee_version=False, is_promoted_build=False, branch_name=""):
+        self.major_version = major_version
+        self.minor_version = minor_version
+        self.patch_version = patch_version
+        self.changelist = changelist
+        self.compatible_changelist = compatible_changelist if compatible_changelist else changelist
+        self.is_licensee_version = is_licensee_version
+        self.is_promoted_build = is_promoted_build
+        self.branch_name = branch_name
 
     @staticmethod
     def create_from_string(version_string: str, is_licensee_version: bool = False) -> 'UnrealVersion':
@@ -95,6 +104,14 @@ class UnrealVersion():
         if first.is_licensee_version == second.is_licensee_version and first.has_changelist() and second.has_changelist() and not first.changelist == second.changelist:
             return UnrealVersionComparison.FIRST if first.changelist > second.changelist else UnrealVersionComparison.SECOND
         return UnrealVersionComparison.NEITHER
+
+    def __lt__(self, other) -> bool:
+        newest = UnrealVersion.get_newest(self, other)
+        return newest == UnrealVersionComparison.SECOND
+
+    def __eq__(self, other) -> bool:
+        newest = UnrealVersion.get_newest(self, other)
+        return newest == UnrealVersionComparison.NEITHER
 
 
 class UnrealVersionDescriptor(UnrealDescriptor):
