@@ -17,6 +17,7 @@ from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import (glob_latest, ouu_temp_file,
                                        run_subprocess, which_checked,
                                        write_text_file)
+from openunrealautomation.version import UnrealVersion
 
 
 def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
@@ -78,8 +79,8 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
         print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
-def automation_test_html_report(json_path: str) -> Optional[str]:
-    if not os.path.exists(json_path):
+def automation_test_html_report(json_path: Optional[str]) -> Optional[str]:
+    if not json_path or not os.path.exists(json_path):
         return None
 
     with open(json_path, "r", encoding="utf-8-sig") as json_file:
@@ -221,8 +222,14 @@ def run_tests(engine: UnrealEngine,
 
     all_args = ["-game", "-gametest"] if game_test_target \
         else ["-editor", "-editortest"]
+    if engine.environment.build_version.get_current() <= UnrealVersion(5, 3, 0):
+        optional_now = " Now"
+    else:
+        # 5.3 has a breaking change in that "RunTests Now" doesn't actually queue the tests anymore
+        # "RunTests; Quit" seems to work fine though
+        optional_now = ""
     all_args.append(
-        f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
+        f"-ExecCmds=Automation RunTests{optional_now} {test_filter};Quit")
     if generate_report_file:
         os.makedirs(report_directory, exist_ok=True)
         all_args.append(f"-ReportExportPath={report_directory}")
