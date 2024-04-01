@@ -11,6 +11,7 @@ This example uses BuildGraph for much of the actual script logic.
 import argparse
 import os
 import pathlib
+import traceback
 
 from openunrealautomation.automationtest import (automation_test_html_report,
                                                  find_last_test_report,
@@ -39,14 +40,22 @@ def step_header(step_name):
 if __name__ == "__main__":
     # argparse
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--dry-run", action="store_true")
-    argparser.add_argument("--clean", action="store_true")
+    argparser.add_argument("--dry-run", action="store_true",
+                           help="Dry-run everything but the report generation.")
+    argparser.add_argument("--clean", action="store_true",
+                           help="Clean the archive/output directories. If not set, some steps may be skipped if files are present (even if outdated).")
     argparser.add_argument("--bg-shared-storage",
-                           default="F:\\BuildGraphStorage")
+                           default="F:\\BuildGraphStorage", help="Shared storage directory for BuildGraph intermediates")
     argparser.add_argument("--bg-network-share",
-                           default="F:\\BuildGraphNetworkShare")
-    argparser.add_argument("--unique-build-id", default=None)
-    argparser.add_argument("--game-target-name", default=None)
+                           default="F:\\BuildGraphNetworkShare", help="Network directory for BuildGraph artifacts including the generated build reports.")
+    argparser.add_argument("--unique-build-id", default=None,
+                           help="Unique ID to use for BuildGraph, version numbers, etc.")
+    argparser.add_argument("--game-target-name", default=None,
+                           help="Name of the game targets. By default the game is autodetected from the current directory tree.")
+    argparser.add_argument("--skip-bg", action="store_true",
+                           help="Skip the BuildGraph execution. Useful if you want to test static analysis and automation tests only.")
+    argparser.add_argument("--all", action="store_true",
+                           help="Should game packages for all platforms be built? Default: Only Win64.")
     args = argparser.parse_args()
 
     step_header("Setup")
@@ -76,9 +85,9 @@ if __name__ == "__main__":
 
     if not ue.dry_run:
         # clean
-        force_rmtree(log_dir)
+        force_rmtree(log_dir, no_file_ok=True)
         if clean:
-            force_rmtree(report_dir)
+            force_rmtree(report_dir, no_file_ok=True)
 
     # setup tools
     os.makedirs(report_dir, exist_ok=True)
@@ -97,13 +106,16 @@ if __name__ == "__main__":
             bg_options["GameTargetName"] = game_target_name
 
         print("Starting distributed buildgraph...")
-        ue.run_buildgraph_nodes_distributed(
-            buildgraph_script, "AllGamePackages", bg_options,
-            shared_storage_dir=bg_shared_storage,
-            log_output_dir=log_dir,
-            arguments=["-NoP4"]
-        )
+        if not args.skip_bg:
+            bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+            ue.run_buildgraph_nodes_distributed(
+                buildgraph_script, bg_target, bg_options,
+                shared_storage_dir=bg_shared_storage,
+                log_output_dir=log_dir,
+                arguments=["-NoP4"]
+            )
     except Exception as e:
+        print(traceback.format_exc())
         print(e)
         pass
 
@@ -111,9 +123,10 @@ if __name__ == "__main__":
         # TODO move to BuildGraph sample ??
         step_header("Static Analysis")
         if not ue.dry_run:
-            ue.generate_project_files()
+            # ue.generate_project_files()
             inspectcode.run(may_skip=True)
     except Exception as e:
+        print(traceback.format_exc())
         print(e)
         pass
 
@@ -123,7 +136,8 @@ if __name__ == "__main__":
         run_tests(ue, generate_coverage_reports=True, generate_report_file=True,
                   report_directory=report_dir, setup_report_viewer=False, may_skip=True)
     except Exception as e:
-        print(e.with_traceback())
+        print(traceback.format_exc())
+        print(e)
         pass
 
     # On CI this should be a separate "run always" build step after all previous steps concluded
@@ -131,7 +145,8 @@ if __name__ == "__main__":
 
     # Parse the UAT log files that were copied to log_dir
     patterns_xml = None  # use the default file
-    parsed_logs = parse_logs(log_dir, patterns_xml, "BuildGraph")
+    parsed_logs = parse_logs(log_dir, patterns_xml,
+                             "BuildGraph") if not args.skip_bg else []
 
     # Optional embeddable reports
     embedded_reports = []
@@ -149,6 +164,7 @@ if __name__ == "__main__":
         embedded_reports.append(inspectcode.load().html_report(
             embeddable=True))
     except BaseException as e:
+        print(traceback.format_exc())
         print(e)
         embedded_reports.append(
             f"<div>Failed to generate InspectCode report. Exception encountered:<br>\n{e}</div>")
