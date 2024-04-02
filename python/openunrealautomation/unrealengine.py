@@ -331,7 +331,7 @@ class UnrealEngine:
         assert self.environment.project_file is not None
 
         # Generate the project files
-        (generator_path, is_script) = self._get_generate_project_files_path()
+        (generator_path, is_script) = self.environment._get_generate_project_files_path()
         if is_script:
             # via a GenerateProjectFiles.bat script
             generate_args = [generator_path]
@@ -359,6 +359,16 @@ class UnrealEngine:
                 run_subprocess(generate_args,
                                cwd=generate_directory,
                                print_args=True)
+
+    def change_project_engine_association(self, engine_association: str) -> None:
+        """Change the current project's engine association"""
+        assert self.environment.has_project()
+        global_version_selector = self.environment._find_global_version_selector()
+        args = [global_version_selector, "/switchversionsilent",
+                self.environment.project_file.file_path, engine_association]
+        run_subprocess(args, print_args=True)
+        # create a new environment for this engine that points to the updated engine version.
+        self.environment = UnrealEnvironment.create_from_project_file(project_file=self.environment.project_file)
 
     def build(self,
               target: UnrealBuildTarget,
@@ -468,30 +478,6 @@ class UnrealEngine:
         all_sources = list(all_sources)
         all_sources.sort()
         return all_sources
-
-    def _get_generate_project_files_path(self) -> Tuple[str, bool]:
-        """
-        Returns a tuple of
-        - A) the path to a script file/application that can be used to generate project files.
-        - B) bool: whether A) is a generate script or the version selector executable.
-        """
-        if self.environment.is_source_engine:
-            return (self.environment.engine_root +
-                    "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat", True)
-
-        # For versions of the engine installed using the launcher, we need to query the shell integration
-        # to determine the location of the Unreal Version Selector executable, which generates VS project files
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT,
-                                 "Unreal.ProjectFile\\shell\\rungenproj\\command")
-            if key:
-                command = winreg.QueryValue(key, None)
-                command = command.replace(' /projectfiles "%1"', "")
-                return (command.replace('"', ''), False)
-        except:
-            pass
-        raise OUAException(
-            "Failed to determine GenerateProjectFiles script/command")
 
     def _get_default_program_arguments(self, program: UnrealProgram) -> List[str]:
         """
