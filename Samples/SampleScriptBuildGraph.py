@@ -37,46 +37,7 @@ def step_header(step_name):
         "\n----------------------------------------")
 
 
-if __name__ == "__main__":
-    # argparse
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("--dry-run", action="store_true",
-                           help="Dry-run everything but the report generation.")
-    argparser.add_argument("--clean", action="store_true",
-                           help="Clean the archive/output directories. If not set, some steps may be skipped if files are present (even if outdated).")
-    argparser.add_argument("--bg-shared-storage",
-                           default="F:\\BuildGraphStorage", help="Shared storage directory for BuildGraph intermediates")
-    argparser.add_argument("--bg-network-share",
-                           default="F:\\BuildGraphNetworkShare", help="Network directory for BuildGraph artifacts including the generated build reports.")
-    argparser.add_argument("--unique-build-id", default=None,
-                           help="Unique ID to use for BuildGraph, version numbers, etc.")
-    argparser.add_argument("--game-target-name", default=None,
-                           help="Name of the game targets. By default the game is autodetected from the current directory tree.")
-    argparser.add_argument("--skip-bg", action="store_true",
-                           help="Skip the BuildGraph execution. Useful if you want to test static analysis and automation tests only.")
-    argparser.add_argument("--all", action="store_true",
-                           help="Should game packages for all platforms be built? Default: Only Win64.")
-    args = argparser.parse_args()
-
-    step_header("Setup")
-    clean = args.clean
-    bg_shared_storage = args.bg_shared_storage
-    bg_network_share = args.bg_network_share
-    unique_build_id = args.unique_build_id
-    game_target_name = args.game_target_name
-
-    # UE environment
-    ue = UnrealEngine.create_from_parent_tree(
-        os.path.realpath(os.path.dirname(__file__)))
-    ue.dry_run = args.dry_run
-
-    # common paths
-    buildgraph_script = os.path.join(
-        pathlib.Path(__file__).parent, "SampleBuildGraph.xml")
-
-    if not unique_build_id:
-        unique_build_id = ue.environment.project_name + "TestBuild"
-
+def main():
     log_dir = os.path.normpath(os.path.join(bg_network_share,
                                             "Builds/Logs",
                                             unique_build_id))
@@ -184,3 +145,58 @@ if __name__ == "__main__":
                          report_title=f"{ue.environment.project_name} Build Report",
                          background_image_uri="https://docs.unrealengine.com/5.0/Images/samples-and-tutorials/sample-games/lyra-game-sample/BannerImage.png",
                          filter_tags_and_labels={"ART": "🎨 Art", "CODE": "🤖 Code", "CONTENT": "📝 Content"})
+
+
+if __name__ == "__main__":
+    # argparse
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--dry-run", action="store_true",
+                           help="Dry-run everything but the report generation.")
+    argparser.add_argument("--clean", action="store_true",
+                           help="Clean the archive/output directories. If not set, some steps may be skipped if files are present (even if outdated).")
+    argparser.add_argument("--bg-shared-storage",
+                           default="F:\\BuildGraphStorage", help="Shared storage directory for BuildGraph intermediates")
+    argparser.add_argument("--bg-network-share",
+                           default="F:\\BuildGraphNetworkShare", help="Network directory for BuildGraph artifacts including the generated build reports.")
+    argparser.add_argument("--unique-build-id", default=None,
+                           help="Unique ID to use for BuildGraph, version numbers, etc.")
+    argparser.add_argument("--game-target-name", default=None,
+                           help="Name of the game targets. By default the game is autodetected from the current directory tree.")
+    argparser.add_argument("--skip-bg", action="store_true",
+                           help="Skip the BuildGraph execution. Useful if you want to test static analysis and automation tests only.")
+    argparser.add_argument("--all", action="store_true",
+                           help="Should game packages for all platforms be built? Default: Only Win64.")
+    argparser.add_argument("--engine-versions", default="",
+                           help="Semicolon separated engine identifiers. If supplied, the build is ran multiple times, once for each engine version. "
+                           "This is useful to confirm if the build succeeds for different engine versions.")
+    args = argparser.parse_args()
+
+    print("ARGS:", args)
+
+    step_header("Setup")
+    clean = args.clean
+    bg_shared_storage = args.bg_shared_storage
+    bg_network_share = args.bg_network_share
+    unique_build_id = args.unique_build_id
+    game_target_name = args.game_target_name
+
+    # UE environment
+    ue = UnrealEngine.create_from_parent_tree(
+        os.path.realpath(os.path.dirname(__file__)))
+    ue.dry_run = args.dry_run
+
+    # common paths
+    buildgraph_script = os.path.join(
+        pathlib.Path(__file__).parent, "SampleBuildGraph.xml")
+
+    if not unique_build_id:
+        unique_build_id = ue.environment.project_name + "TestBuild"
+
+    if len(args.engine_versions) > 0:
+        unique_build_without_engine_suffix = unique_build_id
+        for engine_version in args.engine_versions.split(";"):
+            ue.change_project_engine_association(engine_version)
+            unique_build_id = unique_build_without_engine_suffix + "_" + engine_version
+            main()
+    else:
+        main()
