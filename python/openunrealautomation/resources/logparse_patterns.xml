@@ -150,10 +150,11 @@
 
     <Template Name="UAT">
         <Patterns Name="UAT Errors" Severity="Error">
-            <Include Style="Regex">ERROR: </Include>
+            <Include Style="Literal">ERROR: </Include>
+            <Include Style="Literal">Missing files required to build</Include>
         </Patterns>
         <Patterns Name="UAT Warnings" Severity="Warning">
-            <Include Style="Regex">WARNING: </Include>
+            <Include Style="Literal">WARNING: </Include>
         </Patterns>
         <Patterns Name="UAT Runner Command Lines" Severity="Message" Hidden="true">
             <Include Style="Regex">Running: .*</Include>
@@ -214,12 +215,14 @@
     <Target Name="BuildGraph">
         <Patterns Name="BuildGraph UAT Exit Code" Severity="Message" Hidden="true">
             <Include SuccessFlags="auto" Style="Literal">AutomationTool exiting with ExitCode=0 (Success)</Include>
-            <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Failure</Include>
-            <Include FailureFlags="auto" Style="Regex">AutomationTool exiting with ExitCode.*Error</Include>
+        </Patterns>
+        <Patterns Name="BuildGraph UAT Non-Zero Exit Code" Severity="Fatal">
+            <Include Style="Regex">AutomationTool exiting with ExitCode.*</Include>
         </Patterns>
         <!-- Prefer template from BuildCookRun over direct inclusion of Unreal / UAT rules -->
         <Link Template="BuildCookRun" />
         <Link Template="Unreal" />
+        <Link Template="MSVC" />
         <Link Template="UAT" />
     </Target>
 </Root>

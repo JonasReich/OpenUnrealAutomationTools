@@ -276,8 +276,8 @@ class StaticAnalysisResults:
                 id_desc_join(issue_type.get_relative_id(), issue_type.description))
             if len(type_description) == 0:
                 type_description = "<i>empty description</i>"
-            type_headers[type_id] = f"<span class='type-header severity-{issue_type.severity}'>{type_description}</span>"
 
+            added_min_1_item = False
             for issue in sorted(issue_type.issues):
                 issue.file = os.path.relpath(
                     issue.file, self.env.project_root) if len(issue.file) > 0 else ""
@@ -290,7 +290,11 @@ class StaticAnalysisResults:
                     issue_file_path, issue.line) if os.path.exists(issue_file_path) else ""
 
                 add_item(
-                    type_id, f"<li><code class='src-path'>{self._xml_escape(issue_file_path)}:{issue.line}</code><br/><code style='background-color:#15181c;'>{self._xml_escape(line_from_file)}</code><span class=\"{'overflow-hider' if does_overflow else ''}\">{self._xml_escape(issue.message)}</span>{self._get_overflow_button(does_overflow)}</li>")
+                    type_id, f"<li><code class='src-path'>{self._xml_escape(issue_file_path)}:{issue.line}</code><br/><code class='line-from-file'>{self._xml_escape(line_from_file)}</code><span class=\"{'overflow-hider' if does_overflow else ''}\">{self._xml_escape(issue.message)}</span>{self._get_overflow_button(does_overflow)}</li>")
+                added_min_1_item = True
+
+            if added_min_1_item:
+                type_headers[type_id] = f"<span class='type-header severity-{issue_type.severity}'>{type_description}</span>"
 
         def get_section(id_str: str, summary: str, count: int, content: str, default_open=False) -> str:
             if len(str(summary).strip()) == 0:
@@ -302,6 +306,9 @@ class StaticAnalysisResults:
 
             for rule in sorted(category.rules):
                 type_id = rule.id
+                if type_id not in type_headers:
+                    continue
+
                 type_header = type_headers[type_id]
                 type_content = "\n".join(
                     items_per_type[type_id]) if type_id in items_per_type else ""
@@ -343,6 +350,10 @@ class StaticAnalysisResults:
             min-width: 30px;
             display: inline-block;
             background-color: var(--bs-gray-800);
+        }
+
+        .line-from-file {
+            background-color:#15181c;
         }
 
         summary, .src-path {

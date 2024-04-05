@@ -11,6 +11,9 @@ var filter = {
 };
 var last_goto_lines = new Map();
 
+let all_lines = [];
+let all_files = [];
+
 // #TODO Make this automatic -> Collect item values automatically, so we can just call addButtonsForData("Developer")
 let all_devs = new Set();
 let tag_counts = new Map();
@@ -132,6 +135,7 @@ function updateSeverityCSS(element, severity) {
 function addLineDiv(line_obj, source_file, line_name = "") {
     let line_str = line_obj.line;
 
+    // Add clickable links to assets (click -> copy to clipboard)
     // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
     // if (file_path_matches) {
     //     for (let i = 0; i < file_path_matches.length; i++) {
@@ -159,10 +163,15 @@ function addLineDiv(line_obj, source_file, line_name = "") {
 
     let line_string_vars = line_obj.strings;
 
+    let string_vars_with_filter_btns = ["Developer"];
+
     for (string_key in line_string_vars) {
-        let string_value = line_string_vars[string_key];
-        incrementStringVar(string_key, string_value);
-        new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
+        if (string_vars_with_filter_btns.includes(string_key))
+        {
+            let string_value = line_string_vars[string_key];
+            incrementStringVar(string_key, string_value);
+            new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
+        }
     }
 
     let tagged_dev = line_string_vars["Developer"] ?? "";
@@ -178,11 +187,6 @@ function addMatchListCodeContainer(match_list, parent) {
     match_list_row.data("name", name);
     parent.append(match_list_row);
     match_list_row.data("json", match_list);
-
-    if (match_list.hidden) {
-        match_list_row.addClass("hidden");
-        match_list_row.hide();
-    }
 
     updateSeverityCSS(match_list_row, match_list.severity);
 
@@ -200,12 +204,23 @@ function addIssueScope(source_file, scope, ref_node) {
     }
 
     scope.match_lists.forEach(match_list => {
-        let code_container = addMatchListCodeContainer(match_list, scope_row);
+        let code_container = null;
+        if (match_list.hidden == false)
+        {
+            code_container = addMatchListCodeContainer(match_list, scope_row);
+        }
 
         for (let line_idx = 0; line_idx < match_list.lines.length; line_idx++) {
             let line_obj = match_list.lines[line_idx];
-            let new_code_line = addLineDiv(line_obj, source_file);
-            code_container.append(new_code_line);
+            line_obj.source_scope = scope;
+            line_obj.source_file = source_file;
+            all_lines.push(line_obj);
+            
+            if (match_list.hidden == false)
+            {
+                let new_code_line = addLineDiv(line_obj, source_file);
+                code_container.append(new_code_line);
+            }
         }
     });
 
@@ -222,18 +237,13 @@ function addIssueScope(source_file, scope, ref_node) {
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
 for (const [source_file, root_scope] of Object.entries(json_obj)) {
+    all_files.push(source_file);
     let code_root =  $(`#${source_file}_code-summary`)[0];
     addIssueScope(source_file, root_scope, code_root);
-    //$(code_root).children(".scope-container").addClass("my-3");
 }
 
 function updateScopeCounters() {
     $(".issue-scope").each(function () {
-        if ($(this).data("json").hidden) {
-            $(this).addClass("hidden");
-            $(this).hide();
-            return;
-        }
         num_children = 0;
         num_active_children = 0;
         $(this).find("code").each(function () {
@@ -244,18 +254,6 @@ function updateScopeCounters() {
 
         summary = $(this).find("summary");
         json_data = $(this).data("json");
-
-        /*
-        let tag_label_str = "";
-        let first_label = true;
-        for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
-            let tag = json_data.tags[tag_idx];
-            if (!first_label)
-                tag_label_str += ", ";
-            first_label = false;
-            tag_label_str += getTagLabel(tag);
-        }
-        */
 
         summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
         $(this).toggle(num_active_children > 0);
@@ -348,7 +346,6 @@ function createTagButton(tag, add_count) {
 }
 
 // Add buttons
-// #TODO this is hardcoded -> need to make dynamic but still have all POSSIBLE tags
 for (let [tag, label] of Object.entries(tags_and_labels)) {
     $("#filter-btns").append(createTagButton(tag, true));
 }
@@ -547,7 +544,7 @@ function createNumericsChart(preset, chart_title, datasets, item_labels) {
 // item_key_variable is the string variable name to use as label for data points
 // stats are the individual numerics -> 1 data set per stat
 // lables are display names for the data sets
-function createNumericsChartFromJsonData(preset, chart_title, item_key_variable, stats, labels) {
+function createNumericsChartFromJsonData(preset, chart_title, item_key_variable, stats, labels, file) {
     let datasets = [];
     let item_labels = [];
     let has_min_1_datapoint = false;
@@ -556,8 +553,11 @@ function createNumericsChartFromJsonData(preset, chart_title, item_key_variable,
         const stat = stats[i];
         let data = [];
         let code_idx = 0;
-        $(".code-summary code").each(function (index, element) {
-            const json = $(this).data("json");
+        all_lines.forEach(function (json) {
+            if (json.source_file != file) {
+                return;
+            }
+
             let datapoint_key = json.strings[item_key_variable];
             if (datapoint_key === undefined) {
                 return;
@@ -582,7 +582,8 @@ function createNumericsChartFromJsonData(preset, chart_title, item_key_variable,
     }
 
     if (has_min_1_datapoint == false) {
-        $(getStatsRoot()).append(`<div><i>No datapoints for '${chart_title}' chart</i></div>`);
+        // This made more sense when we had a single log file. With multiple files, not all of which contain cook steps, this warning is misleading / useless.
+        // $(getStatsRoot()).append(`<div><i>No datapoints for '${chart_title}' chart</i></div>`);
         return;
     }
 
@@ -590,9 +591,12 @@ function createNumericsChartFromJsonData(preset, chart_title, item_key_variable,
 }
 let ddc_stats = ["DDC_TotalTime", "DDC_GameThreadTime", "DDC_AssetNum", "DDC_MB"];
 let ddc_labels = ["Total Time", "Game Thread Time", "Asset Number", "MB"];
-createNumericsChartFromJsonData(ChartPreset.LINE, "DDC Resource Stats", "DDC_Key", ddc_stats, ddc_labels);
-createNumericsChartFromJsonData(ChartPreset.PIE, "UAT Command Times", "UAT_Command", ["Duration"], ["Duration"]);
-
+all_files.forEach(function (file){
+    createNumericsChartFromJsonData(ChartPreset.LINE, "DDC Resource Stats " + file, "DDC_Key", ddc_stats, ddc_labels, file);
+});
+all_files.forEach(function (file){
+    // createNumericsChartFromJsonData(ChartPreset.PIE, "UAT Command Times " + file, "UAT_Command", ["Duration"], ["Duration"], file);
+});
 
 function createCsvChart(preset, chart_title, csv_str) {
     let datasets = [];

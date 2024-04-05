@@ -14,7 +14,8 @@ from typing import List, Optional, Tuple
 import semver
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
-from openunrealautomation.descriptor import UnrealPluginDescriptor, UnrealProjectDescriptor
+from openunrealautomation.descriptor import (UnrealPluginDescriptor,
+                                             UnrealProjectDescriptor)
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.util import walk_level, walk_parents
 from openunrealautomation.version import UnrealVersionDescriptor
@@ -249,6 +250,13 @@ class UnrealEnvironment:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/UnrealEditor-Cmd.exe")
         if program == UnrealProgram.PROGRAM:
             return os.path.abspath(f"{self.engine_root}/Engine/Binaries/{self.host_platform}/{program_name}.exe")
+        if program == UnrealProgram.VERSION_SELECTOR:
+            if self.is_source_engine:
+                return self.get_program_path(UnrealProgram.PROGRAM, "UnrealVersionSelector")
+            else:
+                return self._find_global_version_selector()
+        raise OUAException(
+            f"Invalid program {program} - can't find program path")
 
     def get_native_projects(self) -> List[UnrealProjectDescriptor]:
         """Returns a list of all native projects within the engine root as specified by .uprojectdirs files"""
@@ -307,6 +315,23 @@ class UnrealEnvironment:
         if not self._p4:
             self._p4 = UnrealPerforce()
         return self._p4
+
+    def _get_generate_project_files_path(self) -> Tuple[str, bool]:
+        """
+        Returns a tuple of
+        - A) the path to a script file/application that can be used to generate project files.
+        - B) bool: whether A) is a generate script or the version selector executable.
+        """
+        if self.is_source_engine:
+            return (self.engine_root +
+                    "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat", True)
+        else:
+            global_version_selector = self._find_global_version_selector()
+            if global_version_selector:
+                return global_version_selector
+
+        raise OUAException(
+            "Failed to determine GenerateProjectFiles script/command")
 
     # Static utility functions
 
@@ -419,6 +444,22 @@ class UnrealEnvironment:
                 break
             search_path = os.path.abspath(pathlib.Path(search_path).parent)
         return search_path, module_name
+
+    @staticmethod
+    def _find_global_version_selector() -> Optional[str]:
+        # For versions of the engine installed using the launcher, we need to query the shell integration
+        # to determine the location of the Unreal Version Selector executable, which generates VS project files
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT,
+                                 "Unreal.ProjectFile\\shell\\rungenproj\\command")
+            if key:
+                command = winreg.QueryValue(key, None)
+                command = command.replace(' /projectfiles "%1"', "")
+                command = command.replace('"', '')
+                return command
+        except:
+            pass
+        return None
 
     def _set_project(self, project_file: Optional[UnrealProjectDescriptor], auto_detect: bool) -> None:
         self.project_file = project_file

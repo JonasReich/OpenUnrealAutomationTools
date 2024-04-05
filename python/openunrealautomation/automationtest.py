@@ -7,7 +7,7 @@ import glob
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -17,6 +17,7 @@ from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import (glob_latest, ouu_temp_file,
                                        run_subprocess, which_checked,
                                        write_text_file)
+from openunrealautomation.version import UnrealVersion
 
 
 def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
@@ -45,8 +46,8 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
             test_node.set("time", str(test["duration"]))
 
             for entry in test["entries"]:
-                if entry["event"]["type"] == "Info":
-                    continue
+                # if entry["event"]["type"] == "Info":
+                #     continue
 
                 event_node = XmlNode("failure")
                 event_node.set("message", entry["event"]["message"])
@@ -78,38 +79,97 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
         print(f"##teamcity[importData type='junit' path='{junit_path}']")
 
 
-def automation_test_html_report(json_path: str) -> Optional[str]:
-    if not os.path.exists(json_path):
+def automation_test_html_report(json_path: Optional[str]) -> Optional[str]:
+    if not json_path or not os.path.exists(json_path):
         return None
 
     with open(json_path, "r", encoding="utf-8-sig") as json_file:
         json_results = json.loads(json_file.read())
-        results = ""
 
         test_platform = json_results['devices'][0]['platform']
         report_created_on = json_results['reportCreatedOn']
         testsuite_id = f"Automation Tests {test_platform} @ {report_created_on}"
         num_failures = str(json_results["failed"])
         num_tests = str(int(json_results["succeeded"]) + int(num_failures))
-        testsuite_time = str(json_results["totalDuration"])
+        testsuite_time = "%.2f" % float(json_results["totalDuration"])
+
+        results_dict = {}
+
+        def add_test_result(path_elems: List[str], result_str: str, is_error: bool):
+            iter_dict = results_dict
+            for idx, elem in zip(range(len(path_elems)), path_elems):
+                if idx == len(path_elems) - 1:
+                    break
+                if elem not in iter_dict:
+                    iter_dict[elem] = {}
+                iter_dict = iter_dict[elem]
+            iter_dict[path_elems[-1]] = (result_str, is_error)
 
         for test in json_results["tests"]:
+            # not really a display name in most cases, but just the last name after the dot
+            display_name = test["testDisplayName"]
+            test_path = test["fullTestPath"].replace(
+                "<", "&lt;").replace(">", "&gt;")
+            str(test["duration"])
             if test["state"] == "Fail":
-                # not really a display name in most cases, but just the last name after the dot
-                display_name = test["testDisplayName"]
-                test_path = test["fullTestPath"]
-                str(test["duration"])
-
                 error_lines = ""
                 for entry in test["entries"]:
                     event = entry["event"]
                     event_type = event["type"].lower()
                     if event_type in ["error", "warning"]:
                         message = event["message"]
-                        error_lines += f"<code class='{event_type}'>{message}</code><br>"
+                        error_lines += f"<code class='{event_type}'>{message}</code><br>\n"
                 if len(error_lines) > 0:
-                    results += f"<div class='error'>{test_path}<br/><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>"
-        return f"<div class='p-3'><h5>{testsuite_id}</h5>Tests: <code>{num_tests}</code> Failed: <code>{num_failures}</code> Duration: <code>{testsuite_time}s</code><div>{results}</div></div>"
+                    add_test_result(test_path.split(
+                        "."), f"<div><div class='code-container text-nowrap p-3'><code>{error_lines}</code></div></div>\n", True)
+                    continue
+            add_test_result(test_path.split("."), f"SUCCESS", False)
+
+        def get_results_str(_results_dict: dict) -> Tuple[str, int, int]:
+            result_str = ""
+            num_total = 0
+            num_errors = 0
+            for key, value in _results_dict.items():
+                if isinstance(value, dict):
+                    nested_result_str, nested_result_total, nested_result_errors = get_results_str(
+                        value)
+                    failure_suffix = f" ❌<div class='error' style='display:inline;'>{nested_result_errors}</div>" if nested_result_errors > 0 else ""
+                    result_str += f"<details><summary>{key} - {nested_result_total} {failure_suffix}</summary>\n{nested_result_str}\n</details>\n"
+                    num_total += nested_result_total
+                    num_errors += nested_result_errors
+                else:
+                    assert isinstance(value, tuple)
+                    message = value[0]
+                    is_error = value[1]
+                    num_total += 1
+                    if is_error:
+                        num_errors += 1
+                        result_str += f"<details><summary>❌ {key}</summary><div class='box-ouu px-2'>{message}</div>\n</details>\n"
+                    else:
+                        result_str += f"<ul><li>{key}</li></ul>\n"
+            return result_str, num_total, num_errors
+
+        results, _, _ = get_results_str(results_dict)
+        summary_table = f"""
+<table class="table table-dark table-sm small table-bordered">
+<thead>
+  <tr>
+    <th>Tests</th>
+    <th>Failed</th>
+    <th>Duration</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>{num_tests}</td>
+    <td>{num_failures}</td>
+    <td>{testsuite_time}s</td>
+  </tr>
+</tbody>
+</table>
+"""
+
+        return f"<div class='p-3'><h5>{testsuite_id}</h5>{summary_table}<div class='automation-test-results'>\n{results}\n</div></div>"
 
 
 def get_root_report_directory(environment: UnrealEnvironment) -> str:
@@ -120,7 +180,8 @@ def get_default_test_report_directory(environment: UnrealEnvironment) -> str:
     return os.path.join(get_root_report_directory(environment), f"TestReport-{environment.creation_time_str}")
 
 
-def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
+def run_tests(engine: UnrealEngine,
+              test_filter: Optional[str] = None,
               game_test_target: bool = True,
               arguments: "list[str]" = [],
               generate_report_file: bool = False,
@@ -152,7 +213,7 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
         report_directory = get_default_test_report_directory(
             engine.environment)
 
-    if may_skip and find_last_test_report(ue, report_directory) is not None:
+    if may_skip and find_last_test_report(engine, report_directory) is not None:
         return 0
 
     if test_filter is None:
@@ -161,8 +222,14 @@ def run_tests(engine: UnrealEngine, test_filter: Optional[str] = None,
 
     all_args = ["-game", "-gametest"] if game_test_target \
         else ["-editor", "-editortest"]
+    if engine.environment.build_version.get_current() <= UnrealVersion(5, 3, 0):
+        optional_now = " Now"
+    else:
+        # 5.3 has a breaking change in that "RunTests Now" doesn't actually queue the tests anymore
+        # "RunTests; Quit" seems to work fine though
+        optional_now = ""
     all_args.append(
-        f"-ExecCmds=Automation RunTests Now {test_filter};Quit")
+        f"-ExecCmds=Automation RunTests{optional_now} {test_filter};Quit")
     if generate_report_file:
         os.makedirs(report_directory, exist_ok=True)
         all_args.append(f"-ReportExportPath={report_directory}")

@@ -12,7 +12,8 @@ import winreg
 from typing import Dict, Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
+from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
+                                       UnrealBuildTarget, UnrealProgram)
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.util import args_str, run_subprocess, walk_level
@@ -204,7 +205,7 @@ class UnrealEngine:
         """
 
         node_names = list(self.get_all_buildgraph_node_names(
-            script, target, variables, arguments, agent_group_name=agent_group_name, allowed_agent_types=allowed_agent_types))
+            script, target, variables, arguments, agent_group_name=agent_group_name, allowed_agent_types=allowed_agent_types, log_output_dir=log_output_dir))
 
         # Silently ignore "write to shared storage" parameter if the storage dir is completely empty string
         write_to_shared_storage = write_to_shared_storage and len(
@@ -229,50 +230,47 @@ class UnrealEngine:
             finally:
                 # always copy the UAT log to the network location
                 if log_output_dir:
-                    os.makedirs(log_output_dir, exist_ok=True)
-
-                    def _get_uat_log_dir():
-                        if self.environment.is_installed_engine:
-                            roaming_dir = str(os.getenv("APPDATA"))
-                            engine_root_key = str(self.environment.engine_root).replace(":", "").replace(
-                                "\\", "+").replace("/", "+")
-                            return os.path.join(roaming_dir, "Unreal Engine/AutomationTool/Logs", engine_root_key)
-                        else:
-                            return os.path.join(self.environment.engine_root, "Engine/Programs/AutomationTool/Saved/Logs")
-
-                    src_log_path = os.path.join(_get_uat_log_dir(), "Log.txt")
-                    target_log_path = os.path.join(
-                        log_output_dir, f"{node_name}.log")
-                    shutil.copy2(src_log_path, target_log_path)
+                    self._archive_uat_log(log_output_dir, node_name)
                 pass
 
     def _run_buildgraph_internal(self, script: str,
                                  target: str,
                                  variables: Dict[str, str],
-                                 arguments: List[str], suppress_output: bool):
+                                 arguments: List[str],
+                                 suppress_output: bool,
+                                 raise_on_error=True):
         all_arguments = ["BuildGraph",
                          f'-script={script}', f'-target={target}'] + arguments
         for key, value in variables.items():
             all_arguments.append(f"-Set:{key}={value}")
-        return self.run(UnrealProgram.UAT, arguments=all_arguments, suppress_output=suppress_output, raise_on_error=True)
+        return self.run(UnrealProgram.UAT, arguments=all_arguments, suppress_output=suppress_output, raise_on_error=raise_on_error)
 
-    def get_all_buildgraph_node_names(self, script: str, target: str, variables: Dict[str, str], arguments: List[str] = [], agent_group_name: Optional[str] = None, allowed_agent_types=["Win64"]) -> Generator[str, None, None]:
+    def get_all_buildgraph_node_names(self, script: str, target: str, variables: Dict[str, str], arguments: List[str] = [], agent_group_name: Optional[str] = None, allowed_agent_types=["Win64"], log_output_dir: Optional[str] = None) -> Generator[str, None, None]:
         """
         Get all nodes for a target. You can filter by an agent group name or allowed agent type labels.
         """
+
+        print(f"Gathering all nodes for {target} in {script}...")
         script_name = os.path.basename(script)
         export_dir = os.path.join(
             self.environment.project_root, "Saved/BuildGraph")
         os.makedirs(export_dir, exist_ok=True)
         export_file_path = os.path.join(
             export_dir, f"{script_name}+{target}.json")
+
         self._run_buildgraph_internal(script, target, variables,
                                       arguments +
                                       [
                                           "-ListOnly",
                                           f'-Export={export_file_path}'
                                       ],
-                                      suppress_output=False)
+                                      suppress_output=False,
+                                      raise_on_error=False)
+        # always copy the UAT log to the network location if provided
+        if log_output_dir:
+            self._archive_uat_log(
+                log_output_dir, "get_all_buildgraph_node_names")
+
         with open(export_file_path) as export_file:
             bg_export = json.load(export_file)
             for agent_group in bg_export["Groups"]:
@@ -333,7 +331,7 @@ class UnrealEngine:
         assert self.environment.project_file is not None
 
         # Generate the project files
-        (generator_path, is_script) = self._get_generate_project_files_path()
+        (generator_path, is_script) = self.environment._get_generate_project_files_path()
         if is_script:
             # via a GenerateProjectFiles.bat script
             generate_args = [generator_path]
@@ -361,6 +359,16 @@ class UnrealEngine:
                 run_subprocess(generate_args,
                                cwd=generate_directory,
                                print_args=True)
+
+    def change_project_engine_association(self, engine_association: str) -> None:
+        """Change the current project's engine association"""
+        assert self.environment.has_project()
+        global_version_selector = self.environment._find_global_version_selector()
+        args = [global_version_selector, "/switchversionsilent",
+                self.environment.project_file.file_path, engine_association]
+        run_subprocess(args, print_args=True)
+        # create a new environment for this engine that points to the updated engine version.
+        self.environment = UnrealEnvironment.create_from_project_file(project_file=self.environment.project_file)
 
     def build(self,
               target: UnrealBuildTarget,
@@ -471,30 +479,6 @@ class UnrealEngine:
         all_sources.sort()
         return all_sources
 
-    def _get_generate_project_files_path(self) -> Tuple[str, bool]:
-        """
-        Returns a tuple of
-        - A) the path to a script file/application that can be used to generate project files.
-        - B) bool: whether A) is a generate script or the version selector executable.
-        """
-        if self.environment.is_source_engine:
-            return (self.environment.engine_root +
-                    "\\Engine\\Build\\BatchFiles\\GenerateProjectFiles.bat", True)
-
-        # For versions of the engine installed using the launcher, we need to query the shell integration
-        # to determine the location of the Unreal Version Selector executable, which generates VS project files
-        try:
-            key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT,
-                                 "Unreal.ProjectFile\\shell\\rungenproj\\command")
-            if key:
-                command = winreg.QueryValue(key, None)
-                command = command.replace(' /projectfiles "%1"', "")
-                return (command.replace('"', ''), False)
-        except:
-            pass
-        raise OUAException(
-            "Failed to determine GenerateProjectFiles script/command")
-
     def _get_default_program_arguments(self, program: UnrealProgram) -> List[str]:
         """
         Returns some reasonable default arguments for a given program.
@@ -536,6 +520,25 @@ class UnrealEngine:
                          str(build_configuration),
                          "-WaitMutex"]
         return all_arguments
+
+    def _get_uat_log_dir(self) -> str:
+        if self.environment.is_installed_engine:
+            roaming_dir = str(os.getenv("APPDATA"))
+            engine_root_key = str(self.environment.engine_root).replace(":", "").replace(
+                "\\", "+").replace("/", "+")
+            return os.path.join(roaming_dir, "Unreal Engine/AutomationTool/Logs", engine_root_key)
+        else:
+            return os.path.join(self.environment.engine_root, "Engine/Programs/AutomationTool/Saved/Logs")
+
+    def _archive_uat_log(self, log_output_dir: str, log_name: str) -> None:
+        if self.dry_run:
+            return
+        os.makedirs(log_output_dir, exist_ok=True)
+
+        src_log_path = os.path.join(self._get_uat_log_dir(), "Log.txt")
+        target_log_path = os.path.join(
+            log_output_dir, f"{log_name}.log")
+        shutil.copy2(src_log_path, target_log_path)
 
 
 if __name__ == "__main__":
