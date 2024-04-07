@@ -12,15 +12,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import (automation_test_html_report,
-                                                 find_last_test_report)
+from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
-                                           _main_get_files, parse_log)
+from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (get_oua_version, ouu_temp_file,
-                                       read_text_file, write_text_file)
+from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -177,7 +174,7 @@ def generate_html_report(
     html_report_template_path: Optional[str],
     html_report_path: str,
     # Source path and parsed log file
-    log_files: List[Tuple[str, UnrealLogFilePatternScopeInstance]],
+    log_files: List[UnrealLogFilePatternScopeInstance],
     embedded_reports: List[Optional[str]],
     out_json_path: str,
     report_title: str,
@@ -191,17 +188,17 @@ def generate_html_report(
     injected_javascript = ""
 
     inline_source_log = ""
-    for source_file_count, (log_file_path, parsed_log) in zip(range(1, len(log_files) + 1), log_files):
-        source_file_name = Path(log_file_path).name
+    for source_file_count, parsed_log in zip(range(1, len(log_files) + 1), log_files):
+        source_file_name = Path(parsed_log.source_file).name
         source_file_id = source_file_name
         prohibited_chars = ". ()@;[]#,="
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
 
-        log_file_str = read_text_file(log_file_path)
+        log_file_str = read_text_file(parsed_log.source_file)
         injected_javascript += _generate_hierarchical_cook_timing_stat_html(source_file_id,
                                                                             Path(
-                                                                                log_file_path).name,
+                                                                                parsed_log.source_file).name,
                                                                             log_file_str)
         parsed_log_dict = parsed_log.json()
 
@@ -210,7 +207,7 @@ def generate_html_report(
         parsed_log_dicts[source_file_id] = parsed_log_dict
 
         inline_source_log += _generate_html_inline_source_log(parsed_log,
-                                                              log_file_path,
+                                                              parsed_log.source_file,
                                                               source_file_id,
                                                               source_file_count,
                                                               source_file_name,
@@ -272,10 +269,12 @@ def create_localization_report(env: UnrealEnvironment, localization_target: str)
         loca_status_csv = read_text_file(loca_status_file)
         loca_status_report = f"""
         <script type="text/javascript">
-        let loca_status_csv = `{loca_status_csv}`;
-        $( document ).ready( function() {{
-            createCsvChart(ChartPreset.LINE, "Localization Status", loca_status_csv);
-        }});
+        {{
+            let loca_status_csv = `{loca_status_csv}`;
+            $( document ).ready( function() {{
+                createCsvChart(ChartPreset.LINE, "Localization Status ({localization_target})", loca_status_csv);
+            }});
+        }}
         </script>
         """
         return loca_status_report

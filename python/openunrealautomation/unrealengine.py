@@ -12,8 +12,7 @@ import winreg
 from typing import Dict, Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
-                                       UnrealBuildTarget, UnrealProgram)
+from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.util import args_str, run_subprocess, walk_level
@@ -212,13 +211,14 @@ class UnrealEngine:
             shared_storage_dir) > 0
 
         print(
-            f"Starting sequential BuildGraph runs for the following nodes in agent group {agent_group_name}: {node_names}")
+            f"Starting sequential BuildGraph runs for the following nodes in agent group '{agent_group_name}': {node_names}")
         for node_idx, node_name in enumerate(node_names):
             print(
                 f"Starting single build graph node '{node_name}' ({node_idx} / {len(node_names)})")
             single_node_arguments = list(arguments)
             single_node_arguments += [
-                f'-SingleNode={node_name}'
+                "-NoCompile",
+                f"-SingleNode={node_name}"
             ]
             if write_to_shared_storage:
                 single_node_arguments.append("-WriteToSharedStorage")
@@ -368,7 +368,8 @@ class UnrealEngine:
                 self.environment.project_file.file_path, engine_association]
         run_subprocess(args, print_args=True)
         # create a new environment for this engine that points to the updated engine version.
-        self.environment = UnrealEnvironment.create_from_project_file(project_file=self.environment.project_file)
+        self.environment = UnrealEnvironment.create_from_project_file(
+            project_file=self.environment.project_file)
 
     def build(self,
               target: UnrealBuildTarget,

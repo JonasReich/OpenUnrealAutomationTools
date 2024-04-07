@@ -498,7 +498,6 @@ class StaticAnalysisResults:
         <small id="search-help" class="form-text text-muted">Search by source file.</small>
         <br/>
         {issue_tree_str}
-
         </div>
         <style>{style}</style>
         {jquery_js}

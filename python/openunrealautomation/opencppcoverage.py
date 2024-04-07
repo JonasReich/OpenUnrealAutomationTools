@@ -42,7 +42,10 @@ def find_coverage_file(dir: str) -> Optional[str]:
     return os.path.normpath(cobertura_xml) if os.path.exists(cobertura_xml) else None
 
 
-def coverage_html_report(cobertura_xml_path: str) -> str:
+def coverage_html_report(cobertura_xml_path: Optional[str]) -> Optional[str]:
+    if not cobertura_xml_path:
+        return None
+
     xml_tree = xml_fromstring(read_text_file(cobertura_xml_path))
 
     def get_prop(xml_node: XmlNode, prop_name: str) -> str:
@@ -80,4 +83,7 @@ def coverage_html_report(cobertura_xml_path: str) -> str:
     return f'<div class="p-3 small"><h5>C++ Code Coverage</h5>'\
         f'{wrap_table(make_line_rate_str(xml_tree, "Total Coverage", "", "bg-success"))}'\
         f'from <pre class="mb-0" style="display: inline;">{common_package_prefix}...</pre>'\
-        f'{wrap_table(result_str)}</div>'
+        '<details>'\
+        '<summary>Click to see DLL coverage breakdown</summary>'\
+        f'{wrap_table(result_str)}</div>'\
+        '</details>'

@@ -559,6 +559,7 @@ class UnrealLogFilePatternScopeInstance:
     The root scope tracks step_success_flags usually associated with nested scopes (e.g. Job.Build=success, Job.Cook=failure).
     """
 
+    source_file: str
     parent_scope_instance: Optional['UnrealLogFilePatternScopeInstance']
     child_scope_instances: List['UnrealLogFilePatternScopeInstance']
     scope_declaration: 'UnrealLogFilePatternScopeDeclaration'
@@ -573,7 +574,8 @@ class UnrealLogFilePatternScopeInstance:
 
     pattern_match_lists: List[UnrealLogFilePatternList_MatchList]
 
-    def __init__(self, parent_scope_instance: Optional['UnrealLogFilePatternScopeInstance'], scope_declaration: 'UnrealLogFilePatternScopeDeclaration', start_match: UnrealLogFileLineMatch, instance_number: int) -> None:
+    def __init__(self, source_file: str, parent_scope_instance: Optional['UnrealLogFilePatternScopeInstance'], scope_declaration: 'UnrealLogFilePatternScopeDeclaration', start_match: UnrealLogFileLineMatch, instance_number: int) -> None:
+        self.source_file = source_file
         self.parent_scope_instance = parent_scope_instance
         self.scope_declaration = scope_declaration
         self.start_line_match = start_match
@@ -594,7 +596,7 @@ class UnrealLogFilePatternScopeInstance:
                 num_instances_same_type += 1
 
         new_child_scope = UnrealLogFilePatternScopeInstance(
-            self, scope_declaration, start_match=start_match, instance_number=num_instances_same_type)
+            self.source_file, self, scope_declaration, start_match=start_match, instance_number=num_instances_same_type)
 
         self.child_scope_instances.append(new_child_scope)
         return new_child_scope
@@ -879,12 +881,14 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
         raise OUAException("No log parsing patterns found!")
 
     # current_scope = root_scope_declaration
-    root_scope_instance = UnrealLogFilePatternScopeInstance(parent_scope_instance=None,
-                                                            scope_declaration=root_scope_declaration,
-                                                            # TODO Move into first iteration so we get the first line?
-                                                            start_match=UnrealLogFileLineMatch(
-                                                                "", None, 0),
-                                                            instance_number=0)
+    root_scope_instance = UnrealLogFilePatternScopeInstance(
+        source_file=log_path,
+        parent_scope_instance=None,
+        scope_declaration=root_scope_declaration,
+        # TODO Move into first iteration so we get the first line?
+        start_match=UnrealLogFileLineMatch(
+            "", None, 0),
+        instance_number=0)
     current_scope_instance = root_scope_instance
 
     def try_open_scope() -> None:
@@ -978,7 +982,7 @@ def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: 
     for log_file_path in log_file_paths:
         parsed_log = parse_log(
             log_file_path, logparse_patterns_xml, target_name)
-        parsed_logs.append((log_file_path, parsed_log))
+        parsed_logs.append(parsed_log)
     return parsed_logs
 
 

@@ -168,3 +168,8 @@ a.file-path {
 .embedded-report:not(:has(:not(script))) {
     display: none;
 }
+
+/* Indent tree of automation test results */
+.automation-test-results details {
+    padding-left: 1em;
+}

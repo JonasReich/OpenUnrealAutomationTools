@@ -14,9 +14,7 @@ from xml.etree.ElementTree import ElementTree as XmlTree
 from openunrealautomation.core import UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (glob_latest, ouu_temp_file,
-                                       run_subprocess, which_checked,
-                                       write_text_file)
+from openunrealautomation.util import glob_latest, ouu_temp_file, run_subprocess, which_checked, write_text_file
 from openunrealautomation.version import UnrealVersion
 
 
@@ -270,8 +268,11 @@ def find_last_test_report(engine: UnrealEngine,
                           report_directory: Optional[str] = None) -> Optional[str]:
     if report_directory is None:
         report_directory = get_root_report_directory(engine.environment)
-
-    return glob_latest(f"{report_directory}/**/index.json")
+    glob_str = f"{report_directory}/**/index.json"
+    print(f"Searching for automation report in {glob_str}")
+    result = glob_latest(glob_str)
+    print(f"  -> {result}")
+    return result
 
 
 if __name__ == "__main__":
@@ -285,4 +286,5 @@ if __name__ == "__main__":
 
     assert json_report_path
     report_str = automation_test_html_report(json_report_path)
-    write_text_file(ouu_temp_file(f"automationTestReport.html"), report_str)
+    write_text_file(ouu_temp_file(
+        f"automationTestReport.html"), str(report_str))
