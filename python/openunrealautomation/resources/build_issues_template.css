@@ -156,7 +156,16 @@ a.file-path {
     display: none;
 }
 
+.source-file-container {
+    margin-bottom: 6px;
+}
+
 /* Marker for one file. Could be a nicer rule if we introduce some more classes */
+.source-file-container:not(:has(.issue-scope)) {
+    font-size: 80%;
+    opacity: 80%;
+}
+
 .source-file-container:not(:has(.issue-scope))>.source-file-summary::after {
     content: "ok ✅";
     padding-left: 1em;
