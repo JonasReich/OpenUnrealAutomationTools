@@ -48,7 +48,7 @@ class UnrealPerforce:
         self.cwd = cwd
         self._current_cl = None
 
-    def get_current_cl(self, force_refresh = False) -> int:
+    def get_current_cl(self, force_refresh=False) -> int:
         if self._current_cl and not force_refresh:
             # returned cached value
             return self._current_cl
@@ -114,7 +114,7 @@ class UnrealPerforce:
         users_str = self._p4_get_output(["users", user_name])
         return UnrealPerforceUserInfo(users_str)
 
-    def get_last_change_user(self, path:str) -> Optional[str]:
+    def get_last_change_user(self, path: str) -> Optional[str]:
         output = self._p4_get_output(["filelog", "-m1", "-s", path])
         match = re.search(r"by (?P<user>.+)@", output)
         if match:
@@ -127,10 +127,12 @@ class UnrealPerforce:
 
         # Setting these variables speeds up UAT quite a lot, because it doesn't have to look up this changelist info.
         os.environ["uebp_CL"] = str(current_cl)
+        print(f"SETENV uebp_CL {current_cl}")
         # We don't really care about a distinction of code and content changelists with our scripts (yet).
         # Running BuildGraph for UGS distributed binaries would need this, but regular Steam builds should not need to care,
         # because they use the plain CL info 99% of the time.
         os.environ["uebp_CodeCL"] = str(current_cl)
+        print(f"SETENV uebp_CodeCL {current_cl}")
 
     def _p4(self, args):
         _args = ["p4"] + args

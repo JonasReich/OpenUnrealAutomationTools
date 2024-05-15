@@ -264,7 +264,7 @@ class UnrealEngine:
                                           "-ListOnly",
                                           f'-Export={export_file_path}'
                                       ],
-                                      suppress_output=False,
+                                      suppress_output=True,
                                       raise_on_error=False)
         # always copy the UAT log to the network location if provided
         if log_output_dir:
