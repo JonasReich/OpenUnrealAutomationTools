@@ -6,13 +6,15 @@ Does not support gauntlet testing yet, but it's planned in the future.
 import glob
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import UnrealProgram
+from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
+from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import glob_latest, ouu_temp_file, run_subprocess, which_checked, write_text_file
 from openunrealautomation.version import UnrealVersion
@@ -184,6 +186,7 @@ def run_tests(engine: UnrealEngine,
               arguments: "list[str]" = [],
               generate_report_file: bool = False,
               report_directory: Optional[str] = None,
+              log_directory: Optional[str] = None,
               convert_junit: bool = True,
               setup_report_viewer: bool = False,
               generate_coverage_reports: bool = False,
@@ -242,6 +245,14 @@ def run_tests(engine: UnrealEngine,
                                   add_default_parameters=True,
                                   generate_coverage_reports=generate_coverage_reports,
                                   coverage_report_path=os.path.join(report_directory, "Coverage"))
+
+    if log_directory:
+        last_editor_log = UnrealLogFile.EDITOR.find_latest(engine.environment)
+        if not last_editor_log:
+            raise OUAException("Failed to find editor log file")
+        log_target_path = os.path.join(
+            log_directory, "EditorAutomationTests.log")
+        shutil.copy2(last_editor_log, log_target_path)
 
     if generate_report_file and convert_junit:
         json_path = os.path.join(report_directory, "index.json")

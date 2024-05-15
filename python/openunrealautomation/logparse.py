@@ -975,8 +975,12 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
 def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str) -> List[UnrealLogFilePatternScopeInstance]:
     log_file_paths = []
     for path in os.scandir(log_dir):
-        if path.is_file():
-            log_file_paths.append(path.path)
+        if not path.is_file():
+            continue
+        # Skip this node which is always generated and should _rarely_ fail -> Optimize readability for 90% of build logs
+        if path.name == "get_all_buildgraph_node_names.log":
+            continue
+        log_file_paths.append(path.path)
     log_file_paths.sort(key=lambda path: os.path.getctime(path))
     parsed_logs = []
     for log_file_path in log_file_paths:

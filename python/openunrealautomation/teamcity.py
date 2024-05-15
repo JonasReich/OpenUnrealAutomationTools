@@ -3,10 +3,10 @@ Utility funcs to make TeamCity integration of build scripts written with OpenUnr
 e.g. utility functions / decorators to send service messages.
 """
 
-import os
-from functools import wraps
-import sys
 import argparse
+import os
+import sys
+from functools import wraps
 from typing import Callable, Dict, Union
 
 from openunrealautomation.core import OUAException
@@ -80,6 +80,15 @@ def set_build_number(value: str) -> None:
 def report_build_statistic(key: str, value: Union[int, float]) -> None:
     """Report a number for stat tracking (e.g. issue counts, file sizes, etc)"""
     service_message("buildStatisticValue", {"key": key, "value": str(value)})
+
+
+def publish_artifact(path: str) -> None:
+    """
+    Publish a build artifact while the build is running.
+    The path is a file on disk. May optionally be augmented with wildcards and destination according to Artifact Paths specifications:
+    https://www.jetbrains.com/help/teamcity/configuring-general-settings.html#Artifact+Paths
+    """
+    service_message("publishArtifacts", path)
 
 
 def disable_service_messages() -> None:
