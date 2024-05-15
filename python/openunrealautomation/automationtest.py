@@ -46,8 +46,9 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
             test_node.set("time", str(test["duration"]))
 
             for entry in test["entries"]:
-                # if entry["event"]["type"] == "Info":
-                #     continue
+                # entries may contain info logs and warnings. Only errors should fail JUnit tests
+                if not entry["event"]["type"] == "Error":
+                    continue
 
                 event_node = XmlNode("failure")
                 event_node.set("message", entry["event"]["message"])
