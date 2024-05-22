@@ -14,8 +14,7 @@ from typing import List, Optional, Tuple
 import semver
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
-from openunrealautomation.descriptor import (UnrealPluginDescriptor,
-                                             UnrealProjectDescriptor)
+from openunrealautomation.descriptor import UnrealPluginDescriptor, UnrealProjectDescriptor
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.util import walk_level, walk_parents
 from openunrealautomation.version import UnrealVersionDescriptor
@@ -254,7 +253,9 @@ class UnrealEnvironment:
             if self.is_source_engine:
                 return self.get_program_path(UnrealProgram.PROGRAM, "UnrealVersionSelector")
             else:
-                return self._find_global_version_selector()
+                result = self._find_global_version_selector()
+                if result:
+                    return result
         raise OUAException(
             f"Invalid program {program} - can't find program path")
 
@@ -328,7 +329,7 @@ class UnrealEnvironment:
         else:
             global_version_selector = self._find_global_version_selector()
             if global_version_selector:
-                return global_version_selector
+                return (global_version_selector, False)
 
         raise OUAException(
             "Failed to determine GenerateProjectFiles script/command")

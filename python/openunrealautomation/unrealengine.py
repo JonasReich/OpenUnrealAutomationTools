@@ -363,6 +363,7 @@ class UnrealEngine:
     def change_project_engine_association(self, engine_association: str) -> None:
         """Change the current project's engine association"""
         assert self.environment.has_project()
+        assert self.environment.project_file
         global_version_selector = self.environment._find_global_version_selector()
         args = [global_version_selector, "/switchversionsilent",
                 self.environment.project_file.file_path, engine_association]

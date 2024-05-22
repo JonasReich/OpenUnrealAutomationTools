@@ -19,14 +19,15 @@ from openunrealautomation.core import OUAException
 
 def strtobool(val: Optional[str]) -> bool:
     """Convert a string representation of truth to a boolean value.
-    Based on distutils.util.strtobool but supports None value (=False) and returns bool instead of 1/0 int.
+    Based on distutils.util.strtobool but supports None value (=False), forwards bool input values and returns bool instead of 1/0 int.
 
     True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
-    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
-    'val' is anything else.
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if 'val' is anything else.
     """
     if val is None:
         return False
+    if isinstance(val, bool):
+        return val
     val = val.lower()
     if val in ('y', 'yes', 't', 'true', 'on', '1'):
         return True
