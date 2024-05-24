@@ -974,6 +974,7 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
 
 def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str) -> List[UnrealLogFilePatternScopeInstance]:
     log_file_paths = []
+    print(f"Searching for build logs in {log_dir}...")
     for path in os.scandir(log_dir):
         if not path.is_file():
             continue
