@@ -5,11 +5,13 @@ but some of the automation tools will be tied to Perforce anyways,
 because Epic's tooling assumes Perforce as only source control tool in many places.
 """
 
+import datetime
 import os
 import re
 import subprocess
+import time
 from locale import atoi
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 class UnrealPerforceUserInfo:
@@ -114,12 +116,35 @@ class UnrealPerforce:
         users_str = self._p4_get_output(["users", user_name])
         return UnrealPerforceUserInfo(users_str)
 
-    def get_last_change_user(self, path: str) -> Optional[str]:
-        output = self._p4_get_output(["filelog", "-m1", "-s", path])
-        match = re.search(r"by (?P<user>.+)@", output)
-        if match:
-            return match.group("user")
+    def get_last_change_user(self, path: str, ignore_copies=True) -> Optional[str]:
+        last_change = self.get_last_change(path, ignore_copies)
+        if last_change:
+            return last_change[1]
         return None
+
+    def get_last_change(self, path: str, ignore_copies=True) -> Optional[Tuple[int, str]]:
+        output = self._p4_get_output(["filelog", "-m1", "-s", path])
+
+        if ignore_copies:
+            copy_source_match = re.search(
+                r"... copy from (?P<source>//.*#\d+)", output)
+            if copy_source_match:
+                # Follow the chain of copies recursively
+                return self.get_last_change(copy_source_match.group("source"), True)
+        match = re.search(
+            r"change (?P<changelist>\d+) .* by (?P<user>.+?)@", output)
+        if match:
+            return int(match.group("changelist")), match.group("user")
+        return None
+
+    def get_depot_location(self, local_path: str) -> str:
+        return self._p4_get_output(["where", local_path]).split(" ")[0]
+
+    def get_current_stream_changed_files_since(self, duration: datetime.timedelta) -> List[str]:
+        now = datetime.datetime.now()
+        start_time = now-duration
+        start_time_str = start_time.strftime("%Y/%m/%d:%H:%M:%S")
+        return [line.split("#")[0] for line in self._p4_get_output(["files", f"...@{start_time_str},@now"]).splitlines()]
 
     def set_uat_env_vars(self) -> None:
         current_cl = self.get_current_cl()
