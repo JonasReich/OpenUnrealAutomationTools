@@ -28,7 +28,15 @@ def add_service_message_argument(argparser: argparse.ArgumentParser):
 
 
 def service_message(message_name: str, value_or_named_attributes: Union[None, str, Dict[str, str]]) -> None:
-    # TODO check for escaped characters https://www.jetbrains.com/help/teamcity/service-messages.html#Escaped+Values
+    def _escape_characters(in_str: str) -> str:
+        # Reference  escaped characters https://www.jetbrains.com/help/teamcity/service-messages.html#Escaped+Values
+        # The only char missing is
+        # \uNNNN (unicode symbol with code 0xNNNN) -> |0xNNNN
+        escape_chars = [("|", "||"), ("'", "|'"),
+                        ("\n", "|n"), ("[", "|["), ("]", "|]")]
+        for from_char, to_char in escape_chars:
+            in_str = in_str.replace(from_char, to_char)
+        return in_str
 
     # Do not print service messages if
     if _enable_service_messages == False:
@@ -45,17 +53,12 @@ def service_message(message_name: str, value_or_named_attributes: Union[None, st
                 if char.isspace():
                     raise OUAException(
                         "Service message attribute keys may not contain any whitespace")
-            if "'" in value:
-                raise OUAException(
-                    "Service message values may not contain single quotes")
+            value = _escape_characters(value)
             attribute_strings.append(f"{name}='{value}'")
         value_str = " ".join(
             attribute_strings)
     else:
-        if "'" in value_or_named_attributes:
-            raise OUAException(
-                "Service message values may not contain single quotes")
-        value_str = f"'{value_or_named_attributes}'"
+        value_str = f"'{_escape_characters(value_or_named_attributes)}'"
 
     print(f"##teamcity[{message_name} {value_str}]",
           # Flush the lines, so TeamCity is more like to be updated when we ask for stats via RestAPI
