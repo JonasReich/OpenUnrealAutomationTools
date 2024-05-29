@@ -106,6 +106,14 @@ def enable_service_messages() -> None:
     service_message("enableServiceMessages", None)
 
 
+def report_build_problem(description: str) -> None:
+    """
+    Use to report an actionable build problem to TeamCity.
+    This FAILS the build, so only use this for critical issues (like compile errors, critical assets load issues, etc).
+    """
+    service_message("buildProblem ", {"description": description})
+
+
 def stop_build(comment: str = "unspecified reason", readd_to_queue: bool = False) -> None:
     """
     Stop a build. Should be used very sparingly, but in conjunction with readding it to the queue might be worth it.
