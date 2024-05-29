@@ -3,7 +3,6 @@ Utility funcs to make TeamCity integration of build scripts written with OpenUnr
 e.g. utility functions / decorators to send service messages.
 """
 
-import argparse
 import os
 import sys
 from functools import wraps
@@ -19,12 +18,6 @@ _enable_service_messages = (os.environ.get(
     "TEAMCITY_VERSION") is not None) or (_TC_MESSAGES_ARG in sys.argv)
 if _enable_service_messages:
     print("TeamCity service messages enabled")
-
-
-def add_service_message_argument(argparser: argparse.ArgumentParser):
-    argparser.add_argument(_TC_MESSAGES_ARG, action="store_true",
-                           help="If present, TeamCity service messages will be printed for some script steps. "
-                           "Automatically deduced when running in a TeamCity build environment.")
 
 
 def service_message(message_name: str, value_or_named_attributes: Union[None, str, Dict[str, str]]) -> None:
