@@ -376,7 +376,8 @@ class UnrealEngine:
               target: UnrealBuildTarget,
               build_configuration: UnrealBuildConfiguration,
               platform: Optional[str] = None,
-              program_name: str = "") -> int:
+              program_name: str = "",
+              raise_on_error: bool = True) -> int:
         """
         Launch UBT to build the provided target.
 
@@ -407,7 +408,7 @@ class UnrealEngine:
             # TODO: Is this really required??
             all_arguments.append("-editorrecompile")
 
-        return self.run(UnrealProgram.UBT, arguments=all_arguments)
+        return self.run(UnrealProgram.UBT, arguments=all_arguments, raise_on_error=raise_on_error)
 
     def clean(self,
               target: UnrealBuildTarget,
