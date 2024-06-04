@@ -258,8 +258,9 @@ def run_tests(engine: UnrealEngine,
     if generate_report_file and convert_junit:
         json_path = os.path.join(report_directory, "index.json")
         junit_path = os.path.join(report_directory, "JUnitTestResults.xml")
-        _convert_test_results_to_junit(
-            json_path=json_path, junit_path=junit_path)
+        if os.path.exists(json_path):
+            _convert_test_results_to_junit(
+                json_path=json_path, junit_path=junit_path)
 
     if setup_report_viewer_actual and bower_path is not None:
         bower_json = os.path.join(
