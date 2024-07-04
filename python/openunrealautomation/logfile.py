@@ -89,7 +89,7 @@ class UnrealLogFile(Enum):
         found_files = glob.glob(search_path)
         found_files = [os.path.normpath(file) for file in found_files]
         found_files.sort(key=os.path.getctime)
-        print("...found:", found_files)
+        print(f"...found {len(found_files)} file(s)")
         return found_files
 
     def __str__(self) -> str:
