@@ -16,7 +16,9 @@ from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import glob_latest, ouu_temp_file, run_subprocess, which_checked, write_text_file
+from openunrealautomation.util import (glob_latest, ouu_temp_file,
+                                       run_subprocess, which_checked,
+                                       write_text_file)
 from openunrealautomation.version import UnrealVersion
 
 
@@ -41,7 +43,9 @@ def _convert_test_results_to_junit(json_path: str, junit_path: str) -> None:
         for test in json_results["tests"]:
             test_node = XmlNode("testcase")
             test_node.set("name", test["testDisplayName"])
-            test_node.set("classname", test["fullTestPath"])
+            # make sure class names do not contain any spaces - otherwise TeamCity etc won't detect other groupings by dot separator
+            test_node.set("classname", str(
+                test["fullTestPath"]).replace(" ", "_"))
             test_node.set("status", test["state"])
             test_node.set("time", str(test["duration"]))
 
