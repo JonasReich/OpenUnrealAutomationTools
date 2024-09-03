@@ -16,9 +16,7 @@ from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (glob_latest, ouu_temp_file,
-                                       run_subprocess, which_checked,
-                                       write_text_file)
+from openunrealautomation.util import glob_latest, ouu_temp_file, run_subprocess, which_checked, write_text_file
 from openunrealautomation.version import UnrealVersion
 
 
@@ -222,6 +220,10 @@ def run_tests(engine: UnrealEngine,
     if may_skip and find_last_test_report(engine, report_directory) is not None:
         return 0
 
+    json_path = os.path.join(report_directory, "index.json")
+    if os.path.exists(json_path):
+        os.remove(json_path)
+
     if test_filter is None:
         optional_ouu_tests = "+OpenUnrealUtilities" if engine.environment.has_open_unreal_utilities() else ""
         test_filter = f"{engine.environment.project_name}+Project{optional_ouu_tests}"
@@ -260,7 +262,6 @@ def run_tests(engine: UnrealEngine,
         shutil.copy2(last_editor_log, log_target_path)
 
     if generate_report_file and convert_junit:
-        json_path = os.path.join(report_directory, "index.json")
         junit_path = os.path.join(report_directory, "JUnitTestResults.xml")
         if os.path.exists(json_path):
             _convert_test_results_to_junit(
