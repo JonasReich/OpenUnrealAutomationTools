@@ -19,6 +19,8 @@
 	<Option Name="GameTargetName" DefaultValue="$(ProjectName)"
 		Description="Project to compile for the standalone game" />
 
+	<Option Name="ProjectsIncludedInLocalization" DefaultValue="Game,Test"
+		Description="Which localization projects to include in Loca step" />
 
 	<Property Name="EnginePlatform" Value="Win64" />
 	<Property Name="Project" Value="$(ProjectDir)/$(ProjectName).uproject" />
@@ -27,7 +29,7 @@
 
 	<!--
 	=======================================================
-	    Compile Editor
+		Compile Editor
 	=======================================================
 	-->
 
@@ -48,6 +50,20 @@
 			<Compile Target="$(ProjectName)Editor" Platform="Win64"
 				Arguments="$(BuildArguments)"
 				Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles" />
+		</Node>
+
+		<Node Name="Localize" Requires="#$(ProjectName)Editor">
+			<!-- see AutomationTool\Scripts\Localisation.Automation.cs -->
+			<Property Name="SharedLocalizeParams"
+				Value="-UEProjectRoot=$(ProjectDir) -UEProjectDirectory='' -UEProjectName=$(ProjectName) -LocalizationProjectNames=$(ProjectsIncludedInLocalization) -LocalizationBranch=&quot;$(EscapedBranch)&quot;" />
+
+			<!--
+
+					<Command Name="Localize"
+					Arguments="$(SharedLocalizeParams) -LocalizationSteps=Gather,Export" />
+				-->
+			<Spawn Exe="python"
+				Arguments="$(ProjectDir)/OpenUnrealAutomationTools/Samples/GenerateTranslationCSV.py $(ProjectDir) $(ProjectsIncludedInLocalization)" />
 		</Node>
 	</Agent>
 
@@ -78,7 +94,7 @@
 			<Property Name="Generated_AllGamePackages"
 				Value="$(Generated_AllGamePackages);Package Game $(TargetPlatform)" />
 			<Node Name="Package Game $(TargetPlatform)"
-				Requires="#$(ProjectName)Editor;#CompiledGame$(TargetPlatform)"
+				Requires="#$(ProjectName)Editor;Localize;#CompiledGame$(TargetPlatform)"
 				Produces="#Game$(TargetPlatform)">
 				<Command Name="BuildCookRun"
 					Arguments="$(ProjectArgument) -Platform=$(TargetPlatform) -Config=$(BuildConfig) -Cook -package -SkipCookingEditorContent -pak -compressed -stage" />
