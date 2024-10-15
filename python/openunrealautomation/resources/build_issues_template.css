@@ -72,8 +72,6 @@
 }
 
 .code-container {
-    overflow: scroll;
-    max-height: 300px;
     background-color: #1c1c1c;
 }
 
