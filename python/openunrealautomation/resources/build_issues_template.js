@@ -149,7 +149,7 @@ function addLineDiv(line_obj, source_file, line_name = "") {
     // Line numbers in report start with 0
     let normal_line_nr = line_obj.line_nr + 1;
     let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${normal_line_nr})">🔗</button>`
-    let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${zeroPad(line_obj.occurences)}x (1st at line ${zeroPad(normal_line_nr, 5)}): </div>${line_str}<br></code>`);
+    let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${zeroPad(line_obj.occurences)}x #1@ ${zeroPad(normal_line_nr, 5)} </div>${line_str}<br></code>`);
     new_code_line.data("json", line_obj);
     new_code_line.data("source_file", source_file);
     
@@ -183,7 +183,7 @@ function addLineDiv(line_obj, source_file, line_name = "") {
 }
 
 function addMatchListCodeContainer(match_list, parent) {
-    match_list_row = $(`<details class="row issue-scope pt-2"><summary>${name}</summary>${CODE_CONTAINER_TEMPLATE}</details>`);
+    match_list_row = $(`<details class="row issue-scope pt-2"><summary class="issue-scope-summary">${name}</summary>${CODE_CONTAINER_TEMPLATE}</details>`);
     match_list_row.data("name", name);
     parent.append(match_list_row);
     match_list_row.data("json", match_list);
@@ -219,7 +219,25 @@ function addIssueScope(source_file, scope, ref_node) {
             if (match_list.hidden == false)
             {
                 let new_code_line = addLineDiv(line_obj, source_file);
-                code_container.append(new_code_line);
+
+                if ("GroupBy" in line_obj.strings)
+                {
+                    let group_by_name = line_obj.strings["GroupBy"];
+                    let group_by_name_data = `data-line-group-by='${group_by_name}'`
+                    let group_root = code_container.find(`.line-group[${group_by_name_data}]`);
+                    if (group_root.length == 0)
+                    {
+                        let new_line_group = $(`<details class='line-group' ${group_by_name_data}><summary class='line-group-summary'>${group_by_name}</summary></details>`);
+                        new_line_group.data("name", group_by_name);
+                        code_container.append(new_line_group);
+                    }
+
+                    code_container.find(`.line-group[${group_by_name_data}]`).append(new_code_line);
+                }
+                else
+                {
+                    code_container.append(new_code_line);
+                }
             }
         }
     });
@@ -252,7 +270,7 @@ function updateScopeCounters() {
                 num_active_children++;
         })
 
-        summary = $(this).find("summary");
+        summary = $(this).find(".issue-scope-summary");
         json_data = $(this).data("json");
 
         summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
@@ -262,6 +280,21 @@ function updateScopeCounters() {
             let tag = json_data.tags[tag_idx];
             $(summary).append(createTagButton(tag, false));
         }
+    })
+    $(".line-group").each(function () {
+        num_children = 0;
+        num_active_children = 0;
+        $(this).find("code").each(function () {
+            num_children++;
+            if ($(this).css("display") != "none")
+                num_active_children++;
+        })
+
+        summary = $(this).find(".line-group-summary");
+        line_group_name = $(this).data("name");
+
+        summary.html("<span class='px-2'>" + line_group_name + ` (${num_active_children}/${num_children})` + "</span>");
+        $(this).toggle(num_active_children > 0);
     })
 }
 updateScopeCounters();

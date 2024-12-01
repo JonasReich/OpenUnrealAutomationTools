@@ -312,8 +312,9 @@ class UnrealLogFilePatternList_MatchList:
                                line.json() for line in self.matching_lines]))
 
         # Lines come from a set, which has non stable sorting.
-        # In the json output we want the lines sorted by line number.
-        lines_json_objs.sort(key=lambda line: line["line_nr"])
+        # In the json output we want the lines sorted alphabetically for better readability.
+        # Line order doesn't matter as much.
+        lines_json_objs.sort(key=lambda line: line["line"])
 
         return {
             "name": self.source_list.group_name,
