@@ -943,6 +943,12 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
             for line_number, line in enumerate(lines, 0):
                 update_progress_bar()
 
+                MAX_PARSE_LINE_LENGTH = 20000
+                if len(line) > 20000:
+                    print(
+                        f"WARNING: Skipping line {line_number}, because it exceeded maximum line length for parsing ({MAX_PARSE_LINE_LENGTH})")
+                    continue
+
                 # What's a higher priority?
                 # 1) closing current scope <- current implementation
                 # 2) opening child scopes
