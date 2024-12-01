@@ -19,7 +19,7 @@
 	<Option Name="GameTargetName" DefaultValue="$(ProjectName)"
 		Description="Project to compile for the standalone game" />
 
-	<Option Name="ProjectsIncludedInLocalization" DefaultValue="Game,Test"
+	<Option Name="ProjectsIncludedInLocalization" DefaultValue="Game"
 		Description="Which localization projects to include in Loca step" />
 
 	<Property Name="EnginePlatform" Value="Win64" />
