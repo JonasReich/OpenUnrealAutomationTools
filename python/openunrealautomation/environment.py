@@ -14,7 +14,8 @@ from typing import List, Optional, Tuple
 import semver
 from openunrealautomation.config import UnrealConfig, UnrealConfigValue
 from openunrealautomation.core import OUAException, UnrealProgram
-from openunrealautomation.descriptor import UnrealPluginDescriptor, UnrealProjectDescriptor
+from openunrealautomation.descriptor import (UnrealPluginDescriptor,
+                                             UnrealProjectDescriptor)
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.util import walk_level, walk_parents
 from openunrealautomation.version import UnrealVersionDescriptor
@@ -468,8 +469,11 @@ class UnrealEnvironment:
         if project_file is not None:
             self.project_root = os.path.abspath(pathlib.Path(
                 project_file.file_path).parent)
+            project_file_json = project_file.read()
+            self.engine_association = project_file_json["EngineAssociation"]
         else:
             self.project_root = ""
+            self.engine_association = None
         self.project_name = self.project_file.get_name(
         ) if self.project_file is not None else None
         self._validate_paths()
