@@ -11,12 +11,13 @@ import polib
 parser = argparse.ArgumentParser()
 parser.add_argument("project_root")
 parser.add_argument("targets")
-parser.add_argument("--source-language", default="en")
+parser.add_argument("--languages", default="en",
+                    help="comma seperated string of UE language specifiers (e.g. 'de,en,fr')")
 
 args = parser.parse_args()
 project_root = args.project_root
 targets = args.targets
-source_language = args.source_language
+languages = args.languages
 
 replace_chars = [
     ("\r\n", "\\r\\n")
@@ -28,20 +29,32 @@ def clean_str(s: str) -> str:
         s = s.replace(from_str, to_str)
     return s
 
+# reverse of clean_str
+
+
+def unclean_str(s: str) -> str:
+    for to_str, from_str in replace_chars:
+        s = s.replace(from_str, to_str)
+    return s
+
 
 def generate_translation_csv(target):
-    po_path = os.path.normpath(os.path.join(
-        project_root, "Content/Localization/Game", source_language, f"{target}.po"))
-    print("Converting PO file", po_path)
-    if not os.path.exists(po_path):
-        raise FileNotFoundError(po_path)
+    language_loca_root = os.path.join(
+        project_root, "Content/Localization/Game", language)
+    source_po_path = os.path.normpath(
+        os.path.join(language_loca_root, f"{target}.po"))
 
-    po = polib.pofile(po_path)
     csv_dir = os.path.normpath(os.path.join(
-        project_root, "Content/Localization/CSVTranslations"))
+        project_root, "CSVTranslations"))
     csv_path = os.path.normpath(os.path.join(
-        csv_dir, f"{target}_{source_language}.csv"))
+        csv_dir, f"{target}_{language}.csv"))
 
+    print("Processing PO file", source_po_path, ", and CSV", csv_path)
+
+    if not os.path.exists(source_po_path):
+        raise FileNotFoundError(source_po_path)
+
+    source_po = polib.pofile(source_po_path)
     existing_lines = dict()
 
     os.makedirs(csv_dir, exist_ok=True)
@@ -73,7 +86,7 @@ def generate_translation_csv(target):
                                quotechar='"', quoting=csv.QUOTE_ALL)
         csvwriter.writerow(
             ["Namespace", "Key", "SourceString", "LocalizedString"])
-        for entry in po:
+        for entry in source_po:
             [namespace, key] = entry.msgctxt.split(",")
             source_text = clean_str(entry.msgid)
             translation_text = clean_str(entry.msgstr)
@@ -91,12 +104,28 @@ def generate_translation_csv(target):
 
             csvwriter.writerow([namespace, key, source_text, translation_text])
 
+            # Write back the current translation into PO
+            entry.msgstr = unclean_str(translation_text)
+
     total_lines = new_lines + reused_lines + changed_lines
     overlapping_lines = reused_lines + changed_lines
     removed_lines = previous_line_count - overlapping_lines
     print(
         f"line changes: new {new_lines}, reused {reused_lines}, changed {changed_lines}, total {total_lines}, removed {removed_lines}")
+    source_po.save(source_po_path)
+
+    print(
+        f"Deleting archive + locres files for {target} {language} to avoid conflicts with CSV on reimport")
+    archive_path = os.path.normpath(os.path.join(
+        language_loca_root, f"{target}.archive"))
+    if os.path.exists(archive_path):
+        os.remove(archive_path)
+    locres_path = os.path.normpath(os.path.join(
+        language_loca_root, f"{target}.locres"))
+    if os.path.exists(locres_path):
+        os.remove(locres_path)
 
 
-for target in targets.split(","):
-    generate_translation_csv(target)
+for language in languages.split(","):
+    for target in targets.split(","):
+        generate_translation_csv(target)

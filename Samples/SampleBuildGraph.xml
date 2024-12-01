@@ -56,14 +56,13 @@
 			<!-- see AutomationTool\Scripts\Localisation.Automation.cs -->
 			<Property Name="SharedLocalizeParams"
 				Value="-UEProjectRoot=$(ProjectDir) -UEProjectDirectory='' -UEProjectName=$(ProjectName) -LocalizationProjectNames=$(ProjectsIncludedInLocalization) -LocalizationBranch=&quot;$(EscapedBranch)&quot;" />
-
-			<!--
-
-					<Command Name="Localize"
-					Arguments="$(SharedLocalizeParams) -LocalizationSteps=Gather,Export" />
-				-->
+			<Command Name="Localize"
+				Arguments="$(SharedLocalizeParams) -LocalizationSteps=Gather,Export" />
+			<Property Name="LanguagesForCsvTranslation" Value="en,de,fr" />
 			<Spawn Exe="python"
-				Arguments="$(ProjectDir)/OpenUnrealAutomationTools/Samples/GenerateTranslationCSV.py $(ProjectDir) $(ProjectsIncludedInLocalization)" />
+				Arguments="$(ProjectDir)/OpenUnrealAutomationTools/Samples/GenerateTranslationCSV.py $(ProjectDir) $(ProjectsIncludedInLocalization) --languages=$(LanguagesForCsvTranslation)" />
+			<Command Name="Localize"
+				Arguments="$(SharedLocalizeParams) -LocalizationSteps=Import,Compile,GenerateReports" />
 		</Node>
 	</Agent>
 
