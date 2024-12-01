@@ -48,6 +48,7 @@ def main():
         # clean
         force_rmtree(log_dir, no_file_ok=True)
         if clean:
+            print("Cleaning", report_dir, "...")
             force_rmtree(report_dir, no_file_ok=True)
 
     # setup tools
@@ -61,6 +62,7 @@ def main():
         bg_options = {
             "ProjectDir": ue.environment.project_root,
             "ProjectName": str(ue.environment.project_name),
+            "BuildConfig": "Shipping"
         }
 
         if game_target_name:
@@ -69,11 +71,12 @@ def main():
         print("Starting distributed buildgraph...")
         if not args.skip_bg:
             bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+            clean_arg = ["-clean"] if clean else []
             ue.run_buildgraph_nodes_distributed(
                 buildgraph_script, bg_target, bg_options,
                 shared_storage_dir=bg_shared_storage,
                 log_output_dir=log_dir,
-                arguments=["-NoP4"]
+                arguments=["-NoP4"] + clean_arg
             )
     except Exception as e:
         print(traceback.format_exc())
@@ -83,7 +86,7 @@ def main():
     try:
         # TODO move to BuildGraph sample ??
         step_header("Static Analysis")
-        if not ue.dry_run:
+        if not ue.dry_run and args.static_analysis:
             # ue.generate_project_files()
             inspectcode.run(may_skip=True)
     except Exception as e:
@@ -166,6 +169,9 @@ if __name__ == "__main__":
                            help="Skip the BuildGraph execution. Useful if you want to test static analysis and automation tests only.")
     argparser.add_argument("--all", action="store_true",
                            help="Should game packages for all platforms be built? Default: Only Win64.")
+    argparser.add_argument("--static-analysis", action="store_true",
+                           help="Run static code analysis on the project. Not reccommended if you're running the build for multiple engine versions / platforms, "
+                           "because it significantly increases build times.")
     argparser.add_argument("--engine-versions", default="",
                            help="Semicolon separated engine identifiers. If supplied, the build is ran multiple times, once for each engine version. "
                            "This is useful to confirm if the build succeeds for different engine versions.")
