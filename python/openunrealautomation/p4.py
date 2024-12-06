@@ -167,7 +167,7 @@ class UnrealPerforce:
     def _p4_get_output(self, args) -> str:
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
-        return str(subprocess.check_output(_args, cwd=cwd), encoding="UTF8", errors="ignore")
+        return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1, shell=True, encoding="UTF8")
 
     def _auto_path(self, path) -> str:
         if os.path.isdir(path):
