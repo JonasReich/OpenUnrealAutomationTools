@@ -69,6 +69,27 @@ class UnrealPerforce:
         assert (not "\n" in current_stream_clean)
         return current_stream_clean
 
+    def resolve_virtual_stream_parent(self, stream) -> str:
+        """
+        Returns the input stream if it's not a virutal stream or parent stream for virtual streams.
+        Does not resolve the stream recursively!
+        Expects stream input paths in the format '//depot-root/stream-name'
+        """
+
+        depot_root_match = re.match(r"\/\/(.+?)\/.+?", stream)
+        assert depot_root_match
+        depot_root = depot_root_match.group(1)
+
+        stream_config = self._p4_get_output(
+            ["stream", "-o", stream])
+        if not re.search(r"Type:\s+virtual", stream_config):
+            return stream
+        match = re.search(
+            r"Parent:\s+(\/\/" + depot_root + r"\/.+)", stream_config)
+        assert match
+        source_stream = str(match.group(1)).strip()
+        return source_stream
+
     def sync(self, path, cl: Optional[int] = None, force: bool = False):
         path = self._auto_path(path)
         args = ["sync"]
@@ -162,12 +183,13 @@ class UnrealPerforce:
     def _p4(self, args):
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
-        subprocess.run(_args, encoding="UTF8", check=self.check, cwd=cwd)
+        subprocess.run(_args, encoding="unicode_escape",
+                       check=self.check, cwd=cwd)
 
     def _p4_get_output(self, args) -> str:
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
-        return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1, shell=True, encoding="UTF8")
+        return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1, shell=True, encoding="unicode_escape")
 
     def _auto_path(self, path) -> str:
         if os.path.isdir(path):
@@ -179,4 +201,6 @@ if __name__ == "__main__":
     p4 = UnrealPerforce()
     print("Current CL:", p4.get_current_cl())
     print("Current Stream:", p4.get_current_stream())
-    # print("All Users:\n", "\n".join([f"\t{user}" for _, user in p4.get_user_map().items()]))
+
+    print("All Users:\n", "\n".join(
+        [f"\t{user}" for _, user in p4.get_user_map().items()]))
