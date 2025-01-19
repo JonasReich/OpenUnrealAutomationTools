@@ -228,11 +228,9 @@ class UnrealLogFilePattern:
             for name in self.numeric_var_names:
                 named_group_value = re_match.group(name)
                 if not named_group_value is None:
-                    try:
-                        numeric_vars[name] = float(named_group_value)
-                    except ValueError:
-                        numeric_vars[name] = float(
-                            named_group_value.replace(",", "."))
+                    # Depending on the platform you may get commas instead of dots as decimal separator.
+                    numeric_vars[name] = float(
+                        named_group_value.replace(",", "."))
             result_match = UnrealLogFileLineMatch(
                 line, self, line_nr, string_vars, numeric_vars) if re_match else None
         else:
