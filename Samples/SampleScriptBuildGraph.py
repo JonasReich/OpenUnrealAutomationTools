@@ -28,12 +28,12 @@ from openunrealautomation.util import force_rmtree
 _step_num = 0
 
 
-def step_header(step_name):
+def step_header(step_name, enabled):
     global _step_num
     _step_num += 1
     print(
         "\n----------------------------------------"
-        f"\nSTEP #{_step_num:02d} - {step_name.upper()}"
+        f"\nSTEP #{_step_num:02d} - {step_name.upper()} {'(DISABLED)' if not enabled else ''}"
         "\n----------------------------------------")
 
 
@@ -44,7 +44,9 @@ def main():
     report_dir = os.path.join(
         bg_network_share, "Builds/Automation/Reports", unique_build_id)
 
-    if not ue.dry_run:
+    run_clean = not ue.dry_run
+    step_header(f"Clean {run_clean}", run_clean)
+    if run_clean:
         # clean
         force_rmtree(log_dir, no_file_ok=True)
         if clean:
@@ -57,55 +59,60 @@ def main():
         report_dir, "InspectCode.xml"), None)
 
     # On CI these would be the regular build steps
-    try:
-        step_header("BuildGraph execution")
-        bg_options = {
-            "ProjectDir": ue.environment.project_root,
-            "ProjectName": str(ue.environment.project_name),
-            "BuildConfig": "Shipping"
-        }
+    run_buildgraph = not ue.dry_run and not args.skip_bg
+    step_header("BuildGraph execution", run_buildgraph)
+    if run_buildgraph:
+        try:
+            bg_options = {
+                "ProjectDir": ue.environment.project_root,
+                "ProjectName": str(ue.environment.project_name),
+                "BuildConfig": "Shipping"
+            }
 
-        if game_target_name:
-            bg_options["GameTargetName"] = game_target_name
+            if game_target_name:
+                bg_options["GameTargetName"] = game_target_name
 
-        print("Starting distributed buildgraph...")
-        if not args.skip_bg:
-            bg_target = "AllGamePackages" if args.all else "Package Game Win64"
-            clean_arg = ["-clean"] if clean else []
-            ue.run_buildgraph_nodes_distributed(
-                buildgraph_script, bg_target, bg_options,
-                shared_storage_dir=bg_shared_storage,
-                log_output_dir=log_dir,
-                arguments=["-NoP4"] + clean_arg
-            )
-    except Exception as e:
-        print(traceback.format_exc())
-        print(e)
-        pass
+            print("Starting distributed buildgraph...")
+            if not args.skip_bg:
+                bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+                clean_arg = ["-clean"] if clean else []
+                ue.run_buildgraph_nodes_distributed(
+                    buildgraph_script, bg_target, bg_options,
+                    shared_storage_dir=bg_shared_storage,
+                    log_output_dir=log_dir,
+                    arguments=["-NoP4"] + clean_arg
+                )
+        except Exception as e:
+            print(traceback.format_exc())
+            print(e)
+            pass
 
-    try:
-        # TODO move to BuildGraph sample ??
-        step_header("Static Analysis")
-        if not ue.dry_run and args.static_analysis:
+    run_static_analysis = not ue.dry_run and args.static_analysis
+    step_header("Static Analysis", run_static_analysis)
+    if run_static_analysis:
+        try:
+            # TODO move to BuildGraph sample ??
             # ue.generate_project_files()
             inspectcode.run(may_skip=True)
-    except Exception as e:
-        print(traceback.format_exc())
-        print(e)
-        pass
+        except Exception as e:
+            print(traceback.format_exc())
+            print(e)
+            pass
 
     # TODO move to BuildGraph sample
-    try:
-        step_header("Automation Tests")
-        run_tests(ue, generate_coverage_reports=True, generate_report_file=True,
-                  report_directory=report_dir, setup_report_viewer=False, may_skip=True)
-    except Exception as e:
-        print(traceback.format_exc())
-        print(e)
-        pass
+    enable_tests = not ue.dry_run
+    step_header("Automation Tests", enable_tests)
+    if enable_tests:
+        try:
+            run_tests(ue, generate_coverage_reports=True, generate_report_file=True,
+                      report_directory=report_dir, setup_report_viewer=False, may_skip=True)
+        except Exception as e:
+            print(traceback.format_exc())
+            print(e)
+            pass
 
     # On CI this should be a separate "run always" build step after all previous steps concluded
-    step_header("Report generation (always)")
+    step_header("Report generation (always)", True)
 
     # Parse the UAT log files that were copied to log_dir
     patterns_xml = None  # use the default file
@@ -124,14 +131,15 @@ def main():
         find_coverage_file(os.path.join(report_dir, "Coverage"))))
 
     # Static C++ code analysis
-    try:
-        embedded_reports.append(inspectcode.load().html_report(
-            embeddable=True))
-    except BaseException as e:
-        print(traceback.format_exc())
-        print(e)
-        embedded_reports.append(
-            f"<div>Failed to generate InspectCode report. Exception encountered:<br>\n{e}</div>")
+    if args.static_analysis:
+        try:
+            embedded_reports.append(inspectcode.load().html_report(
+                embeddable=True))
+        except BaseException as e:
+            print(traceback.format_exc())
+            print(e)
+            embedded_reports.append(
+                f"<div>Failed to generate InspectCode report. Exception encountered:<br>\n{e}</div>")
 
     # Localization status
     embedded_reports.append(create_localization_report(
@@ -179,7 +187,7 @@ if __name__ == "__main__":
 
     print("ARGS:", args)
 
-    step_header("Setup")
+    step_header("Setup", True)
     clean = args.clean
     bg_shared_storage = args.bg_shared_storage
     bg_network_share = args.bg_network_share
