@@ -59,7 +59,7 @@ def main():
         report_dir, "InspectCode.xml"), None)
 
     # On CI these would be the regular build steps
-    run_buildgraph = not ue.dry_run and not args.skip_bg
+    run_buildgraph = not args.skip_bg
     step_header("BuildGraph execution", run_buildgraph)
     if run_buildgraph:
         try:
@@ -74,7 +74,11 @@ def main():
 
             print("Starting distributed buildgraph...")
             if not args.skip_bg:
-                bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+                if args.package:
+                    bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+                else:
+                    bg_target = "AllGameCompiles" if args.all else "Compile Game Win64"
+
                 clean_arg = ["-clean"] if clean else []
                 ue.run_buildgraph_nodes_distributed(
                     buildgraph_script, bg_target, bg_options,
@@ -165,6 +169,8 @@ if __name__ == "__main__":
                            help="Dry-run everything but the report generation.")
     argparser.add_argument("--clean", action="store_true",
                            help="Clean the archive/output directories. If not set, some steps may be skipped if files are present (even if outdated).")
+    argparser.add_argument("--package", action="store_true",
+                           help="Create full cooked game packages. If not set, the BuildGraph target will be set to only compile C++ code for editor and game.")
     argparser.add_argument("--bg-shared-storage",
                            default="F:\\BuildGraphStorage", help="Shared storage directory for BuildGraph intermediates")
     argparser.add_argument("--bg-network-share",

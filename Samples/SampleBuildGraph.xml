@@ -71,6 +71,7 @@
 		Windows Platform (Incl Xbox, PS4 etc)
 	=======================================================
 	-->
+	<Property Name="Generated_AllGameCompiles" Value="" />
 	<Property Name="Generated_AllGamePackages" Value="" />
 
 	<Agent Name="Target Windows" Type="Win64">
@@ -79,6 +80,8 @@
 			<!-- 
 				Compile Game for our Target Platform
 			-->
+			<Property Name="Generated_AllGameCompiles"
+				Value="$(Generated_AllGameCompiles);Compile Game $(TargetPlatform)" />
 			<Node Name="Compile Game $(TargetPlatform)"
 				Produces="#CompiledGame$(TargetPlatform)">
 
@@ -101,5 +104,6 @@
 		</ForEach>
 	</Agent>
 
+	<Aggregate Name="AllGameCompiles" Requires="$(Generated_AllGameCompiles)" />
 	<Aggregate Name="AllGamePackages" Requires="$(Generated_AllGamePackages)" />
 </BuildGraph>
