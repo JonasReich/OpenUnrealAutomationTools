@@ -7,6 +7,7 @@ import glob
 import json
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element as XmlNode
@@ -16,7 +17,9 @@ from openunrealautomation.core import OUAException, UnrealProgram
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import glob_latest, ouu_temp_file, run_subprocess, which_checked, write_text_file
+from openunrealautomation.util import (glob_latest, ouu_temp_file,
+                                       run_subprocess, which_checked,
+                                       write_text_file)
 from openunrealautomation.version import UnrealVersion
 
 
@@ -217,8 +220,21 @@ def run_tests(engine: UnrealEngine,
         report_directory = get_default_test_report_directory(
             engine.environment)
 
-    if may_skip and find_last_test_report(engine, report_directory) is not None:
-        return 0
+    if may_skip:
+        last_test_report = find_last_test_report(engine, report_directory)
+        if last_test_report is not None:
+            last_test_report_time = time.ctime(
+                os.path.getmtime(last_test_report))
+
+            editor_dll_path = os.path.join(
+                engine.environment.project_root, f"Binaries/Win64/UnrealEditor-{engine.environment.project_name}.dll")
+            last_editor_build_time = time.ctime(
+                os.path.getmtime(editor_dll_path))
+
+            if last_test_report_time > last_editor_build_time:
+                print(
+                    f"Found test report {last_test_report} (@{last_test_report_time}) that was newer than last build of editor module {editor_dll_path} (@{last_editor_build_time})")
+                return 0
 
     json_path = os.path.join(report_directory, "index.json")
     if os.path.exists(json_path):

@@ -12,7 +12,8 @@ import winreg
 from typing import Dict, Generator, List, Optional, Set, Tuple
 from xml.etree.ElementTree import ElementTree as XmlTree
 
-from openunrealautomation.core import OUAException, UnrealBuildConfiguration, UnrealBuildTarget, UnrealProgram
+from openunrealautomation.core import (OUAException, UnrealBuildConfiguration,
+                                       UnrealBuildTarget, UnrealProgram)
 from openunrealautomation.descriptor import UnrealProjectDescriptor
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.util import args_str, run_subprocess, walk_level
@@ -364,10 +365,17 @@ class UnrealEngine:
         """Change the current project's engine association"""
         assert self.environment.has_project()
         assert self.environment.project_file
+
+        if self.environment.engine_association == engine_association:
+            print("Project is already associated with engine version",
+                  engine_association)
+            return
+
         global_version_selector = self.environment._find_global_version_selector()
         args = [global_version_selector, "/switchversionsilent",
                 self.environment.project_file.file_path, engine_association]
-        run_subprocess(args, print_args=True)
+        if not self.dry_run:
+            run_subprocess(args, print_args=True)
         # create a new environment for this engine that points to the updated engine version.
         self.environment = UnrealEnvironment.create_from_project_file(
             project_file=self.environment.project_file)
