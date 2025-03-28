@@ -29,9 +29,10 @@ source_language = args.source_language
 localization_root = os.path.join(
     project_root, "Content/Localization")
 
+# We need to replace with the appropriate newlines - otherwise the text will not be considered identical
 NEWLINE_REPLACE_CHARS = [
     ("\r\n", "\\r\\n"),
-    ("\n", "\\r\\n")
+    ("\n", "\\n")
 ]
 
 
@@ -82,7 +83,7 @@ def get_random_unicode(length):
     return ''.join(random.choice(alphabet) for i in range(length))
 
 
-def leetify(text):
+def leetify(text: str):
     LEET_CHARS = {
         'A': '4',
         'a': '@',
@@ -104,6 +105,22 @@ def leetify(text):
         'z': '2',
     }
 
+    keywords_to_skip = [
+        "min(",
+        "min_frac",
+        "max_frac",
+        "empty(",
+        "floor(",
+        "round(",
+        "fmt(",
+        "no=",
+        "yes=",
+        "<b>",
+        "<s>",
+        "<i>",
+        "<b_gold>",
+    ]
+
     def leetify_char(char):
         return LEET_CHARS.get(char, char)
 
@@ -115,16 +132,29 @@ def leetify(text):
         source_char = text[index]
         if not escape_next and source_char == "{":
             end_argument_index = index
-            while end_argument_index < text_len and text[end_argument_index] != "}":
+            while end_argument_index < text_len:
                 end_argument_index = end_argument_index + 1
+                if text[end_argument_index] == "}":
+                    end_argument_index = end_argument_index + 1
+                    break
             argument_string = text[index: end_argument_index]
-            result_text = f"{result_text}«{argument_string}»"
+            result_text = f"{result_text}{argument_string}"
             index = end_argument_index
             continue
         elif source_char == "`":
             escape_next = not escape_next
         else:
             escape_next = False
+            found_keyword = False
+            for keyword in keywords_to_skip:
+                if text[index:].startswith(keyword):
+                    result_text = result_text + keyword
+                    index = index + len(keyword)
+                    found_keyword = True
+                    break
+            if found_keyword:
+                continue
+
         result_text = result_text + leetify_char(source_char)
         index = index + 1
     return f"‡{result_text}‡"
@@ -188,9 +218,18 @@ def generate_translation_csv(target_language, target):
         for entry in source_po:
             [namespace, key] = entry.msgctxt.split(",")
             source_text = clean_str(entry.msgid)
-            translation_text = clean_str(entry.msgstr)
 
-            if namespace in existing_lines and key in existing_lines[namespace]:
+            should_auto_translate = target_language.lower() == "en-us-posix"
+            if should_auto_translate:
+                translation_text = leetify(clean_str(source_text))
+                # # Arbitrary factor by which to extend texts
+                # source_len_factor = 1.3
+                # translation_text = get_random_unicode(
+                #     int(len(entry.msgid) * source_len_factor))
+            else:
+                translation_text = clean_str(entry.msgstr)
+
+            if not should_auto_translate and (namespace in existing_lines and key in existing_lines[namespace]):
                 (existing_source_text,
                  existing_translation_text) = existing_lines[namespace][key]
                 if source_text == existing_source_text:
@@ -200,13 +239,6 @@ def generate_translation_csv(target_language, target):
                     changed_lines = changed_lines + 1
             else:
                 new_lines = new_lines + 1
-
-            if target_language.lower() == "en-us-posix":
-                translation_text = leetify(entry.msgid)
-                # # Arbitrary factor by which to extend texts
-                # source_len_factor = 1.3
-                # translation_text = get_random_unicode(
-                #     int(len(entry.msgid) * source_len_factor))
 
             csvwriter.writerow([namespace, key, source_text, translation_text])
 
