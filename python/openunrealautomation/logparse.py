@@ -1019,9 +1019,9 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
             files.append((files_strs[i], files_strs[i+1]))
     else:
         files = [
-            ("UAT", UnrealLogFile.UAT.find_latest(env)),
-            ("Cook", UnrealLogFile.COOK.find_latest(env)),
-            ("Unreal", UnrealLogFile.EDITOR.find_latest(env))
+            ("BuildGraph", UnrealLogFile.UAT.find_latest(env)),
+            ("BuildGraph", UnrealLogFile.COOK.find_latest(env)),
+            ("BuildGraph", UnrealLogFile.EDITOR.find_latest(env))
         ]
 
     return files
