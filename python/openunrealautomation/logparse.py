@@ -120,15 +120,18 @@ class UnrealLogFileLineMatch:
         return self.owning_pattern.owning_list.severity if self.owning_pattern is not None and self.owning_pattern.owning_list is not None else UnrealLogSeverity.MESSAGE
 
     def json(self) -> dict:
-        return {
+        result = {
             "line": self.line,
             "line_nr": self.line_nr,
             "severity": self.get_severity().json(),
-            "strings": self.string_vars,
-            "numerics": self.numeric_vars,
             "tags": list(self.get_tags()),
             "occurences": self.occurences
         }
+        if len(self.string_vars) > 0:
+            result["strings"] = self.string_vars
+        if len(self.numeric_vars) > 0:
+            result["numerics"] = self.numeric_vars
+        return result
 
 
 class UnrealLogFilePattern:

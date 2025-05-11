@@ -4,6 +4,8 @@ let inline_json = String.raw`INLINE_JSON`;
 // ----- GLOBALS -----
 let CODE_CONTAINER_TEMPLATE = `<div class="text-nowrap overflow-scroll mx-3 p-3 code-container"><div>`;
 let tags_and_labels = FILTER_TAGS_AND_LABELS;
+// if true, scopes are drawn nested. legacy feature that will likely not be supported anymore.
+const ENABLE_NESTED_SCOPES = false;
 
 var filter = {
     tags: new Set(),
@@ -89,9 +91,10 @@ function goToSource(source_file, line) {
     last_goto_lines.set(source_file, new_goto_line);
 }
 
-function expandSourceContainer(button) {
-    $(button).next(".source-log-container").show();
-    $(button).hide();
+function toggleSourceContainer(button) {
+    $(button).next(".source-log-container").toggle();
+    let log_visible = $(button).next(".source-log-container").is(":visible");
+    $(button).text(log_visible ? "Hide source log" : "Show source log");
 }
 
 
@@ -152,7 +155,7 @@ function addLineDiv(line_obj, source_file, line_name = "") {
     let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${zeroPad(line_obj.occurences)}x #1@ ${zeroPad(normal_line_nr, 5)} </div>${line_str}<br></code>`);
     new_code_line.data("json", line_obj);
     new_code_line.data("source_file", source_file);
-    
+
     for (tag_idx in line_obj.tags) {
         let tag = line_obj.tags[tag_idx];
         increment_tag_count(tag);
@@ -166,8 +169,7 @@ function addLineDiv(line_obj, source_file, line_name = "") {
     let string_vars_with_filter_btns = ["Developer"];
 
     for (string_key in line_string_vars) {
-        if (string_vars_with_filter_btns.includes(string_key))
-        {
+        if (string_vars_with_filter_btns.includes(string_key)) {
             let string_value = line_string_vars[string_key];
             incrementStringVar(string_key, string_value);
             new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
@@ -196,6 +198,9 @@ function addMatchListCodeContainer(match_list, parent) {
 function addIssueScope(source_file, scope, ref_node) {
     // #TODO adjust css classes
     let scope_row = $(`<div class="row scope-container scope-${scope.status} pt-2 px-4"><div>${scope.name}</div></div>`);
+    if (ref_node == null || ENABLE_NESTED_SCOPES == false) {
+        ref_node = $(`#${source_file}_code-summary`)[0];
+    }
     $(ref_node).append(scope_row);
 
     if ((typeof scope.start === 'string' || scope.start instanceof String) == false && scope.start.severity != "message") {
@@ -205,8 +210,7 @@ function addIssueScope(source_file, scope, ref_node) {
 
     scope.match_lists.forEach(match_list => {
         let code_container = null;
-        if (match_list.hidden == false)
-        {
+        if (match_list.hidden == false) {
             code_container = addMatchListCodeContainer(match_list, scope_row);
         }
 
@@ -214,19 +218,23 @@ function addIssueScope(source_file, scope, ref_node) {
             let line_obj = match_list.lines[line_idx];
             line_obj.source_scope = scope;
             line_obj.source_file = source_file;
+            // string variables are optional in the json format, but we want them guaranteed on import.
+            if (!line_obj.hasOwnProperty("strings")) {
+                line_obj.strings = [];
+            }
+            if (!line_obj.hasOwnProperty("numerics")) {
+                line_obj.numerics = [];
+            }
             all_lines.push(line_obj);
-            
-            if (match_list.hidden == false)
-            {
+
+            if (match_list.hidden == false) {
                 let new_code_line = addLineDiv(line_obj, source_file);
 
-                if ("GroupBy" in line_obj.strings)
-                {
+                if ("GroupBy" in line_obj.strings) {
                     let group_by_name = line_obj.strings["GroupBy"];
                     let group_by_name_data = `data-line-group-by='${group_by_name}'`
                     let group_root = code_container.find(`.line-group[${group_by_name_data}]`);
-                    if (group_root.length == 0)
-                    {
+                    if (group_root.length == 0) {
                         let new_line_group = $(`<details class='line-group' ${group_by_name_data}><summary class='line-group-summary'>${group_by_name}</summary></details>`);
                         new_line_group.data("name", group_by_name);
                         code_container.append(new_line_group);
@@ -234,8 +242,7 @@ function addIssueScope(source_file, scope, ref_node) {
 
                     code_container.find(`.line-group[${group_by_name_data}]`).append(new_code_line);
                 }
-                else
-                {
+                else {
                     code_container.append(new_code_line);
                 }
             }
@@ -256,8 +263,7 @@ let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
 for (const [source_file, root_scope] of Object.entries(json_obj)) {
     all_files.push(source_file);
-    let code_root =  $(`#${source_file}_code-summary`)[0];
-    addIssueScope(source_file, root_scope, code_root);
+    addIssueScope(source_file, root_scope, null);
 }
 
 function updateScopeCounters() {
@@ -624,10 +630,10 @@ function createNumericsChartFromJsonData(preset, chart_title, item_key_variable,
 }
 let ddc_stats = ["DDC_TotalTime", "DDC_GameThreadTime", "DDC_AssetNum", "DDC_MB"];
 let ddc_labels = ["Total Time", "Game Thread Time", "Asset Number", "MB"];
-all_files.forEach(function (file){
+all_files.forEach(function (file) {
     createNumericsChartFromJsonData(ChartPreset.LINE, "DDC Resource Stats " + file, "DDC_Key", ddc_stats, ddc_labels, file);
 });
-all_files.forEach(function (file){
+all_files.forEach(function (file) {
     // createNumericsChartFromJsonData(ChartPreset.PIE, "UAT Command Times " + file, "UAT_Command", ["Duration"], ["Duration"], file);
 });
 
@@ -664,6 +670,6 @@ function createCsvChart(preset, chart_title, csv_str) {
             borderColor: color
         });
     }
-    
+
     createNumericsChart(preset, chart_title, datasets, item_labels);
 }
