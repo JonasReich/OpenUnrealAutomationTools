@@ -54,6 +54,7 @@
     display: inline;
     padding-top: 100px;
     z-index: +1;
+    color: white;
 }
 
 .highlight-line::after {
