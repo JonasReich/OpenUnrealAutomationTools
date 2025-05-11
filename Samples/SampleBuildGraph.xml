@@ -105,5 +105,6 @@
 	</Agent>
 
 	<Aggregate Name="AllGameCompiles" Requires="$(Generated_AllGameCompiles)" />
+	<Aggregate Name="AllCompiles" Requires="#$(ProjectName)Editor;$(Generated_AllGameCompiles)" />
 	<Aggregate Name="AllGamePackages" Requires="$(Generated_AllGamePackages)" />
 </BuildGraph>
