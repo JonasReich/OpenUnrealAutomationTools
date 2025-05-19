@@ -91,8 +91,8 @@
         </Patterns>
 
         <Patterns Name="Invalid Gameplay Tags" Tags="Content" Severity="Severe_Warning">
-            <Include Style="Regex">Invalid GameplayTag .* found in property</Include>
-            <Include Style="Regex">Invalid GameplayTag .* found in object</Include>
+            <Include Style="Regex" StringVariables="GameplayTag">Invalid GameplayTag (?P&lt;GameplayTag&gt;.*) found in property</Include>
+            <Include Style="Regex" StringVariables="GameplayTag">Invalid GameplayTag (?P&lt;GameplayTag&gt;.*) found in object</Include>
         </Patterns>
 
         <Patterns Name="Material Errors" Tags="Art;Code" Severity="Error">

@@ -76,7 +76,7 @@ function getTagLabel(tag) {
 function goToSource(source_file, line) {
     let new_goto_line = `#source-log-${source_file}-${line}`;
     // show / expand source container
-    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").hide();
+    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").text("Hide source log");
 
     let last_goto_line = last_goto_lines.has(source_file) ? last_goto_lines.get(source_file) : null;
     if (last_goto_line === null) {
@@ -135,135 +135,173 @@ function updateSeverityCSS(element, severity) {
 }
 
 
-function addLineDiv(line_obj, source_file, line_name = "") {
-    let line_str = line_obj.line;
-
-    // Add clickable links to assets (click -> copy to clipboard)
-    // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
-    // if (file_path_matches) {
-    //     for (let i = 0; i < file_path_matches.length; i++) {
-    //         let file_path = file_path_matches[i];
-    //         // This only works if the paths do not have any overlaps.
-    //         // With this implementation, 'foo/bar/baz' and 'foo/bar' in the same log line would cause the 'foo/bar' part to overlap, which can result in wrong text resplacement / invalid HTML
-    //         line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
-    //     }
-    // }
-
-    // Line numbers in report start with 0
-    let normal_line_nr = line_obj.line_nr + 1;
-    let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${normal_line_nr})">🔗</button>`
-    let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${zeroPad(line_obj.occurences)}x #1@ ${zeroPad(normal_line_nr, 5)} </div>${line_str}<br></code>`);
-    new_code_line.data("json", line_obj);
-    new_code_line.data("source_file", source_file);
-
-    for (tag_idx in line_obj.tags) {
-        let tag = line_obj.tags[tag_idx];
-        increment_tag_count(tag);
-        // Tags are usually added per category so we shouldn't need buttons per line.
-        // Only current exception: Department tags of last detected dev 
-        //new_code_line.find(".code-tag").prepend(createTagButton(tag, false));
-    }
-
-    let line_string_vars = line_obj.strings;
-
-    let string_vars_with_filter_btns = ["Developer"];
-
-    for (string_key in line_string_vars) {
-        if (string_vars_with_filter_btns.includes(string_key)) {
-            let string_value = line_string_vars[string_key];
-            incrementStringVar(string_key, string_value);
-            new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
-        }
-    }
-
-    let tagged_dev = line_string_vars["Developer"] ?? "";
-    all_devs.add(tagged_dev);
-
-    updateSeverityCSS(new_code_line, line_obj.severity);
-
-    return new_code_line;
-}
-
-function addMatchListCodeContainer(match_list, parent) {
-    match_list_row = $(`<details class="row issue-scope pt-2"><summary class="issue-scope-summary">${name}</summary>${CODE_CONTAINER_TEMPLATE}</details>`);
-    match_list_row.data("name", name);
-    parent.append(match_list_row);
-    match_list_row.data("json", match_list);
-
-    updateSeverityCSS(match_list_row, match_list.severity);
-
-    return match_list_row.find(".code-container");
-}
-
-function addIssueScope(source_file, scope, ref_node) {
+function addIssueTable(source_file, scope) {
     // #TODO adjust css classes
-    let scope_row = $(`<div class="row scope-container scope-${scope.status} pt-2 px-4"><div>${scope.name}</div></div>`);
-    if (ref_node == null || ENABLE_NESTED_SCOPES == false) {
-        ref_node = $(`#${source_file}_code-summary`)[0];
-    }
-    $(ref_node).append(scope_row);
+    let ref_node = $(`#${source_file}_code-summary`)[0];
+    let scope_table = $(`<table class="table table-dark table-sm issue-table"></table>`);
+    $(ref_node).empty().append(scope_table);
 
-    if ((typeof scope.start === 'string' || scope.start instanceof String) == false && scope.start.severity != "message") {
-        let start_code_line = addLineDiv(scope.start, source_file, "Start");
-        scope_row.append($(CODE_CONTAINER_TEMPLATE).append(start_code_line));
-    }
 
-    scope.match_lists.forEach(match_list => {
-        let code_container = null;
-        if (match_list.hidden == false) {
-            code_container = addMatchListCodeContainer(match_list, scope_row);
-        }
+    let parent_field = $("#issue-grouping-select").val();
 
-        for (let line_idx = 0; line_idx < match_list.lines.length; line_idx++) {
-            let line_obj = match_list.lines[line_idx];
-            line_obj.source_scope = scope;
-            line_obj.source_file = source_file;
-            // string variables are optional in the json format, but we want them guaranteed on import.
-            if (!line_obj.hasOwnProperty("strings")) {
-                line_obj.strings = [];
+    let data = [];
+    // no grouping
+    if (parent_field.length == 0) {
+        // remove pre-gen entries for default grouping
+        scope.lines.forEach(line => {
+            if (line.is_group || line.is_scope) {
+                return;
             }
-            if (!line_obj.hasOwnProperty("numerics")) {
-                line_obj.numerics = [];
-            }
-            all_lines.push(line_obj);
-
-            if (match_list.hidden == false) {
-                let new_code_line = addLineDiv(line_obj, source_file);
-
-                if ("GroupBy" in line_obj.strings) {
-                    let group_by_name = line_obj.strings["GroupBy"];
-                    let group_by_name_data = `data-line-group-by='${group_by_name}'`
-                    let group_root = code_container.find(`.line-group[${group_by_name_data}]`);
-                    if (group_root.length == 0) {
-                        let new_line_group = $(`<details class='line-group' ${group_by_name_data}><summary class='line-group-summary'>${group_by_name}</summary></details>`);
-                        new_line_group.data("name", group_by_name);
-                        code_container.append(new_line_group);
+            data.push(line);
+        });
+    }
+    else if (parent_field == "scope") {
+        // default grouping -> this already contains group entries from python
+        data = scope.lines;
+    } else {
+        // custom grouping: group by unique column values.
+        // for this mode, we use a "pid" key.
+        // using the actual column field we want to group by for some reason leads to issues (infinite recursion).
+        let unique_keys = new Set();
+        let key_counts = new Map();
+        let filtered_lines = [];
+        scope.lines.forEach(line => {
+            let parent_field_value = line[parent_field];
+            if ((parent_field_value === undefined) == false) {
+                if (typeof parent_field_value == "string") {
+                    if (parent_field_value.trim().length > 0) {
+                        filtered_lines.push(line);
+                        unique_keys.add(parent_field_value);
+                        increment_map_counter(key_counts, parent_field_value);
                     }
+                } else {
+                    // column valud could be array, etc
+                    // no idea how to deal with this
+                    console.warn(`unsupported group column type: ${typeof parent_field_value}`)
+                }
+            }
+        });
+        let key_lookup = new Map();
+        let i = -1;
+        unique_keys.forEach(key => {
+            i--;
+            let key_line = {
+                id: i,
+                line: `${key} (${key_counts.get(key)})`,
+                is_group: true,
+            };
+            key_lookup[key] = i;
+            key_line.pid = 0;
+            data.push(key_line);
+        });
+        filtered_lines.forEach(line => {
+            line.pid = key_lookup[line[parent_field]];
+            data.push(line);
+        });
+        parent_field = "pid";
+    }
 
-                    code_container.find(`.line-group[${group_by_name_data}]`).append(new_code_line);
+    $(ref_node).find('table').bootstrapTable({
+        data: data,
+        idField: 'id',
+        showColumns: true,
+        columns: [
+            /*{
+                // synthetic column for tree collapse (tc)
+                field: 'tc',
+                width: 100,
+                formatter: function () { return "" },
+            },*/
+            {
+                field: 'id',
+                title: 'ID/Line Number',
+                sortable: true,
+                width: 100,
+                formatter: function (value) { return Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`; }
+            },
+            {
+                field: 'line',
+                title: 'Text',
+                // width -> the only flexible width column
+                class: 'line-text',
+                sortable: true
+            },
+            {
+                field: 'time',
+                title: 'Timestamp',
+                width: 100
+            },
+            {
+                field: 'severity',
+                title: 'Status/Severity',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'tags',
+                title: 'Tags',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'developer',
+                title: 'Developer',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'asset',
+                title: 'Asset',
+                sortable: true,
+                width: 400
+            },
+            {
+                field: 'occurences',
+                title: 'Occurences',
+                sortable: true,
+                width: 100
+            }
+
+        ],
+        treeShowField: 'id',
+        rowStyle: function (row, index) {
+            const row_header_class = (row.is_scope) ? " row-scope" : (row.is_group) ? " row-group" : "";
+            return { classes: row.severity + row_header_class };
+        },
+
+        // parentIdField: 'pid',
+        parentIdField: parent_field,
+
+        onPostBody() {
+            $table = $(ref_node).find('table');
+            $table.treegrid({
+                treeColumn: 0,
+                onChange() {
+                    $table.bootstrapTable('resetView')
                 }
-                else {
-                    code_container.append(new_code_line);
-                }
+            })
+            if (parent_field.length > 0) {
+                $(".row-group").treegrid("collapse")
             }
         }
     });
-
-    scope.child_scopes.forEach(child_scope => {
-        addIssueScope(source_file, child_scope, scope_row);
-    });
-
-    if ((typeof scope.end === 'string' || scope.end instanceof String) == false && scope.end.severity != "message") {
-        let end_code_line = addLineDiv(scope.end, source_file, "End");
-        scope_row.append($(CODE_CONTAINER_TEMPLATE).append(end_code_line));
-    }
 }
 
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
-for (const [source_file, root_scope] of Object.entries(json_obj)) {
-    all_files.push(source_file);
-    addIssueScope(source_file, root_scope, null);
+rebuildIssueTables();
+$("#issue-grouping-select").change(function () {
+    rebuildIssueTables();
+})
+
+function rebuildIssueTables() {
+    all_files = [];
+    for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+        all_files.push(source_file);
+        if (issue_scope.lines.length > 0) {
+            addIssueTable(source_file, issue_scope);
+        }
+    }
 }
 
 function updateScopeCounters() {

@@ -3,13 +3,23 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
     GENERATED_META_TAGS
 
     <title>REPORT_TITLE</title>
 
+    <!-- JQUERY TREEGRID -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-treegrid@0.3.0/css/jquery.treegrid.css">
+
     <!-- BOOTSTRAP -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.css"
+        rel="stylehseet">
 
     <style>
         /*REPORT_CSS*/
@@ -48,6 +58,15 @@
                             <button class="btn btn-sm btn-secondary" id="collapse-all-btn"
                                 onclick="$('details').attr('open', false)">🔼 Collapse</button>
                         </div>
+
+                        <select id="issue-grouping-select" class="form-select" aria-label="Issue Grouping">
+                            <option value="">Do not Group</option>
+                            <option selected value="scope">Scope: Build Step + Issue Pattern Group</option>
+                            <option value="tags">Department Tags</option>
+                            <option value="developer">Developer</option>
+                            <option value="asset_path">Asset Path</option>
+                            <option value="gameplay_tag">Gameplay Tag</option>
+                        </select>
                     </div>
 
                     ISSUES_AND_SOURCES
@@ -67,10 +86,17 @@
         </div>
     </div>
 
+    <!-- JQUERY TreeGrid -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery-treegrid@0.3.0/js/jquery.treegrid.min.js"></script>
+
     <!-- Bootstrap -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
         crossorigin="anonymous"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/extensions/treegrid/bootstrap-table-treegrid.min.js"></script>
 
     <!-- Charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

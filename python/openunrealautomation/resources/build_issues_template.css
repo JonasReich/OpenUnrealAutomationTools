@@ -8,46 +8,6 @@
     margin-right: 0.4em;
 }
 
-.scope-container {
-    border: 1px;
-    border-color: var(--bs-info);
-    color: var(--bs-info);
-    border-style: solid;
-    margin: 0;
-    padding: 0.3em !important;
-    margin-top: .2em;
-}
-
-.scope-success {
-    background-color: #283a2a;
-    border-color: var(--bs-success);
-    color: var(--bs-success);
-}
-
-.scope-failure {
-    background-color: #4a1d1d;
-    border-color: var(--bs-danger);
-    color: var(--bs-danger);
-}
-
-.scope-container>div:first-of-type {
-    font-size: 0.8em;
-    font-variant: small-caps;
-    box-shadow: 0 +1px 0 #ffffff2e;
-    padding-bottom: 2px;
-    margin: -0.3em;
-    margin-bottom: 1px;
-    padding-top: 2px;
-    padding-left: 1em;
-    padding-right: 0;
-    width: calc(110% + 1.3em);
-    right: 0;
-    left: 0;
-    position: relative;
-    min-width: calc(100% + .6em);
-    background: #ffffff12;
-}
-
 .highlight-line {
     margin-top: -100px;
     position: relative;
@@ -74,6 +34,8 @@
 
 .code-container {
     background-color: #1c1c1c;
+    overflow: scroll;
+    max-height: 500px;
 }
 
 code {
@@ -84,7 +46,8 @@ code {
     color: rgb(233, 233, 15);
 }
 
-.severe-warning {
+.severe-warning,
+.severe_warning {
     color: #e9a00f;
 }
 
@@ -147,12 +110,32 @@ a.file-path {
 
 .btn-expand-source-container {
     margin-top: .5em;
+    display: block;
+    width: 100%;
 }
 
-/* Hide scope containers that have a single scope, no visible items and no errors. Same for the code summary button. */
-.scope-container:not(:has(.issue-scope)),
-.code-summary:not(:has(.issue-scope))+.btn-expand-source-container {
-    display: none;
+.row-scope,
+.row-group {
+    font-weight: bold;
+}
+
+.treegrid-indent {
+    outline: #ffffff21 solid 1px;
+    height: 4px;
+    margin: 2px;
+    width: 4px;
+    border-radius: 2px;
+}
+
+.line-text {
+    font-family: Consolas;
+}
+
+.issue-table td {
+    overflow: clip;
+    text-overflow: ellipsis;
+    max-width: 100px;
+    white-space: pre;
 }
 
 .source-file-container {
@@ -165,13 +148,6 @@ a.file-path {
     opacity: 80%;
 }
 
-.source-file-container:not(:has(.issue-scope))>.source-file-summary::after {
-    content: "ok ✅";
-    padding-left: 1em;
-    color: #16c60c;
-    float: right;
-}
-
 /* Hide embedded reports that only add javascript */
 .embedded-report:not(:has(:not(script))) {
     display: none;
@@ -180,4 +156,8 @@ a.file-path {
 /* Indent tree of automation test results */
 .automation-test-results details {
     padding-left: 1em;
+}
+
+.source-file-summary {
+    float: left;
 }
