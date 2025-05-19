@@ -194,7 +194,7 @@ def generate_html_report(
     for source_file_count, parsed_log in zip(range(1, len(log_files) + 1), log_files):
         source_file_name = Path(parsed_log.source_file).name
         source_file_id = source_file_name
-        prohibited_chars = ". ()@;[]#,=+"
+        prohibited_chars = ". ()@;[]#,=+-"
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
 
