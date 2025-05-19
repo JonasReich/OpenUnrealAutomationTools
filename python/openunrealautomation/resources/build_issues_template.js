@@ -250,8 +250,8 @@ function addIssueTable(source_file, scope) {
                 width: 100
             },
             {
-                field: 'asset',
-                title: 'Asset',
+                field: 'asset_path',
+                title: 'Asset Path',
                 sortable: true,
                 width: 400
             },
@@ -259,7 +259,9 @@ function addIssueTable(source_file, scope) {
                 field: 'occurences',
                 title: 'Occurences',
                 sortable: true,
-                width: 100
+                width: 100,
+                // any entry must occur min 1 time, so display accordingly
+                formatter: function (value) { return Number(value) > 0 ? value : 1; }
             }
 
         ],
@@ -272,6 +274,7 @@ function addIssueTable(source_file, scope) {
         // parentIdField: 'pid',
         parentIdField: parent_field,
 
+        /*
         onPostBody() {
             $table = $(ref_node).find('table');
             $table.treegrid({
@@ -284,6 +287,7 @@ function addIssueTable(source_file, scope) {
                 $(".row-group").treegrid("collapse")
             }
         }
+        */
     });
 }
 

@@ -134,13 +134,13 @@ class UnrealLogFileLineMatch:
             "line": self.line,
             "line_nr": self.line_nr,
             "severity": self.get_severity().json(),
-            "tags": ", ".join(list(self.get_tags())),
-            "occurences": self.occurences
         }
-        if len(self.string_vars) > 0:
-            result["strings"] = self.string_vars
-        if len(self.numeric_vars) > 0:
-            result["numerics"] = self.numeric_vars
+        tags = list(self.get_tags())
+        if len(tags) > 0:
+            result["tags"] = ", ".join(tags)
+        # any entry is an implicit occurence
+        if self.occurences > 1:
+            result["occurrences"] = self.occurences
         return result
 
 
@@ -253,7 +253,7 @@ class UnrealLogFilePattern:
                         named_group_value.replace(",", "."))
             _add_asset_match()
             result_match = UnrealLogFileLineMatch(
-                line, self, line_nr, owning_match_list, owning_scope_instance, string_vars, numeric_vars) if re_match else None
+                line, self, line_nr, owning_match_list, owning_scope_instance, string_vars, numeric_vars)
         # Convert both to lower case to make matching case-insensitive
         elif self.pattern.lower() in line.lower():
             _add_asset_match()
@@ -795,9 +795,14 @@ class UnrealLogFilePatternScopeInstance:
                 line_json["line"] = line.line.removeprefix(
                     line_timestamp_match.group(0))
 
-            line_json["developer"] = line.string_vars.get("Developer", "")
-            line_json["gameplay_tag"] = line.string_vars.get("GameplayTag", "")
-            line_json["asset_path"] = line.string_vars.get("AssetPath", "")
+            def set_line_string_variable(source, target):
+                value = line.string_vars.get(source, None)
+                if value and len(value) > 0:
+                    line_json[target] = value
+
+            set_line_string_variable("Developer", "developer")
+            set_line_string_variable("GameplayTag", "gameplay_tag")
+            set_line_string_variable("AssetPath", "asset_path")
 
             lines.append(line_json)
 
