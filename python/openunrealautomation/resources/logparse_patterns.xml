@@ -46,6 +46,7 @@
                 <Include Style="Regex">.*</Include>
             </Patterns>
         </Scope>
+        -->
 
         <Patterns Name="CookParams" Severity="Message">
             <Include Style="Regex" StringVariables="CookCultures">LogCookCommandlet: Display:\s+CookCultures: \((?P&lt;CookCultures&gt;.+)\)</Include>

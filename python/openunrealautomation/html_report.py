@@ -288,7 +288,10 @@ def create_localization_report(env: UnrealEnvironment, localization_target: str)
 
 
 if __name__ == "__main__":
-    ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+    try:
+        ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+    except Exception:
+        ue = None
 
     files = _main_get_files()
 
@@ -305,20 +308,25 @@ if __name__ == "__main__":
 
     report_path = os.path.join(temp_dir, "test_report")
 
-    inspectcode = InspectCode(ue.environment, ouu_temp_file(
-        "ResharperReport.xml"), None)
-    # inspectcode.run(may_skip=True)
-    try:
-        static_analysis_results = inspectcode.load()
-    except FileNotFoundError:
-        static_analysis_results = None
-        print("no static analysis reports found")
-    static_analysis_report = static_analysis_results.html_report(
-        embeddable=True) if static_analysis_results else ""
+    embedded_reports = []
+    if ue:
+        try:
+            inspectcode = InspectCode(ue.environment, ouu_temp_file(
+                "ResharperReport.xml"), None)
+            static_analysis_results = inspectcode.load()
+        except FileNotFoundError:
+            static_analysis_results = None
+            print("no static analysis reports found")
+        if static_analysis_results:
+            embedded_reports.append(
+                static_analysis_results.html_report(embeddable=True))
 
-    test_report_path = find_last_test_report(ue)
-    test_report_html = automation_test_html_report(
-        test_report_path) if test_report_path else ""
+        test_report_path = find_last_test_report(ue)
+        if test_report_path:
+            embedded_reports.append(automation_test_html_report(
+                test_report_path))
+    else:
+        print("skipping static analysis check, because we don't have an Unreal environment")
 
-    generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report],
+    generate_html_report(None, report_path + ".html", all_logs, embedded_reports,
                          report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})

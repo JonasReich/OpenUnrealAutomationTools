@@ -1095,8 +1095,6 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
 
 
 def _main_get_files() -> List[Tuple[str, Optional[str]]]:
-    env = UnrealEnvironment.create_from_invoking_file_parent_tree()
-
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--files")
     cli_args = argparser.parse_args()
@@ -1108,6 +1106,7 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
         for i in range(0, len(files_strs), 2):
             files.append((files_strs[i], files_strs[i+1]))
     else:
+        env = UnrealEnvironment.create_from_invoking_file_parent_tree()
         files = [
             ("BuildGraph", UnrealLogFile.UAT.find_latest(env)),
             ("BuildGraph", UnrealLogFile.COOK.find_latest(env)),
