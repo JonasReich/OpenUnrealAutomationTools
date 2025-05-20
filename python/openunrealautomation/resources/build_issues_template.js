@@ -1,3 +1,11 @@
+
+const SEVERITY = {
+    MESSAGE: "message",
+    WARNING: "warning",
+    SEVERE_WARNING: "severe_warning",
+    ERROR: "error",
+};
+
 // This inline json string will be replaced with the actual json by our Python script that searches for the capitalized variable name
 let inline_json = String.raw`INLINE_JSON`;
 
@@ -206,12 +214,6 @@ function addIssueTable(source_file, scope) {
         idField: 'id',
         showColumns: true,
         columns: [
-            /*{
-                // synthetic column for tree collapse (tc)
-                field: 'tc',
-                width: 100,
-                formatter: function () { return "" },
-            },*/
             {
                 field: 'id',
                 title: 'ID/Line Number',
@@ -273,21 +275,33 @@ function addIssueTable(source_file, scope) {
 
         // parentIdField: 'pid',
         parentIdField: parent_field,
+        rowAttributes: function (row, index) { return { 'row-id': row.id, 'parent-id': row[parent_field] } },
 
-        /*
-        onPostBody() {
+        onPostBody: function () {
             $table = $(ref_node).find('table');
-            $table.treegrid({
-                treeColumn: 0,
-                onChange() {
-                    $table.bootstrapTable('resetView')
+            let all_parent_ids = new Set();
+            $(ref_node).find("tr").each(function () {
+                let parent_id = $(this).attr("parent-id");
+                all_parent_ids.add(parent_id);
+            });
+            all_parent_ids.forEach(parent_id => {
+                if (parent_id == "") {
+                    return;
                 }
-            })
-            if (parent_field.length > 0) {
-                $(".row-group").treegrid("collapse")
-            }
+                let parent_selector = $(`[row-id=${parent_id}]`);
+                if (parent_selector.length > 0) {
+                    let expander = $($.parseHTML("<div class='treegrid-expander treegrid-expander-collapsed'></div>")).on('click', function () {
+                        $(this).toggleClass("treegrid-expander-collapsed");
+                        $(this).toggleClass("treegrid-expander-expanded");
+                        $(`tr[parent-id=${parent_id}]`).toggleClass("collapse");
+                    })
+                    $(parent_selector).find("td:nth-of-type(1)").append(expander);
+                    let child_selector = $(`tr[parent-id=${parent_id}]`);
+                    child_selector.addClass("collapse").find("td:nth-of-type(1)").prepend("--");
+                    $(parent_selector).after(child_selector.detach());
+                }
+            });
         }
-        */
     });
 }
 

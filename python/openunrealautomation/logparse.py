@@ -233,7 +233,10 @@ class UnrealLogFilePattern:
         def _add_asset_match():
             asset_match = re.search(r"\/Game[\w\/]+", line)
             if asset_match:
-                string_vars["AssetPath"] = asset_match.group(0)
+                asset_path = asset_match.group(0)
+                if asset_path.startswith("/Game/__ExternalActors__/"):
+                    asset_path = "/Game/__ExternalActors__/..."
+                string_vars["AssetPath"] = asset_path
 
         result_match = None
         if self.is_regex:
