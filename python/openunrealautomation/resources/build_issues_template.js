@@ -6,6 +6,13 @@ const SEVERITY = {
     ERROR: "error",
 };
 
+function get_severity_int(severity) {
+    if (severity == SEVERITY.MESSAGE) { return 0; }
+    if (severity == SEVERITY.WARNING) { return 1; }
+    if (severity == SEVERITY.SEVERE_WARNING) { return 2; }
+    if (severity == SEVERITY.ERROR) { return 3; }
+}
+
 // This inline json string will be replaced with the actual json by our Python script that searches for the capitalized variable name
 let inline_json = String.raw`INLINE_JSON`;
 
@@ -150,11 +157,12 @@ function addIssueTable(source_file, scope) {
     $(ref_node).empty().append(scope_table);
 
 
-    let parent_field = $("#issue-grouping-select").val();
+    let grouping_field_name = $("#issue-grouping-select").val();
+    const do_not_group = grouping_field_name.length == 0;
 
     let data = [];
     // no grouping
-    if (parent_field.length == 0) {
+    if (do_not_group) {
         // remove pre-gen entries for default grouping
         scope.lines.forEach(line => {
             if (line.is_group || line.is_scope) {
@@ -163,50 +171,77 @@ function addIssueTable(source_file, scope) {
             data.push(line);
         });
     }
-    else if (parent_field == "scope") {
+    else if (grouping_field_name == "scope") {
         // default grouping -> this already contains group entries from python
         data = scope.lines;
     } else {
         // custom grouping: group by unique column values.
         // for this mode, we use a "pid" key.
         // using the actual column field we want to group by for some reason leads to issues (infinite recursion).
-        let unique_keys = new Set();
-        let key_counts = new Map();
+        let all_group_ids = new Set();
+
+        let group_data = new Map();
         let filtered_lines = [];
         scope.lines.forEach(line => {
-            let parent_field_value = line[parent_field];
-            if ((parent_field_value === undefined) == false) {
-                if (typeof parent_field_value == "string") {
-                    if (parent_field_value.trim().length > 0) {
+            let group_id = line[grouping_field_name];
+            if ((group_id === undefined) == false) {
+                if (typeof group_id == "string") {
+                    if (group_id.trim().length > 0) {
                         filtered_lines.push(line);
-                        unique_keys.add(parent_field_value);
-                        increment_map_counter(key_counts, parent_field_value);
+                        all_group_ids.add(group_id);
+                        let group = null;
+                        if (group_data.has(group_id) == false) {
+                            group_data.set(group_id, {
+                                occurences: 0,
+                                severity: SEVERITY.MESSAGE,
+                                _severity_int: get_severity_int(SEVERITY.MESSAGE),
+                                tags: new Set(),
+                                lines: [],
+                            });
+                        }
+                        group = group_data.get(group_id);
+
+                        group.tags.add(line.tags);
+                        group.occurences += 1
+                        const line_severity_int = get_severity_int(line.severity);
+                        if (line_severity_int > group._severity_int) {
+                            group.severity = line.severity;
+                            group._severity_int = line_severity_int;
+                        }
+                        group.lines.push(line);
                     }
                 } else {
                     // column valud could be array, etc
                     // no idea how to deal with this
-                    console.warn(`unsupported group column type: ${typeof parent_field_value}`)
+                    console.warn(`unsupported group column type: ${typeof group_id}`)
                 }
             }
         });
-        let key_lookup = new Map();
+
+        // remap groupings to index based synthetic "pid" field
+        let group_key_lookup = new Map();
         let i = -1;
-        unique_keys.forEach(key => {
+        all_group_ids.forEach(group_id => {
+            let group = group_data.get(group_id);
             i--;
-            let key_line = {
+            let group_line = {
                 id: i,
-                line: `${key} (${key_counts.get(key)})`,
+                line: group_id,
+                occurences: group.occurences,
+                severity: group.severity,
                 is_group: true,
+                tags: [...group.tags],
             };
-            key_lookup[key] = i;
-            key_line.pid = 0;
-            data.push(key_line);
+            group_key_lookup[group_id] = i;
+            // this type of created group can't be nested
+            group_line.pid = 0;
+            data.push(group_line);
+            group.lines.forEach(line => {
+                line.pid = i;
+                data.push(line);
+            });
         });
-        filtered_lines.forEach(line => {
-            line.pid = key_lookup[line[parent_field]];
-            data.push(line);
-        });
-        parent_field = "pid";
+        grouping_field_name = "pid";
     }
 
     $(ref_node).find('table').bootstrapTable({
@@ -219,7 +254,18 @@ function addIssueTable(source_file, scope) {
                 title: 'ID/Line Number',
                 sortable: true,
                 width: 100,
-                formatter: function (value) { return Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`; }
+                formatter: function (value, row) {
+                    let row_is_group = (row.is_group || row.is_scope);
+                    let group_expander = "";
+                    if (row_is_group) {
+                        group_expander =
+                            `<div class='treegrid-expander treegrid-expander-collapsed' onclick='toggleExpander(this); $("tr[parent-id=${value}]").toggleClass("collapse");'></div>`;
+                    }
+
+                    let line_btn = Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`;
+
+                    return group_expander + " " + line_btn;
+                }
             },
             {
                 field: 'line',
@@ -270,37 +316,17 @@ function addIssueTable(source_file, scope) {
         treeShowField: 'id',
         rowStyle: function (row, index) {
             const row_header_class = (row.is_scope) ? " row-scope" : (row.is_group) ? " row-group" : "";
-            return { classes: row.severity + row_header_class };
+            // auto collapse non header rows
+            const row_collapse_class = do_not_group || row.is_scope || row.is_group ? "" : " collapse";
+            return { classes: row.severity + row_header_class + row_collapse_class };
         },
 
         // parentIdField: 'pid',
-        parentIdField: parent_field,
-        rowAttributes: function (row, index) { return { 'row-id': row.id, 'parent-id': row[parent_field] } },
+        parentIdField: grouping_field_name,
+        rowAttributes: function (row, index) { return { 'row-id': row.id, 'parent-id': row[grouping_field_name] } },
 
         onPostBody: function () {
-            $table = $(ref_node).find('table');
-            let all_parent_ids = new Set();
-            $(ref_node).find("tr").each(function () {
-                let parent_id = $(this).attr("parent-id");
-                all_parent_ids.add(parent_id);
-            });
-            all_parent_ids.forEach(parent_id => {
-                if (parent_id == "") {
-                    return;
-                }
-                let parent_selector = $(`[row-id=${parent_id}]`);
-                if (parent_selector.length > 0) {
-                    let expander = $($.parseHTML("<div class='treegrid-expander treegrid-expander-collapsed'></div>")).on('click', function () {
-                        $(this).toggleClass("treegrid-expander-collapsed");
-                        $(this).toggleClass("treegrid-expander-expanded");
-                        $(`tr[parent-id=${parent_id}]`).toggleClass("collapse");
-                    })
-                    $(parent_selector).find("td:nth-of-type(1)").append(expander);
-                    let child_selector = $(`tr[parent-id=${parent_id}]`);
-                    child_selector.addClass("collapse").find("td:nth-of-type(1)").prepend("--");
-                    $(parent_selector).after(child_selector.detach());
-                }
-            });
+            // tbd
         }
     });
 }
@@ -322,44 +348,10 @@ function rebuildIssueTables() {
     }
 }
 
-function updateScopeCounters() {
-    $(".issue-scope").each(function () {
-        num_children = 0;
-        num_active_children = 0;
-        $(this).find("code").each(function () {
-            num_children++;
-            if ($(this).css("display") != "none")
-                num_active_children++;
-        })
-
-        summary = $(this).find(".issue-scope-summary");
-        json_data = $(this).data("json");
-
-        summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
-        $(this).toggle(num_active_children > 0);
-
-        for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
-            let tag = json_data.tags[tag_idx];
-            $(summary).append(createTagButton(tag, false));
-        }
-    })
-    $(".line-group").each(function () {
-        num_children = 0;
-        num_active_children = 0;
-        $(this).find("code").each(function () {
-            num_children++;
-            if ($(this).css("display") != "none")
-                num_active_children++;
-        })
-
-        summary = $(this).find(".line-group-summary");
-        line_group_name = $(this).data("name");
-
-        summary.html("<span class='px-2'>" + line_group_name + ` (${num_active_children}/${num_children})` + "</span>");
-        $(this).toggle(num_active_children > 0);
-    })
+function toggleExpander(expander) {
+    $(expander).toggleClass("treegrid-expander-collapsed");
+    $(expander).toggleClass("treegrid-expander-expanded");
 }
-updateScopeCounters();
 
 function resetFilter() {
     filter.tags.clear();
@@ -393,8 +385,6 @@ function applyFilter() {
         }
         $(this).toggle(has_all_strings);
     });
-
-    updateScopeCounters();
 }
 
 let show_all_button = $("#show-all-btn");
@@ -404,8 +394,6 @@ $(show_all_button).click(function () {
     // Set show all button to primary (blue)
     $("#show-all-btn").toggleClass("btn-primary", true);
     $("#show-all-btn").toggleClass("btn-secondary", false);
-
-    updateScopeCounters();
 })
 $("#filter-btns").append(show_all_button);
 
