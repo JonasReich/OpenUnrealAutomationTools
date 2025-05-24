@@ -114,8 +114,20 @@ a.file-path {
     width: 100%;
 }
 
-.row-scope,
-.row-group {
+.issue-row-scope td:nth-of-type(1) {
+    padding-left: 0px;
+}
+
+.issue-row-group td:nth-of-type(1) {
+    padding-left: 20px;
+}
+
+.issue-row-normal td:nth-of-type(1) {
+    padding-left: 40px;
+}
+
+.issue-row-scope,
+.issue-row-group {
     font-weight: bold;
 }
 

@@ -255,11 +255,11 @@ function addIssueTable(source_file, scope) {
                 sortable: true,
                 width: 100,
                 formatter: function (value, row) {
-                    let row_is_group = (row.is_group || row.is_scope);
                     let group_expander = "";
-                    if (row_is_group) {
+                    if (row.is_group || row.is_scope) {
+                        let group_collapsed_class = row.is_group ? "treegrid-expander-collapsed" : "treegrid-expander-expanded";
                         group_expander =
-                            `<div class='treegrid-expander treegrid-expander-collapsed' onclick='toggleExpander(this); $("tr[parent-id=${value}]").toggleClass("collapse");'></div>`;
+                            `<div class='treegrid-expander ${group_collapsed_class}' onclick='toggleExpander(this); $("tr[parent-id=${value}]").toggleClass("collapse");'></div>`;
                     }
 
                     let line_btn = Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`;
@@ -315,7 +315,7 @@ function addIssueTable(source_file, scope) {
         ],
         treeShowField: 'id',
         rowStyle: function (row, index) {
-            const row_header_class = (row.is_scope) ? " row-scope" : (row.is_group) ? " row-group" : "";
+            const row_header_class = (row.is_scope) ? " issue-row-scope" : (row.is_group) ? " issue-row-group" : " issue-row-normal";
             // auto collapse non header rows
             const row_collapse_class = do_not_group || row.is_scope || row.is_group ? "" : " collapse";
             return { classes: row.severity + row_header_class + row_collapse_class };
