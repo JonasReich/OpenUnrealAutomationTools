@@ -328,7 +328,7 @@ class UnrealLogFilePatternList_MatchList:
         return header + body
 
     def get_fully_qualified_name(self) -> str:
-        return self.owning_scope_instance.get_fully_qualified_scope_name() + "_" + self.source_list.group_name
+        return self.owning_scope_instance.get_fully_qualified_scope_name() + ": " + self.source_list.group_name
 
     def json(self) -> Optional[dict]:
         num_lines = len(self.matching_lines)
@@ -753,10 +753,6 @@ class UnrealLogFilePatternScopeInstance:
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
 
-        def to_json_scope_id(string: str) -> str:
-            """strip out all the strings that are illegal for our json ids required for javascript table columns"""
-            return re.sub(r"[^a-z|^A-Z]", "", string)
-
         lines = []
         for line in self.all_matching_lines(include_hidden=False):
             line_json = line.json()
@@ -776,14 +772,14 @@ class UnrealLogFilePatternScopeInstance:
                 line_json["line"] = line.line.removeprefix(
                     line_timestamp_match.group(0))
 
-            def set_line_string_variable(source, target):
+            def _set_line_string_variable(source, target):
                 value = line.string_vars.get(source, None)
                 if value and len(value) > 0:
                     line_json[target] = value
 
-            set_line_string_variable("Developer", "developer")
-            set_line_string_variable("GameplayTag", "gameplay_tag")
-            set_line_string_variable("AssetPath", "asset_path")
+            _set_line_string_variable("Developer", "developer")
+            _set_line_string_variable("GameplayTag", "gameplay_tag")
+            _set_line_string_variable("AssetPath", "asset_path")
 
             lines.append(line_json)
 
