@@ -532,24 +532,27 @@ function createIssuesPerTagChart() {
         let warning_count_total = 0;
         let severe_warning_count_total = 0;
         let message_count_total = 0;
-        count = $(".code-summary code").each(function () {
-            if ($(this).data("json").tags.includes(tag) == false) {
-                return;
-            }
-            if ($(this).data("json").severity == "error") {
-                error_count++;
-                error_count_total += $(this).data("json").occurences;
-            } else if ($(this).data("json").severity == "warning") {
-                warning_count++;
-                warning_count_total += $(this).data("json").occurences;
-            } else if ($(this).data("json").severity == "severe_warning") {
-                severe_warning_count++;
-                severe_warning_count_total += $(this).data("json").occurences;
-            } else {
-                message_count++;
-                message_count_total += $(this).data("json").occurences;
-            }
-        })
+        for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+            issue_scope.lines.forEach(function (line) {
+                if ("tags" in line == false || line.tags.includes(tag) == false) {
+                    return;
+                }
+                const line_occurences = Number(line.occurences) > 0 ? line.occurences : 1;
+                if (line.severity == SEVERITY.ERROR) {
+                    error_count++;
+                    error_count_total += line_occurences;
+                } else if (line.severity == SEVERITY.WARNING) {
+                    warning_count++;
+                    warning_count_total += line_occurences;
+                } else if (line.severity == SEVERITY.SEVERE_WARNING) {
+                    severe_warning_count++;
+                    severe_warning_count_total += line_occurences;
+                } else {
+                    message_count++;
+                    message_count_total += line_occurences;
+                }
+            });
+        }
         error_counts.push(error_count);
         warning_counts.push(warning_count);
         severe_warning_counts.push(severe_warning_count);
