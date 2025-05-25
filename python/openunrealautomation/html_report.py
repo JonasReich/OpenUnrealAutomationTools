@@ -12,12 +12,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
+from openunrealautomation.automationtest import (automation_test_html_report,
+                                                 find_last_test_report)
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
+from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
+                                           _main_get_files, parse_log)
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
+from openunrealautomation.util import (get_oua_version, ouu_temp_file,
+                                       read_text_file, write_text_file)
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -67,7 +70,7 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
         f'<div class="col-12 box-ouu source-file-container">'\
         f'<div class="source-file-summary">File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre> - {source_file_ctime}</div>\n'\
         f'<div id="{source_file_id}_code-summary" class="code-summary"></div>'\
-        f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="expandSourceContainer(this);">Show source log</button>'\
+        f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="toggleSourceContainer(this);">Show source log</button>'\
         f'<div class="source-log-container text-nowrap p-3 code-container" style="display:none;">\n{log_file_str_html}\n</div>'\
         f'</div>'
 
@@ -191,7 +194,7 @@ def generate_html_report(
     for source_file_count, parsed_log in zip(range(1, len(log_files) + 1), log_files):
         source_file_name = Path(parsed_log.source_file).name
         source_file_id = source_file_name
-        prohibited_chars = ". ()@;[]#,="
+        prohibited_chars = ". ()@;[]#,=+-"
         for prohibited_char in prohibited_chars:
             source_file_id = source_file_id.replace(prohibited_char, "_")
 
@@ -217,9 +220,12 @@ def generate_html_report(
     json_str = _parsed_log_dict_to_json(parsed_log_dicts, out_json_path)
 
     embedded_reports_str = ""
+    embedded_reports_count = 0
     for embedded_report in embedded_reports:
         if embedded_report:
             embedded_reports_str += f"""<div class="col-12 box-ouu embedded-report">{embedded_report}</div>"""
+            embedded_reports_count += 1
+    print("Embedding", embedded_reports_count, "reports...")
 
     if html_report_template_path is None:
         # The default report isn't even a single template, but a set of files that are combined to a template.
@@ -282,9 +288,12 @@ def create_localization_report(env: UnrealEnvironment, localization_target: str)
 
 
 if __name__ == "__main__":
-    ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+    try:
+        ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+    except Exception:
+        ue = None
 
-    files = _main_get_files()
+    pattern, files = _main_get_files()
 
     temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
     os.makedirs(temp_dir, exist_ok=True)
@@ -294,21 +303,33 @@ if __name__ == "__main__":
         if file is None:
             continue
         parsed_log = parse_log(
-            file, None, target)
-        all_logs.append((file, parsed_log))
+            file, pattern, target)
+        all_logs.append(parsed_log)
 
     report_path = os.path.join(temp_dir, "test_report")
 
-    inspectcode = InspectCode(ue.environment, ouu_temp_file(
-        "ResharperReport.xml"), None)
-    inspectcode.run(may_skip=True)
-    static_analysis_results = inspectcode.load()
-    static_analysis_report = static_analysis_results.html_report(
-        embeddable=True)
+    embedded_reports = []
+    if ue:
+        try:
+            inspectcode = InspectCode(ue.environment, ouu_temp_file(
+                "ResharperReport.xml"), None)
+            static_analysis_results = inspectcode.load()
+        except FileNotFoundError:
+            static_analysis_results = None
+            print("no static analysis reports found")
+        if static_analysis_results:
+            embedded_reports.append(
+                static_analysis_results.html_report(embeddable=True))
 
-    test_report_path = find_last_test_report(ue)
-    test_report_html = automation_test_html_report(
-        report_path) if test_report_path else ""
+        test_report_path = find_last_test_report(ue)
+        if test_report_path:
+            embedded_reports.append(automation_test_html_report(
+                test_report_path))
 
-    generate_html_report(None, report_path + ".html", all_logs, [test_report_html, static_analysis_report],
+        embedded_reports.append(create_localization_report(
+            ue.environment, localization_target="Game"))
+    else:
+        print("skipping static analysis check, because we don't have an Unreal environment")
+
+    generate_html_report(None, report_path + ".html", all_logs, embedded_reports,
                          report_path + ".json", "OUA Test Report", "", {"CODE": "🤖 Code", "ART": "🎨 Art"})

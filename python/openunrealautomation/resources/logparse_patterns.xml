@@ -10,6 +10,22 @@
 <Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="openunreal_logparse_patterns.xsd">
 
+    <Template Name="TeamCity">
+        <!-- Include this first to prevent a line from this to e.g. cause a UAT stack frame that
+        contains the entire log file -->
+        <Scope Name="TC Start Boilerplate">
+            <Start Style="Regex">Build '.*' .+, branch '.+'</Start>
+            <End Style="Literal">TeamCity server version is</End>
+            <Patterns Name="TopFileErrorSummary" Severity="Error">
+                <Include Style="Regex">Finished .* with status FAILURE</Include>
+            </Patterns>
+        </Scope>
+        <Patterns Name="TCMessages" Severity="Message">
+            <Include Style="Literal">]E:		 </Include>
+            <Include Style="Literal">]i:		 </Include>
+        </Patterns>
+    </Template>
+
     <Template Name="ExitCodes">
         <Patterns Name="Exit Codes" Severity="Message" Hidden="true">
             <Include Style="Regex" StringVariables="UAT_Command"
@@ -20,14 +36,17 @@
     </Template>
 
     <Template Name="Unreal">
+        <!-- TODO: Add ensure summary to display name -->
+        <!-- Unfortunately any such logs can easily leak if mirrored by TeamCity :( -->
+        <!--
         <Scope Name="Exception Callstack">
-            <!-- TODO: Add ensure summary to display name -->
             <Start>Error: begin: stack for UAT</Start>
             <End>Error: end: stack for UAT</End>
             <Patterns Name="Callstack" Tags="Code" Severity="Error">
                 <Include Style="Regex">.*</Include>
             </Patterns>
         </Scope>
+        -->
 
         <Patterns Name="CookParams" Severity="Message">
             <Include Style="Regex" StringVariables="CookCultures">LogCookCommandlet: Display:\s+CookCultures: \((?P&lt;CookCultures&gt;.+)\)</Include>
@@ -91,8 +110,8 @@
         </Patterns>
 
         <Patterns Name="Invalid Gameplay Tags" Tags="Content" Severity="Severe_Warning">
-            <Include Style="Regex">Invalid GameplayTag .* found in property</Include>
-            <Include Style="Regex">Invalid GameplayTag .* found in object</Include>
+            <Include Style="Regex" StringVariables="GameplayTag">Invalid GameplayTag (?P&lt;GameplayTag&gt;.*) found in property</Include>
+            <Include Style="Regex" StringVariables="GameplayTag">Invalid GameplayTag (?P&lt;GameplayTag&gt;.*) found in object</Include>
         </Patterns>
 
         <Patterns Name="Material Errors" Tags="Art;Code" Severity="Error">
@@ -219,6 +238,8 @@
         <Patterns Name="BuildGraph UAT Non-Zero Exit Code" Severity="Fatal">
             <Include Style="Regex">AutomationTool exiting with ExitCode.*</Include>
         </Patterns>
+        <!-- Prefer this to prevent leaking a UAT callstack -->
+        <Link Template="TeamCity" />
         <!-- Prefer template from BuildCookRun over direct inclusion of Unreal / UAT rules -->
         <Link Template="BuildCookRun" />
         <Link Template="Unreal" />

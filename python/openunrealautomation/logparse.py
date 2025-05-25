@@ -60,6 +60,12 @@ class UnrealLogSeverity(Enum):
     def json(self) -> str:
         return self.value[2]
 
+    def __lt__(self, other):
+        return self.value[0] < other.value[0]
+
+    def __eq__(self, other):
+        return self.value[0] == other.value[0]
+
 
 class UnrealBuildStepStatus(Enum):
     """
@@ -86,6 +92,8 @@ class UnrealLogFileLineMatch:
     """
     line: str = ""
     owning_pattern: Optional['UnrealLogFilePattern']
+    owning_match_list: Optional['UnrealLogFilePatternList_MatchList']
+    owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance']
     # Line number where this match was first encountered
     line_nr: int
     string_vars: Dict[str, str]
@@ -95,9 +103,11 @@ class UnrealLogFileLineMatch:
     # (this has to be done by external post-processing code atm)
     tags: Set[str]
 
-    def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
+    def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
         self.line = line
         self.owning_pattern = owning_pattern
+        self.owning_match_list = owning_match_list
+        self.owning_scope_instance = owning_scope_instance
         self.line_nr = line_nr
         self.string_vars = string_vars
         self.numeric_vars = numeric_vars
@@ -120,15 +130,18 @@ class UnrealLogFileLineMatch:
         return self.owning_pattern.owning_list.severity if self.owning_pattern is not None and self.owning_pattern.owning_list is not None else UnrealLogSeverity.MESSAGE
 
     def json(self) -> dict:
-        return {
+        result = {
             "line": self.line,
             "line_nr": self.line_nr,
             "severity": self.get_severity().json(),
-            "strings": self.string_vars,
-            "numerics": self.numeric_vars,
-            "tags": list(self.get_tags()),
-            "occurences": self.occurences
         }
+        tags = self.get_tags()
+        if len(tags) > 0:
+            result["tags"] = list(tags)
+        # any entry is an implicit occurence
+        if self.occurences > 1:
+            result["occurrences"] = self.occurences
+        return result
 
 
 class UnrealLogFilePattern:
@@ -203,7 +216,7 @@ class UnrealLogFilePattern:
                                     failure_flag_names=failure_flag_names,
                                     tags=tags)
 
-    def match(self, line: str, line_nr: int) -> Optional[UnrealLogFileLineMatch]:
+    def match(self, line: str, line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None) -> Optional[UnrealLogFileLineMatch]:
         """
         Search for pattern matches in a given line.
         Returns an UnrealLogFileLineMatch if a match was found. Otherwise None.
@@ -215,11 +228,21 @@ class UnrealLogFilePattern:
         if self.pattern is None:
             return None
 
+        string_vars = {}
+
+        def _add_asset_match():
+            asset_match = re.search(r"\/(Game|JsonData)[\w\/]+", line)
+            if asset_match:
+                asset_path = asset_match.group(0)
+                if asset_path.startswith("/Game/__ExternalActors__/"):
+                    asset_path = "/Game/__ExternalActors__/..."
+                string_vars["AssetPath"] = asset_path
+
+        result_match = None
         if self.is_regex:
             re_match = re.search(self.pattern, line)
             if re_match is None:
                 return None
-            string_vars = {}
             for name in self.string_var_names:
                 named_group_value = re_match.group(name)
                 if not named_group_value is None:
@@ -231,13 +254,14 @@ class UnrealLogFilePattern:
                     # Depending on the platform you may get commas instead of dots as decimal separator.
                     numeric_vars[name] = float(
                         named_group_value.replace(",", "."))
+            _add_asset_match()
             result_match = UnrealLogFileLineMatch(
-                line, self, line_nr, string_vars, numeric_vars) if re_match else None
-        else:
-            # Convert both to lower case to make matching case-insensitive
-            matches = self.pattern.lower() in line.lower()
+                line, self, line_nr, owning_match_list, owning_scope_instance, string_vars, numeric_vars)
+        # Convert both to lower case to make matching case-insensitive
+        elif self.pattern.lower() in line.lower():
+            _add_asset_match()
             result_match = UnrealLogFileLineMatch(
-                line, self, line_nr) if matches else None
+                line, self, line_nr, owning_match_list, owning_scope_instance, string_vars)
 
         return result_match
 
@@ -272,11 +296,12 @@ class UnrealLogFilePatternList_MatchList:
         """
         # Go through exclude patterns first, because we always have to check all of these
         for pattern in self.source_list.exclude_patterns:
-            if not pattern.match(line, line_number) is None:
+            if not pattern.match(line, line_number, self.owning_scope_instance) is None:
                 return None
 
         for pattern in self.source_list.include_patterns:
-            match = pattern.match(line, line_number)
+            match = pattern.match(line, line_number, self,
+                                  self.owning_scope_instance)
             if match is None:
                 continue
             self.owning_scope_instance.flag_match_success(match)
@@ -301,6 +326,9 @@ class UnrealLogFilePatternList_MatchList:
         body = "\n".join(str(line)
                          for line in self.matching_lines[0:disp_lines])
         return header + body
+
+    def get_fully_qualified_name(self) -> str:
+        return self.owning_scope_instance.get_fully_qualified_scope_name() + ": " + self.source_list.group_name
 
     def json(self) -> Optional[dict]:
         num_lines = len(self.matching_lines)
@@ -724,20 +752,39 @@ class UnrealLogFilePatternScopeInstance:
         """
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
-        result["start"] = self.start_line_match.json(
-        ) if self.start_line_match is not None else ""
-        result["end"] = self.end_line_match.json(
-        ) if self.end_line_match is not None else ""
-        match_lists_jsons = [list.json()
-                             for list in self.pattern_match_lists]
-        result["match_lists"] = [
-            list_json for list_json in match_lists_jsons if list_json is not None]
-        result["child_scopes"] = [scope.json()
-                                  for scope in self.child_scope_instances]
 
-        result["status"] = self.get_scope_status().long_str()
-        result["steps"] = [{"step": step, "status": str(step_status)}
-                           for (step, step_status) in self.step_success_flags]
+        lines = []
+        for line in self.all_matching_lines(include_hidden=False):
+            line_json = line.json()
+            if not line.owning_pattern:
+                print("Skipped line without owning pattern:", line.json())
+                continue
+            line_json["id"] = str(line_json["line_nr"])
+            if line.owning_match_list:
+                line_json["match_group"] = line.owning_match_list.get_fully_qualified_name()
+
+            # extract TeamCity timestamps
+            # #TODO cleanup - this probably shouldn't happen at this json export stage, but we only need it here at the moment
+            line_timestamp_match = re.search(
+                r"^\[(\d{2}:\d{2}:\d{2})\]\s(:\s+\[.*?\]\s*)?", line.line)
+            if line_timestamp_match:
+                line_json["time"] = line_timestamp_match.group(1)
+                line_json["line"] = line.line.removeprefix(
+                    line_timestamp_match.group(0))
+
+            def _set_line_string_variable(source, target):
+                value = line.string_vars.get(source, None)
+                if value and len(value) > 0:
+                    line_json[target] = value
+
+            _set_line_string_variable("Developer", "developer")
+            _set_line_string_variable("GameplayTag", "gameplay_tag")
+            _set_line_string_variable("AssetPath", "asset_path")
+
+            lines.append(line_json)
+
+        result["lines"] = lines
+
         return result
 
     def all_scope_instances(self, self_depth=0) -> Iterator[Tuple['UnrealLogFilePatternScopeInstance', int]]:
@@ -886,7 +933,7 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
         scope_declaration=root_scope_declaration,
         # TODO Move into first iteration so we get the first line?
         start_match=UnrealLogFileLineMatch(
-            "", None, 0),
+            "", None, 0, None),
         instance_number=0)
     current_scope_instance = root_scope_instance
 
@@ -1004,11 +1051,11 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print("\n", scope_with_matches.format(max_lines))
 
 
-def _main_get_files() -> List[Tuple[str, Optional[str]]]:
-    env = UnrealEnvironment.create_from_invoking_file_parent_tree()
-
+def _main_get_files() -> Tuple[str, List[Tuple[str, Optional[str]]]]:
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--files")
+    argparser.add_argument("--pattern", default=os.path.normpath(os.path.join(
+        Path(__file__).parent, "resources/logparse_patterns.xml")))
     cli_args = argparser.parse_args()
 
     files: List[Tuple[str, Optional[str]]]
@@ -1018,22 +1065,22 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
         for i in range(0, len(files_strs), 2):
             files.append((files_strs[i], files_strs[i+1]))
     else:
+        env = UnrealEnvironment.create_from_invoking_file_parent_tree()
         files = [
-            ("UAT", UnrealLogFile.UAT.find_latest(env)),
-            ("Cook", UnrealLogFile.COOK.find_latest(env)),
-            ("Unreal", UnrealLogFile.EDITOR.find_latest(env))
+            ("BuildGraph", UnrealLogFile.UAT.find_latest(env)),
+            ("BuildGraph", UnrealLogFile.COOK.find_latest(env)),
+            ("BuildGraph", UnrealLogFile.EDITOR.find_latest(env))
         ]
 
-    return files
+    return cli_args.pattern, files
 
 
 def _get_default_patterns_xml():
-    return os.path.normpath(os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml"))
+    return
 
 
 if __name__ == "__main__":
-    files = _main_get_files()
+    pattern, files = _main_get_files()
 
     for target, file in files:
         if file is not None:

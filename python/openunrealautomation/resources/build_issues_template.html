@@ -3,13 +3,23 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
     GENERATED_META_TAGS
 
     <title>REPORT_TITLE</title>
 
+    <!-- JQUERY TREEGRID -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-treegrid@0.3.0/css/jquery.treegrid.css">
+
     <!-- BOOTSTRAP -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.css"
+        rel="stylehseet">
 
     <style>
         /*REPORT_CSS*/
@@ -43,11 +53,17 @@
                             <button class="btn btn-sm btn-primary filter-btn string-filter-btn" id="show-all-btn">👁
                                 Show
                                 All</button>
-                            <button class="btn btn-sm btn-secondary" id="expand-all-btn"
-                                onclick="$('details').attr('open', true)">🔽 Expand</button>
-                            <button class="btn btn-sm btn-secondary" id="collapse-all-btn"
-                                onclick="$('details').attr('open', false)">🔼 Collapse</button>
                         </div>
+
+                        <select id="issue-grouping-select" class="form-select m-2 w-auto form-select-sm btn-secondary"
+                            aria-label="Issue Grouping">
+                            <option value="">Do not Group</option>
+                            <option selected value="match_group">Group by: Issue Pattern</option>
+                            <option value="tags_string">Group by: Department Tags</option>
+                            <option value="developer">Group by: Developer</option>
+                            <option value="asset_path">Group by: Asset Path</option>
+                            <option value="gameplay_tag">Group by: Gameplay Tag</option>
+                        </select>
                     </div>
 
                     ISSUES_AND_SOURCES
@@ -67,10 +83,18 @@
         </div>
     </div>
 
+    <!-- JQUERY TreeGrid -->
+    <!--<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.1/jquery-ui.min.js"></script>-->
+
     <!-- Bootstrap -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
         crossorigin="anonymous"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.js"></script>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/extensions/treegrid/bootstrap-table-treegrid.min.js"></script>
 
     <!-- Charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

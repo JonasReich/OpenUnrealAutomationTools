@@ -33,7 +33,7 @@ def step_header(step_name, enabled):
     _step_num += 1
     print(
         "\n----------------------------------------"
-        f"\nSTEP #{_step_num:02d} - {step_name.upper()} {'(DISABLED)' if not enabled else ''}"
+        f"\nSTEP #{_step_num:02d} - {step_name.upper()} {'(SKIPPED)' if not enabled else ''}"
         "\n----------------------------------------")
 
 
@@ -59,8 +59,9 @@ def main():
         report_dir, "InspectCode.xml"), None)
 
     # On CI these would be the regular build steps
-    run_buildgraph = not ue.dry_run and not args.skip_bg
+    run_buildgraph = not args.skip_bg
     step_header("BuildGraph execution", run_buildgraph)
+    no_exceptions = True
     if run_buildgraph:
         try:
             bg_options = {
@@ -74,7 +75,11 @@ def main():
 
             print("Starting distributed buildgraph...")
             if not args.skip_bg:
-                bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+                if args.package:
+                    bg_target = "AllGamePackages" if args.all else "Package Game Win64"
+                else:
+                    bg_target = "AllCompiles" if args.all else f"#{ue.environment.project_name}Editor;Compile Game Win64"
+
                 clean_arg = ["-clean"] if clean else []
                 ue.run_buildgraph_nodes_distributed(
                     buildgraph_script, bg_target, bg_options,
@@ -85,9 +90,10 @@ def main():
         except Exception as e:
             print(traceback.format_exc())
             print(e)
+            no_exceptions = False
             pass
 
-    run_static_analysis = not ue.dry_run and args.static_analysis
+    run_static_analysis = not ue.dry_run and args.static_analysis and no_exceptions
     step_header("Static Analysis", run_static_analysis)
     if run_static_analysis:
         try:
@@ -100,7 +106,7 @@ def main():
             pass
 
     # TODO move to BuildGraph sample
-    enable_tests = not ue.dry_run
+    enable_tests = not ue.dry_run and no_exceptions
     step_header("Automation Tests", enable_tests)
     if enable_tests:
         try:
@@ -109,6 +115,7 @@ def main():
         except Exception as e:
             print(traceback.format_exc())
             print(e)
+            no_exceptions = False
             pass
 
     # On CI this should be a separate "run always" build step after all previous steps concluded
@@ -165,6 +172,8 @@ if __name__ == "__main__":
                            help="Dry-run everything but the report generation.")
     argparser.add_argument("--clean", action="store_true",
                            help="Clean the archive/output directories. If not set, some steps may be skipped if files are present (even if outdated).")
+    argparser.add_argument("--package", action="store_true",
+                           help="Create full cooked game packages. If not set, the BuildGraph target will be set to only compile C++ code for editor and game.")
     argparser.add_argument("--bg-shared-storage",
                            default="F:\\BuildGraphStorage", help="Shared storage directory for BuildGraph intermediates")
     argparser.add_argument("--bg-network-share",

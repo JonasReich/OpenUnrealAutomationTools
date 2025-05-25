@@ -68,7 +68,8 @@ class UnrealLogFile(Enum):
         if found_files is None or len(found_files) == 0:
             return None
         else:
-            # Files are sorted by date, so we can just use the last one
+            # Sort by modification time
+            found_files.sort(key=lambda file: os.stat(file).st_mtime)
             return found_files[-1]
 
     def get_all(self, environment: UnrealEnvironment) -> list[str]:

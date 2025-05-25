@@ -1,18 +1,37 @@
+
+const SEVERITY = {
+    MESSAGE: "message",
+    WARNING: "warning",
+    SEVERE_WARNING: "severe_warning",
+    ERROR: "error",
+};
+const ALL_SEVERITIES = [SEVERITY.MESSAGE, SEVERITY.WARNING, SEVERITY.SEVERE_WARNING, SEVERITY.ERROR];
+
+function get_severity_int(severity) {
+    if (severity == SEVERITY.MESSAGE) { return 0; }
+    if (severity == SEVERITY.WARNING) { return 1; }
+    if (severity == SEVERITY.SEVERE_WARNING) { return 2; }
+    if (severity == SEVERITY.ERROR) { return 3; }
+}
+
 // This inline json string will be replaced with the actual json by our Python script that searches for the capitalized variable name
 let inline_json = String.raw`INLINE_JSON`;
 
 // ----- GLOBALS -----
 let CODE_CONTAINER_TEMPLATE = `<div class="text-nowrap overflow-scroll mx-3 p-3 code-container"><div>`;
 let tags_and_labels = FILTER_TAGS_AND_LABELS;
+// if true, scopes are drawn nested. legacy feature that will likely not be supported anymore.
+const ENABLE_NESTED_SCOPES = false;
 
 var filter = {
+    severities: new Set(),
     tags: new Set(),
     strings: new Map()
 };
 var last_goto_lines = new Map();
 
 let all_lines = [];
-let all_files = [];
+let all_files = new Set();
 
 // #TODO Make this automatic -> Collect item values automatically, so we can just call addButtonsForData("Developer")
 let all_devs = new Set();
@@ -74,7 +93,7 @@ function getTagLabel(tag) {
 function goToSource(source_file, line) {
     let new_goto_line = `#source-log-${source_file}-${line}`;
     // show / expand source container
-    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").hide();
+    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").text("Hide source log");
 
     let last_goto_line = last_goto_lines.has(source_file) ? last_goto_lines.get(source_file) : null;
     if (last_goto_line === null) {
@@ -89,21 +108,22 @@ function goToSource(source_file, line) {
     last_goto_lines.set(source_file, new_goto_line);
 }
 
-function expandSourceContainer(button) {
-    $(button).next(".source-log-container").show();
-    $(button).hide();
+function toggleSourceContainer(button) {
+    $(button).next(".source-log-container").toggle();
+    let log_visible = $(button).next(".source-log-container").is(":visible");
+    $(button).text(log_visible ? "Hide source log" : "Show source log");
 }
 
 
-function increment_map_counter(map, key) {
+function incrementMapCounter(map, key) {
     if (map.has(key)) {
         map.set(key, map.get(key) + 1);
     } else {
         map.set(key, 1);
     }
 }
-function increment_tag_count(tag) {
-    increment_map_counter(tag_counts, tag);
+function incrementTagCount(tag) {
+    incrementMapCounter(tag_counts, tag);
 }
 
 function incrementStringVar(key, value) {
@@ -132,174 +152,226 @@ function updateSeverityCSS(element, severity) {
 }
 
 
-function addLineDiv(line_obj, source_file, line_name = "") {
-    let line_str = line_obj.line;
-
-    // Add clickable links to assets (click -> copy to clipboard)
-    // let file_path_matches = line_str.match(/([\\\/\w\.]+:?[\/\\][\\\/\w\.]+)/g, "");
-    // if (file_path_matches) {
-    //     for (let i = 0; i < file_path_matches.length; i++) {
-    //         let file_path = file_path_matches[i];
-    //         // This only works if the paths do not have any overlaps.
-    //         // With this implementation, 'foo/bar/baz' and 'foo/bar' in the same log line would cause the 'foo/bar' part to overlap, which can result in wrong text resplacement / invalid HTML
-    //         line_str = line_str.replace(file_path, `<a onclick="navigator.clipboard.writeText('${file_path.replace("\\", "\\\\")}')" class="file-path code-tag">${file_path}</a>`);
-    //     }
-    // }
-
-    // Line numbers in report start with 0
-    let normal_line_nr = line_obj.line_nr + 1;
-    let jump_to_src_btn = `<button class="btn-xs btn-secondary" style="font-size: 0.6em; margin-right: 1em;" onclick="goToSource('${source_file}', ${normal_line_nr})">🔗</button>`
-    let new_code_line = $(`${line_name} <code>${jump_to_src_btn}<div class="code-tag">${zeroPad(line_obj.occurences)}x #1@ ${zeroPad(normal_line_nr, 5)} </div>${line_str}<br></code>`);
-    new_code_line.data("json", line_obj);
-    new_code_line.data("source_file", source_file);
-    
-    for (tag_idx in line_obj.tags) {
-        let tag = line_obj.tags[tag_idx];
-        increment_tag_count(tag);
-        // Tags are usually added per category so we shouldn't need buttons per line.
-        // Only current exception: Department tags of last detected dev 
-        //new_code_line.find(".code-tag").prepend(createTagButton(tag, false));
-    }
-
-    let line_string_vars = line_obj.strings;
-
-    let string_vars_with_filter_btns = ["Developer"];
-
-    for (string_key in line_string_vars) {
-        if (string_vars_with_filter_btns.includes(string_key))
-        {
-            let string_value = line_string_vars[string_key];
-            incrementStringVar(string_key, string_value);
-            new_code_line.find(".code-tag").prepend(createStringVarFilterButton(string_key, string_value, false));
-        }
-    }
-
-    let tagged_dev = line_string_vars["Developer"] ?? "";
-    all_devs.add(tagged_dev);
-
-    updateSeverityCSS(new_code_line, line_obj.severity);
-
-    return new_code_line;
-}
-
-function addMatchListCodeContainer(match_list, parent) {
-    match_list_row = $(`<details class="row issue-scope pt-2"><summary class="issue-scope-summary">${name}</summary>${CODE_CONTAINER_TEMPLATE}</details>`);
-    match_list_row.data("name", name);
-    parent.append(match_list_row);
-    match_list_row.data("json", match_list);
-
-    updateSeverityCSS(match_list_row, match_list.severity);
-
-    return match_list_row.find(".code-container");
-}
-
-function addIssueScope(source_file, scope, ref_node) {
+function refreshIssueTable(source_file, scope) {
     // #TODO adjust css classes
-    let scope_row = $(`<div class="row scope-container scope-${scope.status} pt-2 px-4"><div>${scope.name}</div></div>`);
-    $(ref_node).append(scope_row);
+    let ref_node = $(`#${source_file}_code-summary`)[0];
+    let scope_table = $(`<table class="table table-dark table-sm issue-table"></table>`);
+    $(ref_node).empty().append(scope_table);
 
-    if ((typeof scope.start === 'string' || scope.start instanceof String) == false && scope.start.severity != "message") {
-        let start_code_line = addLineDiv(scope.start, source_file, "Start");
-        scope_row.append($(CODE_CONTAINER_TEMPLATE).append(start_code_line));
-    }
+    let grouping_field_name = $("#issue-grouping-select").val();
+    const do_not_group = grouping_field_name.length == 0;
 
-    scope.match_lists.forEach(match_list => {
-        let code_container = null;
-        if (match_list.hidden == false)
-        {
-            code_container = addMatchListCodeContainer(match_list, scope_row);
-        }
+    let data = [];
+    if (do_not_group) {
+        // no grouping
+        scope.lines.forEach(line => {
+            if (lineMatchesFilter(line) == false) {
+                return;
+            }
+            data.push(line);
+        });
+    } else {
+        // custom grouping: group by unique column values.
+        // for this mode, we use a "pid" key.
+        // using the actual column field we want to group by for some reason leads to issues (infinite recursion).
+        let all_group_ids = new Set();
 
-        for (let line_idx = 0; line_idx < match_list.lines.length; line_idx++) {
-            let line_obj = match_list.lines[line_idx];
-            line_obj.source_scope = scope;
-            line_obj.source_file = source_file;
-            all_lines.push(line_obj);
-            
-            if (match_list.hidden == false)
-            {
-                let new_code_line = addLineDiv(line_obj, source_file);
+        let group_data = new Map();
+        let filtered_lines = [];
+        scope.lines.forEach(line => {
+            if (lineMatchesFilter(line) == false) {
+                return;
+            }
 
-                if ("GroupBy" in line_obj.strings)
-                {
-                    let group_by_name = line_obj.strings["GroupBy"];
-                    let group_by_name_data = `data-line-group-by='${group_by_name}'`
-                    let group_root = code_container.find(`.line-group[${group_by_name_data}]`);
-                    if (group_root.length == 0)
-                    {
-                        let new_line_group = $(`<details class='line-group' ${group_by_name_data}><summary class='line-group-summary'>${group_by_name}</summary></details>`);
-                        new_line_group.data("name", group_by_name);
-                        code_container.append(new_line_group);
+            let group_id = line[grouping_field_name];
+            if ((group_id === undefined) == false) {
+                if (typeof group_id == "string") {
+                    if (group_id.trim().length > 0) {
+                        filtered_lines.push(line);
+                        all_group_ids.add(group_id);
+                        let group = null;
+                        if (group_data.has(group_id) == false) {
+                            group_data.set(group_id, {
+                                occurences: 0,
+                                severity: SEVERITY.MESSAGE,
+                                _severity_int: get_severity_int(SEVERITY.MESSAGE),
+                                tags: new Set(),
+                                lines: [],
+                            });
+                        }
+                        group = group_data.get(group_id);
+
+                        if ("tags" in line) {
+                            line.tags.forEach(tag => group.tags.add(tag));
+                        }
+                        group.occurences += 1
+                        const line_severity_int = get_severity_int(line.severity);
+                        if (line_severity_int > group._severity_int) {
+                            group.severity = line.severity;
+                            group._severity_int = line_severity_int;
+                        }
+                        group.lines.push(line);
                     }
-
-                    code_container.find(`.line-group[${group_by_name_data}]`).append(new_code_line);
-                }
-                else
-                {
-                    code_container.append(new_code_line);
+                } else {
+                    // column valud could be array, etc
+                    // no idea how to deal with this
+                    console.warn(`unsupported group column type: ${typeof group_id}`)
                 }
             }
+        });
+
+        // remap groupings to index based synthetic "pid" field
+        let group_key_lookup = new Map();
+        let i = -1;
+        all_group_ids.forEach(group_id => {
+            let group = group_data.get(group_id);
+            i--;
+            let group_line = {
+                id: i,
+                line: group_id,
+                occurences: group.occurences,
+                severity: group.severity,
+                is_group: true,
+                tags: [...group.tags],
+            };
+            group_key_lookup[group_id] = i;
+            // this type of created group can't be nested
+            group_line.pid = 0;
+            data.push(group_line);
+            group.lines.forEach(line => {
+                line.pid = i;
+                data.push(line);
+            });
+        });
+        grouping_field_name = "pid";
+    }
+
+    $(ref_node).find('table').bootstrapTable({
+        data: data,
+        idField: 'id',
+        showColumns: true,
+        columns: [
+            {
+                field: 'group_expander',
+                title: '',
+                width: 50,
+                formatter: function (value, row) {
+                    if (row.is_group) {
+                        let group_collapsed_class = row.is_group ? "treegrid-expander-collapsed" : "treegrid-expander-expanded";
+                        return `<div class='treegrid-expander ${group_collapsed_class}' onclick='toggleExpander(this); $("tr[parent-id=${row.id}]").toggleClass("collapse");'></div>`;
+                    }
+                    return "";
+                }
+            },
+            {
+                field: 'id',
+                title: 'Line Number',
+                sortable: true,
+                width: 30,
+                formatter: function (value) {
+                    return Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`;
+                }
+            },
+            {
+                field: 'line',
+                title: 'Text',
+                // width -> the only flexible width column
+                class: 'line-text',
+                sortable: true
+            },
+            {
+                field: 'time',
+                title: 'Timestamp',
+                width: 100
+            },
+            {
+                field: 'severity',
+                title: 'Status/Severity',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'tags',
+                title: 'Tags',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'developer',
+                title: 'Developer',
+                sortable: true,
+                width: 100
+            },
+            {
+                field: 'asset_path',
+                title: 'Asset Path',
+                sortable: true,
+                width: 400
+            },
+            {
+                field: 'occurences',
+                title: 'Occurences',
+                sortable: true,
+                width: 100,
+                // any entry must occur min 1 time, so display accordingly
+                formatter: function (value) { return Number(value) > 0 ? value : 1; }
+            }
+
+        ],
+        treeShowField: 'id',
+        rowStyle: function (row, index) {
+            const row_header_class = (row.is_group) ? " issue-row-group" : " issue-row-normal";
+            // auto collapse non header rows
+            const row_collapse_class = do_not_group || row.is_group ? "" : " collapse";
+            return { classes: row.severity + row_header_class + row_collapse_class };
+        },
+
+        // parentIdField: 'pid',
+        parentIdField: grouping_field_name,
+        rowAttributes: function (row, index) { return { 'row-id': row.id, 'parent-id': row[grouping_field_name] } },
+
+        onPostBody: function () {
+            // tbd
         }
     });
-
-    scope.child_scopes.forEach(child_scope => {
-        addIssueScope(source_file, child_scope, scope_row);
-    });
-
-    if ((typeof scope.end === 'string' || scope.end instanceof String) == false && scope.end.severity != "message") {
-        let end_code_line = addLineDiv(scope.end, source_file, "End");
-        scope_row.append($(CODE_CONTAINER_TEMPLATE).append(end_code_line));
-    }
 }
 
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
-for (const [source_file, root_scope] of Object.entries(json_obj)) {
-    all_files.push(source_file);
-    let code_root =  $(`#${source_file}_code-summary`)[0];
-    addIssueScope(source_file, root_scope, code_root);
-}
-
-function updateScopeCounters() {
-    $(".issue-scope").each(function () {
-        num_children = 0;
-        num_active_children = 0;
-        $(this).find("code").each(function () {
-            num_children++;
-            if ($(this).css("display") != "none")
-                num_active_children++;
-        })
-
-        summary = $(this).find(".issue-scope-summary");
-        json_data = $(this).data("json");
-
-        summary.html("<span class='px-2'>" + json_data.name + ` (${num_active_children}/${num_children})` + "</span>");
-        $(this).toggle(num_active_children > 0);
-
-        for (let tag_idx = 0; tag_idx < json_data.tags.length; tag_idx++) {
-            let tag = json_data.tags[tag_idx];
-            $(summary).append(createTagButton(tag, false));
+rebuildIssueTables();
+for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+    all_files.add(source_file);
+    issue_scope.lines.forEach(line => {
+        if ("developer" in line) {
+            all_devs.add(line.developer);
+            incrementStringVar("developer", line.developer);
         }
-    })
-    $(".line-group").each(function () {
-        num_children = 0;
-        num_active_children = 0;
-        $(this).find("code").each(function () {
-            num_children++;
-            if ($(this).css("display") != "none")
-                num_active_children++;
-        })
-
-        summary = $(this).find(".line-group-summary");
-        line_group_name = $(this).data("name");
-
-        summary.html("<span class='px-2'>" + line_group_name + ` (${num_active_children}/${num_children})` + "</span>");
-        $(this).toggle(num_active_children > 0);
-    })
+        if ("tags" in line) {
+            line.tags.forEach(tag => incrementTagCount(tag));
+            line.tags_string = line.tags.join(", ")
+        }
+    });
 }
-updateScopeCounters();
+
+$("#issue-grouping-select").change(function () {
+    rebuildIssueTables();
+})
+
+function rebuildIssueTables() {
+    for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+        if (issue_scope.lines.length > 0) {
+            refreshIssueTable(source_file, issue_scope);
+        }
+    }
+}
+
+function toggleExpander(expander) {
+    $(expander).toggleClass("treegrid-expander-collapsed");
+    $(expander).toggleClass("treegrid-expander-expanded");
+}
 
 function resetFilter() {
+    filter.severities.clear();
     filter.tags.clear();
     filter.strings.clear();
 
@@ -307,52 +379,48 @@ function resetFilter() {
     // Reset all filter buttons
     $(".filter-btn").toggleClass("btn-primary", false);
     $(".filter-btn").toggleClass("btn-secondary", true);
-}
-
-function applyFilter() {
-    $(".code-summary code").each(function () {
-        let tags = $(this).data("json")["tags"];
-        let has_all_tags = true;
-        for (const filter_tag of filter.tags.keys()) {
-            if (tags.includes(filter_tag) == false) {
-                has_all_tags = false;
-            }
-        }
-        if (!has_all_tags) {
-            $(this).toggle(false);
-            return;
-        }
-        let has_all_strings = true;
-        for (const [string_var, string_value] of filter.strings.entries()) {
-            let item_string_value = $(this).data("json").strings[string_var];
-            if (item_string_value != string_value) {
-                has_all_strings = false;
-            }
-        }
-        $(this).toggle(has_all_strings);
-    });
-
-    updateScopeCounters();
-}
-
-let show_all_button = $("#show-all-btn");
-$(show_all_button).click(function () {
-    resetFilter();
 
     // Set show all button to primary (blue)
     $("#show-all-btn").toggleClass("btn-primary", true);
     $("#show-all-btn").toggleClass("btn-secondary", false);
 
-    updateScopeCounters();
+    applyFilter();
+}
+
+function lineMatchesFilter(line) {
+    if (filter.severities.size > 0 && filter.severities.has(line.severity) == false) {
+        return false;
+    }
+    for (const filter_tag of filter.tags.keys()) {
+        if (("tags" in line) == false || line.tags.includes(filter_tag) == false) {
+            return false;
+        }
+    }
+    for (const [string_var, string_value] of filter.strings.entries()) {
+        if ((string_var in line) == false || line[string_var] != string_value) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function applyFilter() {
+    rebuildIssueTables();
+}
+
+let show_all_button = $("#show-all-btn");
+$(show_all_button).click(function () {
+    resetFilter();
 })
 $("#filter-btns").append(show_all_button);
 
-function filterTags(tag) {
-    let filter_now = filter.tags.has(tag) == false;
+
+function _filterButtonToggle(value, filter_prop, css_class_prefix, data_prop) {
+    let filter_now = filter[filter_prop].has(value) == false;
     if (filter_now) {
-        filter.tags.add(tag);
+        filter[filter_prop].add(value);
     } else {
-        filter.tags.delete(tag);
+        filter[filter_prop].delete(value);
     }
 
     $("#show-all-btn").toggleClass("btn-primary", false);
@@ -360,27 +428,29 @@ function filterTags(tag) {
 
     applyFilter();
 
-    $(".tag-btn").each(function () {
-        let btn_tag = $(this).data("tag");
-        if (btn_tag == tag) {
+    $(`.${css_class_prefix}-btn`).each(function () {
+        let btn_value = $(this).data(data_prop);
+        if (btn_value == value) {
             $(this).toggleClass("btn-primary", filter_now);
             $(this).toggleClass("btn-secondary", !filter_now);
         }
     });
 }
 
-function createTagButton(tag, add_count) {
-    let tag_count = tag_counts.has(tag) ? tag_counts.get(tag) : 0;
-    let count_suffix = add_count ? ` (${tag_count})` : "";
-    let tag_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn tag-btn">${getTagLabel(tag)}${count_suffix}</button>`);
-    tag_button.data("tag", tag);
-    $(tag_button).click(function () { filterTags(tag) });
-    return tag_button
-}
-
 // Add buttons
+ALL_SEVERITIES.forEach(severity => {
+    let severity_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn severity-btn ${severity}">${severity}</button>`);
+    severity_button.data("severity", severity);
+    $(severity_button).click(function () { _filterButtonToggle(severity, "severities", "severity", "severity"); });
+    $("#filter-btns").append(severity_button);
+});
+
 for (let [tag, label] of Object.entries(tags_and_labels)) {
-    $("#filter-btns").append(createTagButton(tag, true));
+    let tag_count = tag_counts.has(tag) ? tag_counts.get(tag) : 0;
+    let tag_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn tag-btn">${getTagLabel(tag)} (${tag_count})</button>`);
+    tag_button.data("tag", tag);
+    $(tag_button).click(function () { _filterButtonToggle(tag, "tags", "tag", "tag"); });
+    $("#filter-btns").append(tag_button);
 }
 
 $("#filter-btns").append($("<div class='m-2'/>"));
@@ -432,7 +502,7 @@ function addFilterButtonForStringVar(string_var, string_var_items) {
     })
 }
 
-addFilterButtonForStringVar("Developer", all_devs);
+addFilterButtonForStringVar("developer", all_devs);
 
 //---------------------------
 // STATS
@@ -473,24 +543,27 @@ function createIssuesPerTagChart() {
         let warning_count_total = 0;
         let severe_warning_count_total = 0;
         let message_count_total = 0;
-        count = $(".code-summary code").each(function () {
-            if ($(this).data("json").tags.includes(tag) == false) {
-                return;
-            }
-            if ($(this).data("json").severity == "error") {
-                error_count++;
-                error_count_total += $(this).data("json").occurences;
-            } else if ($(this).data("json").severity == "warning") {
-                warning_count++;
-                warning_count_total += $(this).data("json").occurences;
-            } else if ($(this).data("json").severity == "severe_warning") {
-                severe_warning_count++;
-                severe_warning_count_total += $(this).data("json").occurences;
-            } else {
-                message_count++;
-                message_count_total += $(this).data("json").occurences;
-            }
-        })
+        for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+            issue_scope.lines.forEach(function (line) {
+                if ("tags" in line == false || line.tags.includes(tag) == false) {
+                    return;
+                }
+                const line_occurences = Number(line.occurences) > 0 ? line.occurences : 1;
+                if (line.severity == SEVERITY.ERROR) {
+                    error_count++;
+                    error_count_total += line_occurences;
+                } else if (line.severity == SEVERITY.WARNING) {
+                    warning_count++;
+                    warning_count_total += line_occurences;
+                } else if (line.severity == SEVERITY.SEVERE_WARNING) {
+                    severe_warning_count++;
+                    severe_warning_count_total += line_occurences;
+                } else {
+                    message_count++;
+                    message_count_total += line_occurences;
+                }
+            });
+        }
         error_counts.push(error_count);
         warning_counts.push(warning_count);
         severe_warning_counts.push(severe_warning_count);
@@ -624,10 +697,10 @@ function createNumericsChartFromJsonData(preset, chart_title, item_key_variable,
 }
 let ddc_stats = ["DDC_TotalTime", "DDC_GameThreadTime", "DDC_AssetNum", "DDC_MB"];
 let ddc_labels = ["Total Time", "Game Thread Time", "Asset Number", "MB"];
-all_files.forEach(function (file){
+all_files.forEach(function (file) {
     createNumericsChartFromJsonData(ChartPreset.LINE, "DDC Resource Stats " + file, "DDC_Key", ddc_stats, ddc_labels, file);
 });
-all_files.forEach(function (file){
+all_files.forEach(function (file) {
     // createNumericsChartFromJsonData(ChartPreset.PIE, "UAT Command Times " + file, "UAT_Command", ["Duration"], ["Duration"], file);
 });
 
@@ -664,6 +737,6 @@ function createCsvChart(preset, chart_title, csv_str) {
             borderColor: color
         });
     }
-    
+
     createNumericsChart(preset, chart_title, datasets, item_labels);
 }
