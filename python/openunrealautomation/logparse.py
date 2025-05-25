@@ -757,20 +757,6 @@ class UnrealLogFilePatternScopeInstance:
             """strip out all the strings that are illegal for our json ids required for javascript table columns"""
             return re.sub(r"[^a-z|^A-Z]", "", string)
 
-        scopes = {}
-
-        def _add_scope(scope: UnrealLogFilePatternScopeInstance):
-            scope_id = to_json_scope_id(scope.get_fully_qualified_scope_name())
-            if scope_id not in scopes:
-                scopes[scope_id] = scope
-
-        match_lists = {}
-
-        def _add_match_list(match_list: UnrealLogFilePatternList_MatchList):
-            match_lists[to_json_scope_id(
-                match_list.get_fully_qualified_name())] = match_list
-            _add_scope(match_list.owning_scope_instance)
-
         lines = []
         for line in self.all_matching_lines(include_hidden=False):
             line_json = line.json()
@@ -779,13 +765,7 @@ class UnrealLogFilePatternScopeInstance:
                 continue
             line_json["id"] = str(line_json["line_nr"])
             if line.owning_match_list:
-                line_json["scope"] = to_json_scope_id(
-                    line.owning_match_list.get_fully_qualified_name())
-                _add_match_list(line.owning_match_list)
-            else:
-                line_json["scope"] = to_json_scope_id(
-                    line.owning_scope_instance.get_fully_qualified_scope_name())
-                _add_scope(line.owning_scope_instance.pattern_match_lists)
+                line_json["match_group"] = line.owning_match_list.get_fully_qualified_name()
 
             # extract TeamCity timestamps
             # #TODO cleanup - this probably shouldn't happen at this json export stage, but we only need it here at the moment
@@ -807,27 +787,7 @@ class UnrealLogFilePatternScopeInstance:
 
             lines.append(line_json)
 
-        scope_lines = []
-        for scope_name, scope in scopes.items():
-            scope: UnrealLogFilePatternScopeInstance
-            scope_lines.append({
-                'is_scope': True,
-                'id': scope_name,
-                'scope': '',
-                'severity': str(scope.get_scope_status()),
-                'line': scope.get_scope_display_name(True),
-            })
-        match_list_lines = []
-        for list_name, match_list in match_lists.items():
-            match_list: UnrealLogFilePatternList_MatchList
-            match_list_lines.append({
-                'is_group': True,
-                'id': list_name,
-                'scope': '' if not match_list.owning_scope_instance else to_json_scope_id(match_list.owning_scope_instance.get_fully_qualified_scope_name()),
-                'severity': match_list.source_list.severity.json(),
-                'line': match_list.source_list.group_name + f" ({match_list.num_matches()})",
-            })
-        result["lines"] = scope_lines + match_list_lines + lines
+        result["lines"] = lines
 
         return result
 
