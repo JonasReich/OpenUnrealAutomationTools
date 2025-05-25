@@ -5,6 +5,7 @@ const SEVERITY = {
     SEVERE_WARNING: "severe_warning",
     ERROR: "error",
 };
+const ALL_SEVERITIES = [SEVERITY.MESSAGE, SEVERITY.WARNING, SEVERITY.SEVERE_WARNING, SEVERITY.ERROR];
 
 function get_severity_int(severity) {
     if (severity == SEVERITY.MESSAGE) { return 0; }
@@ -23,6 +24,7 @@ let tags_and_labels = FILTER_TAGS_AND_LABELS;
 const ENABLE_NESTED_SCOPES = false;
 
 var filter = {
+    severities: new Set(),
     tags: new Set(),
     strings: new Map()
 };
@@ -369,6 +371,7 @@ function toggleExpander(expander) {
 }
 
 function resetFilter() {
+    filter.severities.clear();
     filter.tags.clear();
     filter.strings.clear();
 
@@ -376,9 +379,18 @@ function resetFilter() {
     // Reset all filter buttons
     $(".filter-btn").toggleClass("btn-primary", false);
     $(".filter-btn").toggleClass("btn-secondary", true);
+
+    // Set show all button to primary (blue)
+    $("#show-all-btn").toggleClass("btn-primary", true);
+    $("#show-all-btn").toggleClass("btn-secondary", false);
+
+    applyFilter();
 }
 
 function lineMatchesFilter(line) {
+    if (filter.severities.size > 0 && filter.severities.has(line.severity) == false) {
+        return false;
+    }
     for (const filter_tag of filter.tags.keys()) {
         if (("tags" in line) == false || line.tags.includes(filter_tag) == false) {
             return false;
@@ -399,19 +411,16 @@ function applyFilter() {
 let show_all_button = $("#show-all-btn");
 $(show_all_button).click(function () {
     resetFilter();
-
-    // Set show all button to primary (blue)
-    $("#show-all-btn").toggleClass("btn-primary", true);
-    $("#show-all-btn").toggleClass("btn-secondary", false);
 })
 $("#filter-btns").append(show_all_button);
 
-function filterTags(tag) {
-    let filter_now = filter.tags.has(tag) == false;
+
+function _filterButtonToggle(value, filter_prop, css_class_prefix, data_prop) {
+    let filter_now = filter[filter_prop].has(value) == false;
     if (filter_now) {
-        filter.tags.add(tag);
+        filter[filter_prop].add(value);
     } else {
-        filter.tags.delete(tag);
+        filter[filter_prop].delete(value);
     }
 
     $("#show-all-btn").toggleClass("btn-primary", false);
@@ -419,27 +428,29 @@ function filterTags(tag) {
 
     applyFilter();
 
-    $(".tag-btn").each(function () {
-        let btn_tag = $(this).data("tag");
-        if (btn_tag == tag) {
+    $(`.${css_class_prefix}-btn`).each(function () {
+        let btn_value = $(this).data(data_prop);
+        if (btn_value == value) {
             $(this).toggleClass("btn-primary", filter_now);
             $(this).toggleClass("btn-secondary", !filter_now);
         }
     });
 }
 
-function createTagButton(tag, add_count) {
-    let tag_count = tag_counts.has(tag) ? tag_counts.get(tag) : 0;
-    let count_suffix = add_count ? ` (${tag_count})` : "";
-    let tag_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn tag-btn">${getTagLabel(tag)}${count_suffix}</button>`);
-    tag_button.data("tag", tag);
-    $(tag_button).click(function () { filterTags(tag) });
-    return tag_button
-}
-
 // Add buttons
+ALL_SEVERITIES.forEach(severity => {
+    let severity_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn severity-btn ${severity}">${severity}</button>`);
+    severity_button.data("severity", severity);
+    $(severity_button).click(function () { _filterButtonToggle(severity, "severities", "severity", "severity"); });
+    $("#filter-btns").append(severity_button);
+});
+
 for (let [tag, label] of Object.entries(tags_and_labels)) {
-    $("#filter-btns").append(createTagButton(tag, true));
+    let tag_count = tag_counts.has(tag) ? tag_counts.get(tag) : 0;
+    let tag_button = $(`<button class="btn badge rounded-pill btn-secondary filter-btn tag-btn">${getTagLabel(tag)} (${tag_count})</button>`);
+    tag_button.data("tag", tag);
+    $(tag_button).click(function () { _filterButtonToggle(tag, "tags", "tag", "tag"); });
+    $("#filter-btns").append(tag_button);
 }
 
 $("#filter-btns").append($("<div class='m-2'/>"));
