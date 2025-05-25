@@ -29,7 +29,7 @@ var filter = {
 var last_goto_lines = new Map();
 
 let all_lines = [];
-let all_files = [];
+let all_files = new Set();
 
 // #TODO Make this automatic -> Collect item values automatically, so we can just call addButtonsForData("Developer")
 let all_devs = new Set();
@@ -113,15 +113,15 @@ function toggleSourceContainer(button) {
 }
 
 
-function increment_map_counter(map, key) {
+function incrementMapCounter(map, key) {
     if (map.has(key)) {
         map.set(key, map.get(key) + 1);
     } else {
         map.set(key, 1);
     }
 }
-function increment_tag_count(tag) {
-    increment_map_counter(tag_counts, tag);
+function incrementTagCount(tag) {
+    incrementMapCounter(tag_counts, tag);
 }
 
 function incrementStringVar(key, value) {
@@ -150,22 +150,20 @@ function updateSeverityCSS(element, severity) {
 }
 
 
-function addIssueTable(source_file, scope) {
+function refreshIssueTable(source_file, scope) {
     // #TODO adjust css classes
     let ref_node = $(`#${source_file}_code-summary`)[0];
     let scope_table = $(`<table class="table table-dark table-sm issue-table"></table>`);
     $(ref_node).empty().append(scope_table);
 
-
     let grouping_field_name = $("#issue-grouping-select").val();
     const do_not_group = grouping_field_name.length == 0;
 
     let data = [];
-    // no grouping
     if (do_not_group) {
-        // remove pre-gen entries for default grouping
+        // no grouping
         scope.lines.forEach(line => {
-            if (line.is_group) {
+            if (lineMatchesFilter(line) == false) {
                 return;
             }
             data.push(line);
@@ -179,6 +177,10 @@ function addIssueTable(source_file, scope) {
         let group_data = new Map();
         let filtered_lines = [];
         scope.lines.forEach(line => {
+            if (lineMatchesFilter(line) == false) {
+                return;
+            }
+
             let group_id = line[grouping_field_name];
             if ((group_id === undefined) == false) {
                 if (typeof group_id == "string") {
@@ -197,7 +199,9 @@ function addIssueTable(source_file, scope) {
                         }
                         group = group_data.get(group_id);
 
-                        group.tags.add(line.tags);
+                        if ("tags" in line) {
+                            line.tags.forEach(tag => group.tags.add(tag));
+                        }
                         group.occurences += 1
                         const line_severity_int = get_severity_int(line.severity);
                         if (line_severity_int > group._severity_int) {
@@ -333,16 +337,28 @@ function addIssueTable(source_file, scope) {
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
 rebuildIssueTables();
+for (const [source_file, issue_scope] of Object.entries(json_obj)) {
+    all_files.add(source_file);
+    issue_scope.lines.forEach(line => {
+        if ("developer" in line) {
+            all_devs.add(line.developer);
+            incrementStringVar("developer", line.developer);
+        }
+        if ("tags" in line) {
+            line.tags.forEach(tag => incrementTagCount(tag));
+            line.tags_string = line.tags.join(", ")
+        }
+    });
+}
+
 $("#issue-grouping-select").change(function () {
     rebuildIssueTables();
 })
 
 function rebuildIssueTables() {
-    all_files = [];
     for (const [source_file, issue_scope] of Object.entries(json_obj)) {
-        all_files.push(source_file);
         if (issue_scope.lines.length > 0) {
-            addIssueTable(source_file, issue_scope);
+            refreshIssueTable(source_file, issue_scope);
         }
     }
 }
@@ -362,28 +378,22 @@ function resetFilter() {
     $(".filter-btn").toggleClass("btn-secondary", true);
 }
 
+function lineMatchesFilter(line) {
+    for (const filter_tag of filter.tags.keys()) {
+        if (("tags" in line) == false || line.tags.includes(filter_tag) == false) {
+            return false;
+        }
+    }
+    for (const [string_var, string_value] of filter.strings.entries()) {
+        if ((string_var in line) == false || line[string_var] != string_value) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function applyFilter() {
-    $(".code-summary code").each(function () {
-        let tags = $(this).data("json")["tags"];
-        let has_all_tags = true;
-        for (const filter_tag of filter.tags.keys()) {
-            if (tags.includes(filter_tag) == false) {
-                has_all_tags = false;
-            }
-        }
-        if (!has_all_tags) {
-            $(this).toggle(false);
-            return;
-        }
-        let has_all_strings = true;
-        for (const [string_var, string_value] of filter.strings.entries()) {
-            let item_string_value = $(this).data("json").strings[string_var];
-            if (item_string_value != string_value) {
-                has_all_strings = false;
-            }
-        }
-        $(this).toggle(has_all_strings);
-    });
+    rebuildIssueTables();
 }
 
 let show_all_button = $("#show-all-btn");
@@ -481,7 +491,7 @@ function addFilterButtonForStringVar(string_var, string_var_items) {
     })
 }
 
-addFilterButtonForStringVar("Developer", all_devs);
+addFilterButtonForStringVar("developer", all_devs);
 
 //---------------------------
 // STATS

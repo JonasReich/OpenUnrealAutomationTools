@@ -59,13 +59,14 @@
                                 onclick="$('details').attr('open', false)">🔼 Collapse</button>
                         </div>
 
-                        <select id="issue-grouping-select" class="form-select" aria-label="Issue Grouping">
+                        <select id="issue-grouping-select" class="form-select m-2 w-auto form-select-sm btn-secondary"
+                            aria-label="Issue Grouping">
                             <option value="">Do not Group</option>
-                            <option selected value="match_group">Issue Pattern Group</option>
-                            <option value="tags">Department Tags</option>
-                            <option value="developer">Developer</option>
-                            <option value="asset_path">Asset Path</option>
-                            <option value="gameplay_tag">Gameplay Tag</option>
+                            <option selected value="match_group">Group by: Issue Pattern</option>
+                            <option value="tags_string">Group by: Department Tags</option>
+                            <option value="developer">Group by: Developer</option>
+                            <option value="asset_path">Group by: Asset Path</option>
+                            <option value="gameplay_tag">Group by: Gameplay Tag</option>
                         </select>
                     </div>
 

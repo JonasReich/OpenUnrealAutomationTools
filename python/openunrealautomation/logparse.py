@@ -135,9 +135,9 @@ class UnrealLogFileLineMatch:
             "line_nr": self.line_nr,
             "severity": self.get_severity().json(),
         }
-        tags = list(self.get_tags())
+        tags = self.get_tags()
         if len(tags) > 0:
-            result["tags"] = ", ".join(tags)
+            result["tags"] = list(tags)
         # any entry is an implicit occurence
         if self.occurences > 1:
             result["occurrences"] = self.occurences
