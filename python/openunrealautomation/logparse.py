@@ -231,7 +231,7 @@ class UnrealLogFilePattern:
         string_vars = {}
 
         def _add_asset_match():
-            asset_match = re.search(r"\/Game[\w\/]+", line)
+            asset_match = re.search(r"\/(Game|JsonData)[\w\/]+", line)
             if asset_match:
                 asset_path = asset_match.group(0)
                 if asset_path.startswith("/Game/__ExternalActors__/"):
