@@ -763,8 +763,6 @@ class UnrealLogFilePatternScopeInstance:
             scope_id = to_json_scope_id(scope.get_fully_qualified_scope_name())
             if scope_id not in scopes:
                 scopes[scope_id] = scope
-            if scope.parent_scope_instance:
-                _add_scope(scope.parent_scope_instance)
 
         match_lists = {}
 
@@ -815,9 +813,9 @@ class UnrealLogFilePatternScopeInstance:
             scope_lines.append({
                 'is_scope': True,
                 'id': scope_name,
-                'scope': '' if not scope.parent_scope_instance else to_json_scope_id(scope.parent_scope_instance.get_fully_qualified_scope_name()),
+                'scope': '',
                 'severity': str(scope.get_scope_status()),
-                'line': scope.get_scope_display_name(),
+                'line': scope.get_scope_display_name(True),
             })
         match_list_lines = []
         for list_name, match_list in match_lists.items():
@@ -1097,9 +1095,11 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print("\n", scope_with_matches.format(max_lines))
 
 
-def _main_get_files() -> List[Tuple[str, Optional[str]]]:
+def _main_get_files() -> Tuple[str, List[Tuple[str, Optional[str]]]]:
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--files")
+    argparser.add_argument("--pattern", default=os.path.normpath(os.path.join(
+        Path(__file__).parent, "resources/logparse_patterns.xml")))
     cli_args = argparser.parse_args()
 
     files: List[Tuple[str, Optional[str]]]
@@ -1116,16 +1116,15 @@ def _main_get_files() -> List[Tuple[str, Optional[str]]]:
             ("BuildGraph", UnrealLogFile.EDITOR.find_latest(env))
         ]
 
-    return files
+    return cli_args.pattern, files
 
 
 def _get_default_patterns_xml():
-    return os.path.normpath(os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml"))
+    return
 
 
 if __name__ == "__main__":
-    files = _main_get_files()
+    pattern, files = _main_get_files()
 
     for target, file in files:
         if file is not None:

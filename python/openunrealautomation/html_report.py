@@ -293,7 +293,7 @@ if __name__ == "__main__":
     except Exception:
         ue = None
 
-    files = _main_get_files()
+    pattern, files = _main_get_files()
 
     temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
     os.makedirs(temp_dir, exist_ok=True)
@@ -303,7 +303,7 @@ if __name__ == "__main__":
         if file is None:
             continue
         parsed_log = parse_log(
-            file, None, target)
+            file, pattern, target)
         all_logs.append(parsed_log)
 
     report_path = os.path.join(temp_dir, "test_report")
