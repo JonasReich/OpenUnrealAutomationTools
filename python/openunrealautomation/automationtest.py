@@ -174,8 +174,12 @@ def automation_test_html_report(json_path: Optional[str]) -> Optional[str]:
 </tbody>
 </table>
 """
+        test_tree_btns = """
+<button class="btn btn-sm btn-secondary" id="expand-all-btn" onclick="$('details').attr('open', true)">🔽 Expand</button>
+<button class="btn btn-sm btn-secondary" id="collapse-all-btn" onclick="$('details').attr('open', false)">🔼 Collapse</button>
+"""
 
-        return f"<div class='p-3'><h5>{testsuite_id}</h5>{summary_table}<div class='automation-test-results'>\n{results}\n</div></div>"
+        return f"<div class='p-3'><h5>{testsuite_id}</h5>{summary_table}<div class='automation-test-results'>\n{test_tree_btns}\n{results}\n</div></div>"
 
 
 def get_root_report_directory(environment: UnrealEnvironment) -> str:

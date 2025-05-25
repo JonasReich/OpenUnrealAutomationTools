@@ -325,6 +325,9 @@ if __name__ == "__main__":
         if test_report_path:
             embedded_reports.append(automation_test_html_report(
                 test_report_path))
+
+        embedded_reports.append(create_localization_report(
+            ue.environment, localization_target="Game"))
     else:
         print("skipping static analysis check, because we don't have an Unreal environment")
 
