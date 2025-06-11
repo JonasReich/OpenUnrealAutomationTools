@@ -83,6 +83,8 @@ string_var_prefixes.set("Developer", "👤");
 */
 let string_vars = new Map();
 
+let next_group_id = -1;
+
 // ----- GLOBALS -----
 
 const zeroPad = (num, places) => String(num).padStart(places, '0');
@@ -222,24 +224,26 @@ function refreshIssueTable(source_file, scope) {
 
         // remap groupings to index based synthetic "pid" field
         let group_key_lookup = new Map();
-        let i = -1;
         all_group_ids.forEach(group_id => {
             let group = group_data.get(group_id);
-            i--;
+            next_group_id--;
+            if (next_group_id > 0) {
+                next_group_id = -1;
+            }
             let group_line = {
-                id: i,
+                id: next_group_id,
                 line: group_id,
                 occurences: group.occurences,
                 severity: group.severity,
                 is_group: true,
                 tags: [...group.tags],
             };
-            group_key_lookup[group_id] = i;
+            group_key_lookup[group_id] = next_group_id;
             // this type of created group can't be nested
             group_line.pid = 0;
             data.push(group_line);
             group.lines.forEach(line => {
-                line.pid = i;
+                line.pid = next_group_id;
                 data.push(line);
             });
         });
