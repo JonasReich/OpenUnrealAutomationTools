@@ -95,7 +95,7 @@ function getTagLabel(tag) {
 function goToSource(source_file, line) {
     let new_goto_line = `#source-log-${source_file}-${line}`;
     // show / expand source container
-    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").text("Hide source log");
+    $(new_goto_line).closest(".source-log-container").show().prev(".btn-expand-source-container").text("Hide Source Log");
 
     let last_goto_line = last_goto_lines.has(source_file) ? last_goto_lines.get(source_file) : null;
     if (last_goto_line === null) {
@@ -113,7 +113,7 @@ function goToSource(source_file, line) {
 function toggleSourceContainer(button) {
     $(button).next(".source-log-container").toggle();
     let log_visible = $(button).next(".source-log-container").is(":visible");
-    $(button).text(log_visible ? "Hide source log" : "Show source log");
+    $(button).text(log_visible ? "Hide Source Log" : "Show Source Log");
 }
 
 
@@ -253,12 +253,13 @@ function refreshIssueTable(source_file, scope) {
     $(ref_node).find('table').bootstrapTable({
         data: data,
         idField: 'id',
-        showColumns: true,
+        // do not show dropdown for column selection. for some reason the z order is completely broken (otherwise it would be nice)
+        // showColumns: true,
         columns: [
             {
                 field: 'group_expander',
                 title: '',
-                width: 50,
+                width: 30,
                 formatter: function (value, row) {
                     if (row.is_group) {
                         let group_collapsed_class = row.is_group ? "treegrid-expander-collapsed" : "treegrid-expander-expanded";
@@ -269,9 +270,9 @@ function refreshIssueTable(source_file, scope) {
             },
             {
                 field: 'id',
-                title: 'Line Number',
+                title: 'Line',
                 sortable: true,
-                width: 30,
+                width: 20,
                 formatter: function (value) {
                     return Number.isNaN(Number(value)) || Number(value) < 0 ? "" : `<button class="btn btn-secondary badge" onclick="goToSource('${source_file}', ${value})">${value}</button>`;
                 }
@@ -283,22 +284,24 @@ function refreshIssueTable(source_file, scope) {
                 class: 'line-text',
                 sortable: true
             },
+            /*
             {
                 field: 'time',
                 title: 'Timestamp',
-                width: 100
+                width: 50
             },
+            */
             {
                 field: 'severity',
-                title: 'Status/Severity',
+                title: 'Severity',
                 sortable: true,
-                width: 100
+                width: 50
             },
             {
                 field: 'tags',
                 title: 'Tags',
                 sortable: true,
-                width: 100
+                width: 150
             },
             {
                 field: 'developer',
@@ -316,7 +319,7 @@ function refreshIssueTable(source_file, scope) {
                 field: 'occurences',
                 title: 'Occurences',
                 sortable: true,
-                width: 100,
+                width: 40,
                 // any entry must occur min 1 time, so display accordingly
                 formatter: function (value) { return Number(value) > 0 ? value : 1; }
             }

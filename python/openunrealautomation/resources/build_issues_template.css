@@ -32,6 +32,10 @@
     z-index: -1;
 }
 
+.code-summary {
+    font-size: 0.8em;
+}
+
 .code-container {
     background-color: #1c1c1c;
     overflow: scroll;
@@ -112,6 +116,7 @@ a.file-path {
     margin-top: .5em;
     display: block;
     width: 100%;
+    font-size: 0.8em;
 }
 
 .issue-row-group td:nth-of-type(1) {

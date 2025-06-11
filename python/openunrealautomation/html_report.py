@@ -70,7 +70,7 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
         f'<div class="col-12 box-ouu source-file-container">'\
         f'<div class="source-file-summary">File #{source_file_count}: <pre class="source-file-title">{source_file_display}</pre> - {source_file_ctime}</div>\n'\
         f'<div id="{source_file_id}_code-summary" class="code-summary"></div>'\
-        f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="toggleSourceContainer(this);">Show source log</button>'\
+        f'<button class="btn-expand-source-container btn btn-sm btn-outline-secondary" onclick="toggleSourceContainer(this);">Show Source Log</button>'\
         f'<div class="source-log-container text-nowrap p-3 code-container" style="display:none;">\n{log_file_str_html}\n</div>'\
         f'</div>'
 
