@@ -6,6 +6,7 @@ import argparse
 import csv
 import os
 import random
+import re
 
 import polib
 from openunrealautomation.p4 import UnrealPerforce
@@ -195,7 +196,7 @@ def generate_translation_csv(target_language, target):
                                    quotechar='"', quoting=csv.QUOTE_ALL)
 
             for row in csvreader:
-                [namespace, key, source_text, translation_text] = row
+                [namespace, key, source_text, translation_text, *rest] = row
                 if namespace not in existing_lines:
                     existing_lines[namespace] = dict()
                 existing_lines[namespace][key] = (
@@ -214,10 +215,28 @@ def generate_translation_csv(target_language, target):
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='"', quoting=csv.QUOTE_ALL)
         csvwriter.writerow(
-            ["Namespace", "Key", "SourceString", "LocalizedString"])
+            ["Namespace", "Key", "SourceString", "LocalizedString", "Source", "DevComment"])
         for entry in source_po:
             [namespace, key] = entry.msgctxt.split(",")
             source_text = clean_str(entry.msgid)
+            comment_lines = entry.comment.splitlines()
+            source_location = ""
+            meta_data = ""
+            is_metadata_comment_line = False
+            for comment_line in comment_lines:
+                if comment_line.startswith("SourceLocation:"):
+                    source_location = clean_str(
+                        comment_line.removeprefix("SourceLocation:").strip())
+                elif is_metadata_comment_line or comment_line.startswith("InfoMetaData:"):
+                    is_metadata_comment_line = True
+                    meta_data = meta_data + " " + clean_str(
+                        comment_line.removeprefix("InfoMetaData:")).strip()
+
+            dev_comment = ""
+            dev_comment_match = re.search(
+                "\"DevComment\" : \"(.*?)\"", meta_data)
+            if dev_comment_match:
+                dev_comment = dev_comment_match.group(1)
 
             should_auto_translate = target_language.lower() == "en-us-posix"
             if should_auto_translate:
@@ -240,7 +259,8 @@ def generate_translation_csv(target_language, target):
             else:
                 new_lines = new_lines + 1
 
-            csvwriter.writerow([namespace, key, source_text, translation_text])
+            csvwriter.writerow(
+                [namespace, key, source_text, translation_text, source_location, dev_comment])
 
             # Write back the current translation into target PO
             entry.msgstr = unclean_str(translation_text)
