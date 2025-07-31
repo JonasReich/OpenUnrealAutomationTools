@@ -1054,8 +1054,7 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
 def _main_get_files() -> Tuple[str, List[Tuple[str, Optional[str]]]]:
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--files")
-    argparser.add_argument("--pattern", default=os.path.normpath(os.path.join(
-        Path(__file__).parent, "resources/logparse_patterns.xml")))
+    argparser.add_argument("--pattern", default=_get_default_patterns_xml())
     cli_args = argparser.parse_args()
 
     files: List[Tuple[str, Optional[str]]]
@@ -1076,7 +1075,8 @@ def _main_get_files() -> Tuple[str, List[Tuple[str, Optional[str]]]]:
 
 
 def _get_default_patterns_xml():
-    return
+    return os.path.normpath(os.path.join(
+        Path(__file__).parent, "resources/logparse_patterns.xml"))
 
 
 if __name__ == "__main__":
