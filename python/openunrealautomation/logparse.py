@@ -761,7 +761,7 @@ class UnrealLogFilePatternScopeInstance:
                 continue
             line_json["id"] = str(line_json["line_nr"])
             if line.owning_match_list:
-                line_json["match_group"] = line.owning_match_list.get_fully_qualified_name()
+                line_json["match_group"] = line.owning_match_list.source_list.group_name
 
             # extract TeamCity timestamps
             # #TODO cleanup - this probably shouldn't happen at this json export stage, but we only need it here at the moment
