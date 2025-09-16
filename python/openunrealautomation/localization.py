@@ -200,6 +200,8 @@ def leetify(text: str) -> str:
 
 def generate_translation_csv(project_root, source_language, target_language, target,
                              reuse_mismatched=True,
+                             line_filter_func: Optional[Callable[[
+                                 str, Dict[str, str]], bool]] = None,
                              line_conversion_func: Optional[Callable[[
                                  str], str]] = None,
                              write_back_po=True,
@@ -256,6 +258,10 @@ def generate_translation_csv(project_root, source_language, target_language, tar
     changed_lines = 0
 
     def _add_new_line(source_text, namespace, key, source_location, meta_data: Dict[str, str]):
+        if line_filter_func is not None:
+            if not line_filter_func(source_text, meta_data):
+                return
+
         nonlocal reused_lines, new_lines, changed_lines
         should_auto_translate = line_conversion_func is not None
         if should_auto_translate:
