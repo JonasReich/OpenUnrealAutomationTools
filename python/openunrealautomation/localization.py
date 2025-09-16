@@ -7,9 +7,10 @@ import csv
 import os
 import random
 import re
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import polib
+from openunrealautomation.p4 import UnrealPerforce
 
 COMMENT_PREFIX_KEY = 'Key:\t'
 COMMENT_PREFIX_SOURCE_LOCATION = 'SourceLocation:\t'
@@ -69,6 +70,22 @@ NEWLINE_REPLACE_CHARS = [
     ("\n", "\\n")
 ]
 
+RANDOM_UNICODE_CHAR_RANGES = [
+    (0x0021, 0x0021),
+    (0x0023, 0x0026),
+    (0x0028, 0x007E),
+    (0x00A1, 0x00AC),
+    (0x00AE, 0x00FF),
+    (0x0100, 0x017F),
+    (0x0180, 0x024F),
+    (0x2C60, 0x2C7F),
+    (0x16A0, 0x16F0),
+    (0x0370, 0x0377),
+    (0x037A, 0x037E),
+    (0x0384, 0x038A),
+    (0x038C, 0x038C),
+]
+
 
 def _clean_str(s: str) -> str:
     for from_str, to_str in NEWLINE_REPLACE_CHARS:
@@ -84,7 +101,7 @@ def _unclean_str(s: str) -> str:
     return s
 
 
-def get_random_unicode(length):
+def get_random_unicode_string(length: int, include_ranges=RANDOM_UNICODE_CHAR_RANGES):
     """Get a random unicode string of the given length
     SOURCE: https://stackoverflow.com/a/21666621"""
 
@@ -93,23 +110,6 @@ def get_random_unicode(length):
     except NameError:
         get_char = chr
 
-    # Update this to include code point ranges to be sampled
-    include_ranges = [
-        (0x0021, 0x0021),
-        (0x0023, 0x0026),
-        (0x0028, 0x007E),
-        (0x00A1, 0x00AC),
-        (0x00AE, 0x00FF),
-        (0x0100, 0x017F),
-        (0x0180, 0x024F),
-        (0x2C60, 0x2C7F),
-        (0x16A0, 0x16F0),
-        (0x0370, 0x0377),
-        (0x037A, 0x037E),
-        (0x0384, 0x038A),
-        (0x038C, 0x038C),
-    ]
-
     alphabet = [
         get_char(code_point) for current_range in include_ranges
         for code_point in range(current_range[0], current_range[1] + 1)
@@ -117,7 +117,11 @@ def get_random_unicode(length):
     return ''.join(random.choice(alphabet) for i in range(length))
 
 
-def leetify(text: str):
+def add_start_end_marks(text: str) -> str:
+    return f"‡{text}‡"
+
+
+def leetify(text: str) -> str:
     LEET_CHARS = {
         'A': '4',
         'a': '@',
@@ -191,11 +195,13 @@ def leetify(text: str):
 
         result_text = result_text + leetify_char(source_char)
         index = index + 1
-    return f"‡{result_text}‡"
+    return result_text
 
 
 def generate_translation_csv(project_root, source_language, target_language, target,
                              reuse_mismatched=True,
+                             line_conversion_func: Optional[Callable[[
+                                 str], str]] = None,
                              write_back_po=True,
                              source_csvs: List[Tuple[str, str]] = [],
                              meta_data_keys: List[str] = []):
@@ -251,13 +257,10 @@ def generate_translation_csv(project_root, source_language, target_language, tar
 
     def _add_new_line(source_text, namespace, key, source_location, meta_data: Dict[str, str]):
         nonlocal reused_lines, new_lines, changed_lines
-        should_auto_translate = target_language.lower() == "en-us-posix"
+        should_auto_translate = line_conversion_func is not None
         if should_auto_translate:
-            translation_text = leetify(_clean_str(source_text))
-            # # Arbitrary factor by which to extend texts
-            # source_len_factor = 1.3
-            # translation_text = get_random_unicode(
-            #     int(len(entry.msgid) * source_len_factor))
+            assert line_conversion_func
+            translation_text = line_conversion_func(_clean_str(source_text))
         else:
             # new line, no auto translation
             translation_text = ""
