@@ -320,8 +320,13 @@ def generate_translation_csv(project_root, source_language, target_language, tar
                     source_csv_meta_data_keys] = next(csvreader)  # skip header
 
                 for row in csvreader:
-                    [key, source_text,
-                        *meta_data_source_values] = row
+                    if len(row) == 0:
+                        continue
+                    try:
+                        [key, source_text,
+                            *meta_data_source_values] = row
+                    except ValueError:
+                        raise ValueError(f"Failed to unpack csv row: {source_csv}({csvreader.line_num})")
 
                     existing_entry = target_po.find(f"{csv_namespace},{key}")
 
