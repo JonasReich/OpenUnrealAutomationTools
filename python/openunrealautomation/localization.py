@@ -18,7 +18,7 @@ COMMENT_PREFIX_META_DATA = 'InfoMetaData:\t"'
 COMMENT_SEPARATOR_META_DATA = '" : "'
 
 
-class EntryWithMetaData:
+class POEntryWithMetaData:
     """
     Represents meta data for a single .po entry.
     """
@@ -57,6 +57,129 @@ class EntryWithMetaData:
 
                 value = line[0:value_end]
                 self.meta_data[key] = value
+
+
+class EntryWithMetaData(POEntryWithMetaData):
+    """
+    Class alias for PO entries
+    """
+    pass
+
+
+class CSVEntryWithMetaData:
+    """
+    Represents meta data for a single .csv entry.
+    """
+
+    namespace: str
+    key: str
+    source_string: str
+    translated_string: Optional[str]
+    meta_data: Dict[str, str]
+
+    def __init__(self, namespace: str, key: str, source_string: str, translated_string: Optional[str] = None, meta_data: Dict[str, str] = {}):
+        self.namespace = namespace
+        self.key = key
+        self.source_string = source_string
+        self.translated_string = translated_string
+        self.meta_data = meta_data
+
+    def combined_key(self) -> str:
+        return f"{self.namespace}:{self.key}"
+
+    @staticmethod
+    def from_po_entry(entry: polib.POEntry) -> 'CSVEntryWithMetaData':
+        [namespace, key] = entry.msgctxt.split(",")
+        source_text = _clean_str(entry.msgid)
+
+        # extract meta data from PO
+        entry_with_meta_data = EntryWithMetaData(entry)
+
+        meta_data = {}
+        meta_data["Source"] = entry_with_meta_data.source_location
+        meta_data.update(entry_with_meta_data.meta_data)
+
+        return CSVEntryWithMetaData(namespace, key, source_text,
+                                    meta_data=meta_data)
+
+    @staticmethod
+    def _map_from_list(entries: List['CSVEntryWithMetaData']) -> Dict[str, 'CSVEntryWithMetaData']:
+        result = {}
+        for entry in entries:
+            combined_key = entry.combined_key()
+            if combined_key in result:
+                conflict_entry = result[combined_key]
+                raise ValueError(
+                    f"Duplicate entry for {combined_key}: {entry.meta_data.get('Source', '')} vs {conflict_entry.meta_data.get('Source', '')}")
+            result[combined_key] = entry
+        return result
+
+    @staticmethod
+    def from_po(po_file_path: str) -> List['CSVEntryWithMetaData']:
+        return [CSVEntryWithMetaData.from_po_entry(entry) for entry in polib.pofile(po_file_path)]
+
+    @staticmethod
+    def from_source_csv(csv_path: str, project_root: str, namespace: str) -> List['CSVEntryWithMetaData']:
+        new_lines = []
+        # print("Merging additional source CSV", source_csv)
+        with open(csv_path, 'r', newline='', encoding="utf-8") as csvfile:
+            csvreader = csv.reader(csvfile, delimiter=',',
+                                   quotechar='"', quoting=csv.QUOTE_ALL)
+
+            [_key, _source_text, *
+                source_csv_meta_data_keys] = next(csvreader)  # skip header
+
+            for row in csvreader:
+                if len(row) == 0:
+                    continue
+                try:
+                    [key, source_text,
+                        *meta_data_source_values] = row
+                except ValueError:
+                    raise ValueError(
+                        f"Failed to unpack csv row: {csv_path}({csvreader.line_num})")
+
+                csv_meta_data = dict()
+                csv_meta_data["Source"] = os.path.relpath(
+                    csv_path, project_root).replace("\\", "/") + f"({csvreader.line_num})"
+                for metadata_key, metadata_value in zip(source_csv_meta_data_keys, meta_data_source_values):
+                    # For some reason, Unreal exports metadata values with newlines unescaped.
+                    # We need to re-escape them to be consistent with PO files and other CSV columns.
+                    csv_meta_data[metadata_key] = _clean_str(metadata_value)
+
+                new_lines.append(CSVEntryWithMetaData(namespace, key, source_text,
+                                                      meta_data=csv_meta_data))
+        return new_lines
+
+    @staticmethod
+    def diff(a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False) -> None:
+        print(
+            f"Diffing CSVs: {a_name} ({len(a)} entries) vs {b_name} ({len(b)} entries)")
+        only_in_a = set(a.keys()) - set(b.keys())
+        only_in_b = set(b.keys()) - set(a.keys())
+        print(f"  removed:\t", len(only_in_a))
+        print(f"  added:\t", len(only_in_b))
+        different_source_text = 0
+        for key in set(a.keys()).intersection(set(b.keys())):
+            entry_a = a[key]
+            entry_b = b[key]
+            if entry_a.source_string != entry_b.source_string:
+                different_source_text = different_source_text + 1
+        print(f"  mod. source:\t", different_source_text)
+        print(f"  unchanged:\t", len(a) -
+              len(only_in_a) - different_source_text)
+
+        if verbose:
+            print("Diffing source text changes (verbose):")
+        for key in set(a.keys()).intersection(set(b.keys())):
+            entry_a = a[key]
+            entry_b = b[key]
+            if entry_a.source_string != entry_b.source_string:
+                if verbose:
+                    print(f"    {key}")
+                    print(f"      {a_name} source: {entry_a.source_string}")
+                    print(f"      {b_name} source: {entry_b.source_string}")
+        pass
 
 
 def _get_localization_root(project_root: str) -> str:
@@ -198,13 +321,90 @@ def leetify(text: str) -> str:
     return result_text
 
 
+def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict[str, CSVEntryWithMetaData]:
+    """
+    Read an existing translation CSV and return a dictionary of namespace -> key -> CSVEntryWithMetaData.
+    Supports both "CombinedKey" and "Namespace" formats.
+    """
+    existing_lines = dict()
+    with open(csv_path, 'r', newline='', encoding="utf-8") as csvfile:
+        csvreader = csv.reader(csvfile, delimiter=',',
+                               quotechar='"', quoting=csv.QUOTE_ALL)
+
+        get_key_func: Callable[[List[str]], CSVEntryWithMetaData]
+        header_row = next(csvreader)
+        if header_row[0:3] == ["CombinedKey", "SourceString", "LocalizedString"]:
+            def _get_combined_key_row(row: List[str]) -> CSVEntryWithMetaData:
+                metadata_keys = header_row[3:]
+                metadata_values = row[3:]
+                combined_key = row[0]
+                namespace, key = combined_key.split(":", 1)
+                return CSVEntryWithMetaData(namespace, key, row[1], row[2], meta_data=dict(zip(metadata_keys, metadata_values)))
+            get_key_func = _get_combined_key_row
+        elif header_row[0:4] == ["Namespace", "Key", "SourceString", "LocalizedString"]:
+            def _get_namespace_key_row(row: List[str]) -> CSVEntryWithMetaData:
+                metadata_keys = header_row[4:]
+                metadata_values = row[4:]
+                return CSVEntryWithMetaData(row[0], row[1], row[2], row[3], meta_data=dict(zip(metadata_keys, metadata_values)))
+            get_key_func = _get_namespace_key_row
+        else:
+            raise ValueError(
+                f"Unexpected CSV header row in {csv_path}: {header_row}")
+
+        for row in csvreader:
+            new_entry = get_key_func(row)
+            combined_key = new_entry.combined_key()
+            if combined_key in existing_lines:
+                if ignore_duplicates:
+                    continue
+                else:
+                    raise ValueError(
+                        f"Duplicate entry for {combined_key} in {csv_path}")
+            existing_lines[combined_key] = new_entry
+
+    return existing_lines
+
+
+def write_translation_csv(csv_path: str, entries: Dict[str, CSVEntryWithMetaData], combine_key: bool, meta_data_keys: Optional[List[str]] = None):
+    """
+    Write a translation CSV from a list of CSVEntryWithMetaData.
+    """
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    with open(csv_path, 'w', newline='', encoding="utf-8") as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter=',',
+                               quotechar='"', quoting=csv.QUOTE_ALL)
+        header_row = []
+        if combine_key:
+            header_row += ["CombinedKey"]
+        else:
+            header_row += ["Namespace", "Key"]
+        header_row += ["SourceString", "LocalizedString"]
+        if meta_data_keys:
+            header_row += meta_data_keys
+        csvwriter.writerow(header_row)
+
+        for _combined_key, entry in entries.items():
+            combined_key = entry.combined_key()
+            if combined_key != _combined_key:
+                raise ValueError(
+                    f"Mismatch of combined key {combined_key} vs {_combined_key}")
+            row = []
+            if combine_key:
+                row += [combined_key]
+            else:
+                row += [entry.namespace, entry.key]
+            row += [entry.source_string, entry.translated_string]
+            if meta_data_keys:
+                for meta_data_key in meta_data_keys:
+                    row.append(entry.meta_data.get(meta_data_key, ""))
+            csvwriter.writerow(row)
+
+
 def generate_translation_csv(project_root, source_language, target_language, target,
-                             reuse_mismatched=True,
                              line_filter_func: Optional[Callable[[
-                                 str, Dict[str, str]], bool]] = None,
+                                 CSVEntryWithMetaData], bool]] = None,
                              line_conversion_func: Optional[Callable[[
-                                 str], str]] = None,
-                             write_back_po=True,
+                                 CSVEntryWithMetaData], None]] = None,
                              source_csvs: List[Tuple[str, str]] = [],
                              meta_data_keys: List[str] = []):
     localization_root = _get_localization_root(project_root)
@@ -214,155 +414,66 @@ def generate_translation_csv(project_root, source_language, target_language, tar
     source_po_path = os.path.normpath(
         os.path.join(source_language_loca_root, f"{target}.po"))
 
-    target_language_loca_root = os.path.join(
-        localization_root, target, target_language)
-    target_po_path = os.path.normpath(
-        os.path.join(target_language_loca_root, f"{target}.po"))
-
-    csv_dir = os.path.normpath(os.path.join(
-        localization_root, "CSVTranslations"))
-    csv_path = os.path.normpath(os.path.join(
-        csv_dir, f"{target}_{target_language}.csv"))
-
-    print("Processing PO file", target_po_path, ", and CSV", csv_path)
+    print("\n##", target, "##")
+    print("Extracting strings from PO file",
+          source_po_path, "to CSV")
 
     if not os.path.exists(source_po_path):
         raise FileNotFoundError(source_po_path)
 
-    source_po = polib.pofile(source_po_path)
-    target_po = polib.pofile(target_po_path)
-    target_po.clear()
-    existing_lines = dict()
+    new_lines: List[CSVEntryWithMetaData] = []
 
+    new_lines += CSVEntryWithMetaData.from_po(source_po_path)
+
+    for source_csv, csv_namespace in source_csvs:
+        new_lines += CSVEntryWithMetaData.from_source_csv(
+            source_csv, project_root, csv_namespace)
+
+    if line_filter_func:
+        num_unfiltered_lines = len(new_lines)
+        new_lines = list(
+            filter(lambda line: line_filter_func(line), new_lines))
+        print("Filtered lines:", num_unfiltered_lines, "->", len(new_lines))
+
+    for line in new_lines:
+        if line_conversion_func:
+            line.translated_string = line_conversion_func(line)
+
+    new_lines_dict = CSVEntryWithMetaData._map_from_list(new_lines)
+
+    csv_dir = os.path.normpath(os.path.join(
+        localization_root, "CSVTranslations"))
     os.makedirs(csv_dir, exist_ok=True)
 
-    previous_line_count = 0
-    if os.path.exists(csv_path):
-        with open(csv_path, 'r', newline='', encoding="utf-8") as csvfile:
-            csvreader = csv.reader(csvfile, delimiter=',',
-                                   quotechar='"', quoting=csv.QUOTE_ALL)
+    last_sent_dir = os.path.normpath(os.path.join(
+        csv_dir, "LastSentToTranslation"))
+    last_translated_dir = os.path.normpath(os.path.join(
+        csv_dir, "ReceivedTranslation"))
+    export_dir = os.path.normpath(os.path.join(
+        csv_dir, "ExportForTranslation"))
+    game_dir = os.path.normpath(os.path.join(
+        csv_dir, "ExportForGame"))
 
-            for row in csvreader:
-                [namespace, key, source_text, translation_text, *rest] = row
-                if namespace not in existing_lines:
-                    existing_lines[namespace] = dict()
-                existing_lines[namespace][key] = (
-                    source_text, translation_text)
-                previous_line_count = previous_line_count + 1
+    csv_file_name = f"{target}_{target_language}.csv"
 
-    # remove header line
-    previous_line_count = previous_line_count - 1 if previous_line_count > 0 else 0
+    meta_data_keys.insert(0, "Source")  # always include source location first
+    write_translation_csv(os.path.normpath(os.path.join(
+        export_dir, csv_file_name)), new_lines_dict, combine_key=True, meta_data_keys=meta_data_keys)
 
-    new_lines = 0
-    reused_lines = 0
-    changed_lines = 0
+    # export without metadata for game
+    write_translation_csv(os.path.normpath(os.path.join(
+        game_dir, csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
 
-    def _add_new_line(source_text, namespace, key, source_location, meta_data: Dict[str, str]):
-        if line_filter_func is not None:
-            if not line_filter_func(source_text, meta_data):
-                return
-
-        nonlocal reused_lines, new_lines, changed_lines
-        should_auto_translate = line_conversion_func is not None
-        if should_auto_translate:
-            assert line_conversion_func
-            translation_text = line_conversion_func(_clean_str(source_text))
-        else:
-            # new line, no auto translation
-            translation_text = ""
-
-        if not should_auto_translate and (namespace in existing_lines and key in existing_lines[namespace]):
-            (existing_source_text,
-                existing_translation_text) = existing_lines[namespace][key]
-            if source_text == existing_source_text:
-                reused_lines = reused_lines + 1
-                translation_text = existing_translation_text
-            else:
-                changed_lines = changed_lines + 1
-                if reuse_mismatched:
-                    translation_text = existing_translation_text
-        else:
-            new_lines = new_lines + 1
-
-        meta_data_columns = []
-        for meta_data_key in meta_data_keys:
-            meta_data_columns.append(meta_data.get(meta_data_key, ""))
-
-        csvwriter.writerow(
-            [namespace, key, source_text, translation_text, source_location] + meta_data_columns)
-
-        # Write back the current translation into target PO
-        entry.msgstr = _unclean_str(translation_text)
-        target_po.append(entry)
-
-    with open(csv_path, 'w', newline='', encoding="utf-8") as csvfile:
-
-        csvwriter = csv.writer(csvfile, delimiter=',',
-                               quotechar='"', quoting=csv.QUOTE_ALL)
-        csvwriter.writerow(
-            ["Namespace", "Key", "SourceString", "LocalizedString", "Source"] + meta_data_keys)
-        for entry in source_po:
-            [namespace, key] = entry.msgctxt.split(",")
-            source_text = _clean_str(entry.msgid)
-            entry_with_meta_data = EntryWithMetaData(entry)
-            source_location = entry_with_meta_data.source_location
-
-            _add_new_line(source_text, namespace, key,
-                          source_location, entry_with_meta_data.meta_data)
-
-        for source_csv, csv_namespace in source_csvs:
-            print("Merging additional source CSV", source_csv)
-            with open(source_csv, 'r', newline='', encoding="utf-8") as csvfile:
-                csvreader = csv.reader(csvfile, delimiter=',',
-                                       quotechar='"', quoting=csv.QUOTE_ALL)
-
-                [_key, _source_text, *
-                    source_csv_meta_data_keys] = next(csvreader)  # skip header
-
-                for row in csvreader:
-                    if len(row) == 0:
-                        continue
-                    try:
-                        [key, source_text,
-                            *meta_data_source_values] = row
-                    except ValueError:
-                        raise ValueError(f"Failed to unpack csv row: {source_csv}({csvreader.line_num})")
-
-                    existing_entry = target_po.find(f"{csv_namespace},{key}")
-
-                    if existing_entry is not None:
-                        # namespace + key already present
-                        print(
-                            f"{csv_namespace},{key} already present in target PO, skipping")
-                        continue
-
-                    csv_meta_data = dict()
-                    for metadata_key, metadata_value in zip(source_csv_meta_data_keys, meta_data_source_values):
-                        csv_meta_data[metadata_key] = metadata_value
-
-                    _add_new_line(source_text, csv_namespace, key,
-                                  os.path.relpath(source_csv, project_root).replace("\\", "/") + f"({csvreader.line_num})", csv_meta_data)
-
-    total_lines = new_lines + reused_lines + changed_lines
-    overlapping_lines = reused_lines + changed_lines
-    removed_lines = previous_line_count - overlapping_lines
-    print(
-        f"line changes: new {new_lines}, reused {reused_lines}, changed {changed_lines}, total {total_lines}, removed {removed_lines}")
-
-    if write_back_po:
-        target_po.save(target_po_path)
-
-    # print(
-    #     f"Deleting archive + locres files for {target} {language} to avoid conflicts with CSV on reimport")
-    # archive_path = os.path.normpath(os.path.join(
-    #     language_loca_root, f"{target}.archive"))
-
-    # if os.path.exists(archive_path):
-    #     os.remove(archive_path)
-    # locres_path = os.path.normpath(os.path.join(
-    #     language_loca_root, f"{target}.locres"))
-    # if os.path.exists(locres_path):
-    #     os.remove(locres_path)
+    last_sent_csv_path = os.path.normpath(os.path.join(
+        last_sent_dir, csv_file_name))
+    if os.path.exists(last_sent_csv_path):
+        print("Diffing against last sent CSV", last_sent_csv_path)
+        old_lines_dict = read_translation_csv(
+            last_sent_csv_path, ignore_duplicates=True)
+        CSVEntryWithMetaData.diff(
+            old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=True)
+    else:
+        print("No last sent CSV to diff against")
 
 
 def generate_all_translation_csvs(project_root, targets: List[str], languages: List[str], source_language, enable_p4=True):

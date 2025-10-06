@@ -117,6 +117,10 @@ class UnrealPerforce:
         path = self._auto_path(path)
         self._p4(["reconcile", path])
 
+    def revert_unchanged(self, path):
+        path = self._auto_path(path)
+        self._p4(["revert", "-a", path])
+
     def opened(self) -> List[str]:
         opened_files_str = self._p4_get_output(["opened"])
         if "File(s) not opened on this client." in opened_files_str:
