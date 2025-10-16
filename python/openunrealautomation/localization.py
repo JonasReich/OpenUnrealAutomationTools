@@ -103,7 +103,7 @@ class CSVEntryWithMetaData:
                                     meta_data=meta_data)
 
     @staticmethod
-    def _map_from_list(entries: List['CSVEntryWithMetaData']) -> Dict[str, 'CSVEntryWithMetaData']:
+    def list_to_dict(entries: List['CSVEntryWithMetaData']) -> Dict[str, 'CSVEntryWithMetaData']:
         result = {}
         for entry in entries:
             combined_key = entry.combined_key()
@@ -327,12 +327,14 @@ def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict
     Supports both "CombinedKey" and "Namespace" formats.
     """
     existing_lines = dict()
-    with open(csv_path, 'r', newline='', encoding="utf-8") as csvfile:
+    # use utf-8-sig to handle both utf-8 with and without BOM
+    with open(csv_path, 'r', newline='', encoding="utf-8-sig") as csvfile:
         csvreader = csv.reader(csvfile, delimiter=',',
                                quotechar='"', quoting=csv.QUOTE_ALL)
 
         get_key_func: Callable[[List[str]], CSVEntryWithMetaData]
         header_row = next(csvreader)
+        header_row[0]
         if header_row[0:3] == ["CombinedKey", "SourceString", "LocalizedString"]:
             def _get_combined_key_row(row: List[str]) -> CSVEntryWithMetaData:
                 metadata_keys = header_row[3:]
@@ -439,7 +441,7 @@ def generate_translation_csv(project_root, source_language, target_language, tar
         if line_conversion_func:
             line.translated_string = line_conversion_func(line)
 
-    new_lines_dict = CSVEntryWithMetaData._map_from_list(new_lines)
+    new_lines_dict = CSVEntryWithMetaData.list_to_dict(new_lines)
 
     csv_dir = os.path.normpath(os.path.join(
         localization_root, "CSVTranslations"))
