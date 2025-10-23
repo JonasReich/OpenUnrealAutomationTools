@@ -20,6 +20,15 @@ if _enable_service_messages:
     print("TeamCity service messages enabled")
 
 
+def enable_teamcity_service_messages() -> None:
+    """
+    Enable TeamCity service messages for the current script run.
+    This is useful if you want to enable service messages conditionally at runtime.
+    """
+    global _enable_service_messages
+    _enable_service_messages = True
+
+
 def service_message(message_name: str, value_or_named_attributes: Union[None, str, Dict[str, str]]) -> None:
     def _escape_characters(in_str: str) -> str:
         # Reference  escaped characters https://www.jetbrains.com/help/teamcity/service-messages.html#Escaped+Values
