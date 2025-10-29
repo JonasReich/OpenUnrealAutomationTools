@@ -334,28 +334,45 @@ def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict
 
         get_key_func: Callable[[List[str]], CSVEntryWithMetaData]
         header_row = next(csvreader)
-        header_row[0]
-        if header_row[0:3] == ["CombinedKey", "SourceString", "LocalizedString"]:
-            def _get_combined_key_row(row: List[str]) -> CSVEntryWithMetaData:
-                metadata_keys = header_row[3:]
-                metadata_values = row[3:]
-                combined_key = row[0]
-                namespace, key = combined_key.split(":", 1)
-                return CSVEntryWithMetaData(namespace, key, row[1], row[2], meta_data=dict(zip(metadata_keys, metadata_values)))
-            get_key_func = _get_combined_key_row
-        elif header_row[0:4] == ["Namespace", "Key", "SourceString", "LocalizedString"]:
-            def _get_namespace_key_row(row: List[str]) -> CSVEntryWithMetaData:
-                metadata_keys = header_row[4:]
-                metadata_values = row[4:]
-                return CSVEntryWithMetaData(row[0], row[1], row[2], row[3], meta_data=dict(zip(metadata_keys, metadata_values)))
-            get_key_func = _get_namespace_key_row
-        else:
+        column_indices = {header_row[i]: i for i in range(len(header_row))}
+
+        use_combined_key = "CombinedKey" in column_indices
+
+        # validate CSV format
+        try:
+            assert "SourceString" in column_indices
+            assert "LocalizedString" in column_indices
+            if use_combined_key:
+                assert "Key" not in column_indices
+                assert "Namespace" not in column_indices
+            else:
+                assert "Key" in column_indices
+                assert "Namespace" in column_indices
+        except:
             raise ValueError(
-                f"Unexpected CSV header row in {csv_path}: {header_row}")
+                f"Unexpected CSV header row in {csv_path}: {', '.join(header_row)}")
+        non_metadata_keys = [
+            "SourceString", "LocalizedString", "Key", "Namespace", "CombinedKey"]
+        metadata_keys = [
+            key for key in header_row if key not in non_metadata_keys]
 
         for row in csvreader:
-            new_entry = get_key_func(row)
+            source_string = row[column_indices["SourceString"]]
+            translated_string = row[column_indices["LocalizedString"]]
+            if use_combined_key:
+                _combined_key = row[column_indices["CombinedKey"]]
+                namespace, key = _combined_key.split(":", 1)
+            else:
+                namespace = row[column_indices["Namespace"]]
+                key = row[column_indices["Key"]]
+            meta_data = {meta_key: row[column_indices[meta_key]]
+                         for meta_key in metadata_keys}
+            new_entry = CSVEntryWithMetaData(
+                namespace, key, source_string, translated_string, meta_data)
             combined_key = new_entry.combined_key()
+            if use_combined_key:
+                assert _combined_key # pyright: ignore[reportPossiblyUnboundVariable]
+                assert combined_key == _combined_key, f"Mismatch of combined key {combined_key} vs {_combined_key}"
             if combined_key in existing_lines:
                 if ignore_duplicates:
                     continue
@@ -402,15 +419,75 @@ def write_translation_csv(csv_path: str, entries: Dict[str, CSVEntryWithMetaData
             csvwriter.writerow(row)
 
 
-def generate_translation_csv(project_root, source_language, target_language, target,
-                             line_filter_func: Optional[Callable[[
-                                 CSVEntryWithMetaData], bool]] = None,
-                             line_conversion_func: Optional[Callable[[
-                                 CSVEntryWithMetaData], None]] = None,
-                             source_csvs: List[Tuple[str, str]] = [],
-                             meta_data_keys: List[str] = []):
+def generate_translation_csv(project_root, target_language, target, new_lines_dict: Dict[str, CSVEntryWithMetaData],
+                             meta_data_keys: List[str] = [], keep_translation_if_source_changed: bool = True):
     localization_root = _get_localization_root(project_root)
+    csv_dir = os.path.normpath(os.path.join(
+        localization_root, "CSVTranslations"))
+    os.makedirs(csv_dir, exist_ok=True)
 
+    last_sent_dir = os.path.normpath(os.path.join(
+        csv_dir, "LastSentToTranslation"))
+    last_translated_dir = os.path.normpath(os.path.join(
+        csv_dir, "ReceivedTranslation"))
+    export_dir = os.path.normpath(os.path.join(
+        csv_dir, "ExportForTranslation"))
+    game_dir = os.path.normpath(os.path.join(
+        csv_dir, "ExportForGame"))
+
+    csv_file_name = f"{target}_{target_language}.csv"
+
+    translation_csv = os.path.join(last_translated_dir, csv_file_name)
+    if os.path.exists(translation_csv):
+        last_translated_lines = read_translation_csv(translation_csv,
+                                                     ignore_duplicates=True)
+        print(
+            f"Imported {len(last_translated_lines)} translated lines from {translation_csv}")
+
+        num_lines_translated_source_changed = 0
+        num_lines_translated_source_removed = 0
+        for combined_key, translated_line in last_translated_lines.items():
+            if not combined_key in new_lines_dict:
+                num_lines_translated_source_removed = num_lines_translated_source_removed + 1
+                continue
+            new_line = new_lines_dict[combined_key]
+            if new_line.source_string != translated_line.source_string:
+                num_lines_translated_source_changed = num_lines_translated_source_changed + 1
+                if not keep_translation_if_source_changed:
+                    continue
+            new_line.translated_string = translated_line.translated_string
+
+        print("Translations with mismatched source: ",
+              num_lines_translated_source_changed)
+        print("Translations with missing source: ",
+              num_lines_translated_source_removed)
+
+    meta_data_keys.insert(0, "Source")  # always include source location first
+    write_translation_csv(os.path.normpath(os.path.join(
+        export_dir, csv_file_name)), new_lines_dict, combine_key=True, meta_data_keys=meta_data_keys)
+
+    # export without metadata for game
+    write_translation_csv(os.path.normpath(os.path.join(
+        game_dir, csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
+
+    last_sent_csv_path = os.path.normpath(os.path.join(
+        last_sent_dir, csv_file_name))
+    if os.path.exists(last_sent_csv_path):
+        print("Diffing against last sent CSV", last_sent_csv_path)
+        old_lines_dict = read_translation_csv(
+            last_sent_csv_path, ignore_duplicates=True)
+        CSVEntryWithMetaData.diff(
+            old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=False)
+    else:
+        print("No last sent CSV to diff against")
+
+
+def collect_source_strings(project_root: str, source_language: str, target: str, line_filter_func: Optional[Callable[[
+        CSVEntryWithMetaData], bool]] = None,
+        line_conversion_func: Optional[Callable[[
+            CSVEntryWithMetaData], None]] = None,
+        source_csvs: List[Tuple[str, str]] = []) -> Dict[str, CSVEntryWithMetaData]:
+    localization_root = _get_localization_root(project_root)
     source_language_loca_root = os.path.join(
         localization_root, target, source_language)
     source_po_path = os.path.normpath(
@@ -442,40 +519,7 @@ def generate_translation_csv(project_root, source_language, target_language, tar
             line.translated_string = line_conversion_func(line)
 
     new_lines_dict = CSVEntryWithMetaData.list_to_dict(new_lines)
-
-    csv_dir = os.path.normpath(os.path.join(
-        localization_root, "CSVTranslations"))
-    os.makedirs(csv_dir, exist_ok=True)
-
-    last_sent_dir = os.path.normpath(os.path.join(
-        csv_dir, "LastSentToTranslation"))
-    last_translated_dir = os.path.normpath(os.path.join(
-        csv_dir, "ReceivedTranslation"))
-    export_dir = os.path.normpath(os.path.join(
-        csv_dir, "ExportForTranslation"))
-    game_dir = os.path.normpath(os.path.join(
-        csv_dir, "ExportForGame"))
-
-    csv_file_name = f"{target}_{target_language}.csv"
-
-    meta_data_keys.insert(0, "Source")  # always include source location first
-    write_translation_csv(os.path.normpath(os.path.join(
-        export_dir, csv_file_name)), new_lines_dict, combine_key=True, meta_data_keys=meta_data_keys)
-
-    # export without metadata for game
-    write_translation_csv(os.path.normpath(os.path.join(
-        game_dir, csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
-
-    last_sent_csv_path = os.path.normpath(os.path.join(
-        last_sent_dir, csv_file_name))
-    if os.path.exists(last_sent_csv_path):
-        print("Diffing against last sent CSV", last_sent_csv_path)
-        old_lines_dict = read_translation_csv(
-            last_sent_csv_path, ignore_duplicates=True)
-        CSVEntryWithMetaData.diff(
-            old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=True)
-    else:
-        print("No last sent CSV to diff against")
+    return new_lines_dict
 
 
 def generate_all_translation_csvs(project_root, targets: List[str], languages: List[str], source_language, enable_p4=True):
