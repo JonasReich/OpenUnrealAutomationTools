@@ -162,6 +162,21 @@ class UnrealPerforce:
             return int(match.group("changelist")), match.group("user")
         return None
 
+    def get_last_change_date(self, path:str, ignore_copies=True) -> Optional[datetime.date]:
+        output = self._p4_get_output(["filelog", "-m1", "-s", path])
+
+        if ignore_copies:
+            copy_source_match = re.search(
+                r"... copy from (?P<source>//.*#\d+)", output)
+            if copy_source_match:
+                # Follow the chain of copies recursively
+                return self.get_last_change_date(copy_source_match.group("source"), True)
+        match = re.search(
+            r"change (?P<changelist>\d+) .* on (?P<date>.+) by (?P<user>.+?)@", output)
+        if match:
+            return datetime.datetime.strptime(match.group("date"), "%Y/%m/%d").date()
+        return None
+
     def get_depot_location(self, local_path: str) -> str:
         return self._p4_get_output(["where", local_path]).split(" ")[0]
 
