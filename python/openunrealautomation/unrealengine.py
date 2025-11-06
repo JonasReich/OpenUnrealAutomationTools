@@ -385,7 +385,8 @@ class UnrealEngine:
               build_configuration: UnrealBuildConfiguration,
               platform: Optional[str] = None,
               program_name: str = "",
-              raise_on_error: bool = True) -> int:
+              raise_on_error: bool = True,
+              arguments: List[str] = []) -> int:
         """
         Launch UBT to build the provided target.
 
@@ -411,6 +412,8 @@ class UnrealEngine:
             "-progress",
             "-noubtmakefiles"
         ]
+
+        all_arguments += arguments
 
         if target == UnrealBuildTarget.EDITOR:
             # TODO: Is this really required??
