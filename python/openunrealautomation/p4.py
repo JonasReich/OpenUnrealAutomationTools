@@ -101,13 +101,23 @@ class UnrealPerforce:
             args += [f"{path}@{cl}"]
         self._p4(args)
 
-    def add(self, path):
+    def add(self, path, verbose: bool = True):
         path = self._auto_path(path)
-        self._p4(["add", path])
+        if verbose:
+            self._p4(["add", path])
+        else:
+            output = self._p4_get_output(["add", path])
+            num_added_files = output.count("opened for add")
+            print(f"P4: add {path} -> Added {num_added_files} files.")
 
-    def edit(self, path):
+    def edit(self, path, verbose=True):
         path = self._auto_path(path)
-        self._p4(["edit", path])
+        if verbose:
+            self._p4(["edit", path])
+        else:
+            output = self._p4_get_output(["edit", path])
+            num_edited_files = output.count("opened for edit")
+            print(f"P4: edit {path} -> Edited {num_edited_files} files.")
 
     def delete(self, path):
         path = self._auto_path(path)
@@ -117,9 +127,15 @@ class UnrealPerforce:
         path = self._auto_path(path)
         self._p4(["reconcile", path])
 
-    def revert_unchanged(self, path):
+    def revert_unchanged(self, path, verbose=True):
         path = self._auto_path(path)
-        self._p4(["revert", "-a", path])
+        if verbose:
+            self._p4(["revert", "-a", path])
+        else:
+            output = self._p4_get_output(["revert", "-a", path])
+            num_reverted_files = output.count("reverted")
+            print(
+                f"P4: revert {path} -> Reverted {num_reverted_files} unchanged files.")
 
     def opened(self) -> List[str]:
         opened_files_str = self._p4_get_output(["opened"])
@@ -162,7 +178,7 @@ class UnrealPerforce:
             return int(match.group("changelist")), match.group("user")
         return None
 
-    def get_last_change_date(self, path:str, ignore_copies=True) -> Optional[datetime.date]:
+    def get_last_change_date(self, path: str, ignore_copies=True) -> Optional[datetime.date]:
         output = self._p4_get_output(["filelog", "-m1", "-s", path])
 
         if ignore_copies:
