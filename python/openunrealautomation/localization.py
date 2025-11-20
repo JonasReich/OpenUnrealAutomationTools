@@ -2,21 +2,29 @@
 Localization utilities
 """
 
-import argparse
 import csv
-import io
 import os
 import random
-import re
 from typing import Callable, Dict, List, Optional, Tuple
 
 import polib
 from openunrealautomation.p4 import UnrealPerforce
+from openunrealautomation.util import ouu_temp_file
 
 COMMENT_PREFIX_KEY = 'Key:\t'
 COMMENT_PREFIX_SOURCE_LOCATION = 'SourceLocation:\t'
 COMMENT_PREFIX_META_DATA = 'InfoMetaData:\t"'
 COMMENT_SEPARATOR_META_DATA = '" : "'
+
+
+def write_csv(file_name: str, rows: List[List[str]]) -> str:
+    path = ouu_temp_file("Localization/" + file_name + ".csv")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', newline='', encoding="utf-8") as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=',',
+                                quotechar='"', quoting=csv.QUOTE_ALL)
+        csv_writer.writerows(rows)
+    return path
 
 
 class POEntryWithMetaData:
@@ -153,51 +161,44 @@ class CSVEntryWithMetaData:
         return new_lines
 
     @staticmethod
-    def diff(a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False) -> None:
+    def diff(diff_name: str, a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False) -> None:
         print(
             f"Diffing CSVs: {a_name} ({len(a)} entries) vs {b_name} ({len(b)} entries)")
         only_in_a = set(a.keys()) - set(b.keys())
         only_in_b = set(b.keys()) - set(a.keys())
-        print(f"  removed:\t", len(only_in_a))
-        if verbose:
-            print(f"Diffing removed entries (verbose):")
-            in_memory_file = io.StringIO()
-            csv_writer = csv.writer(in_memory_file, delimiter=',',
-                                    quotechar='"', quoting=csv.QUOTE_ALL)
-            csv_writer.writerow(["CombinedKey", f"SourceString {a_name}"])
-            for key in only_in_a:
-                entry_a = a[key]
-                if verbose:
-                    csv_writer.writerow([key, entry_a.source_string])
-            print(in_memory_file.getvalue().replace("\n", ""))
+        diff_name = f"{diff_name}_Diff_{a_name}_{b_name}"
 
-        print(f"  added:\t", len(only_in_b))
+        rows = [["CombinedKey", f"SourceString {a_name}"]]
+        for key in only_in_a:
+            entry_a = a[key]
+            rows.append([key, entry_a.source_string])
+        removed_diff = write_csv(diff_name + "_removed", rows)
+        diff_suffix = f"\t -> diff: {removed_diff}" if verbose else ""
+        print(f"  removed:       {len(only_in_a)}{diff_suffix}")
+
+        print(f"  added:         {len(only_in_b)}")
         different_source_text = 0
         for key in set(a.keys()).intersection(set(b.keys())):
             entry_a = a[key]
             entry_b = b[key]
             if entry_a.source_string != entry_b.source_string:
                 different_source_text = different_source_text + 1
-        print(f"  mod. source:\t", different_source_text)
-        if verbose:
-            print(
-                f"Diffing source text changes (verbose):")
-            in_memory_file = io.StringIO()
-            csv_writer = csv.writer(in_memory_file, delimiter=',',
-                                    quotechar='"', quoting=csv.QUOTE_ALL)
-            csv_writer.writerow(
-                ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"])
+
+        rows = [
+            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"]]
         for key in set(a.keys()).intersection(set(b.keys())):
             entry_a = a[key]
             entry_b = b[key]
             if entry_a.source_string != entry_b.source_string:
                 if verbose:
-                    csv_writer.writerow(
+                    rows.append(
                         [key, entry_a.source_string, entry_b.source_string])
-        if verbose:
-            print(in_memory_file.getvalue().replace("\n", ""))
-        print(f"  unchanged:\t", len(a) -
-              len(only_in_a) - different_source_text)
+        mod_diff = write_csv(diff_name + "_modified", rows)
+        diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
+        print(f"  mod. source:   {different_source_text}{diff_suffix}")
+
+        num_unchanged = len(a) - len(only_in_a) - different_source_text
+        print(f"  unchanged:     {num_unchanged}")
 
 
 def _get_localization_root(project_root: str) -> str:
@@ -407,40 +408,47 @@ def write_translation_csv(csv_path: str, entries: Dict[str, CSVEntryWithMetaData
     """
     Write a translation CSV from a list of CSVEntryWithMetaData.
     """
+
+    rows = []
+    header_row = []
+    if combine_key:
+        header_row += ["CombinedKey"]
+    else:
+        header_row += ["Namespace", "Key"]
+    header_row += ["SourceString", "LocalizedString"]
+    if meta_data_keys:
+        header_row += meta_data_keys
+    rows.append(header_row)
+
+    for _combined_key, entry in entries.items():
+        combined_key = entry.combined_key()
+        if combined_key != _combined_key:
+            raise ValueError(
+                f"Mismatch of combined key {combined_key} vs {_combined_key}")
+        row = []
+        if combine_key:
+            row += [combined_key]
+        else:
+            row += [entry.namespace, entry.key]
+        row += [entry.source_string, entry.translated_string]
+        if meta_data_keys:
+            for meta_data_key in meta_data_keys:
+                row.append(entry.meta_data.get(meta_data_key, ""))
+        rows.append(row)
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     with open(csv_path, 'w', newline='', encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='"', quoting=csv.QUOTE_ALL)
-        header_row = []
-        if combine_key:
-            header_row += ["CombinedKey"]
-        else:
-            header_row += ["Namespace", "Key"]
-        header_row += ["SourceString", "LocalizedString"]
-        if meta_data_keys:
-            header_row += meta_data_keys
-        csvwriter.writerow(header_row)
-
-        for _combined_key, entry in entries.items():
-            combined_key = entry.combined_key()
-            if combined_key != _combined_key:
-                raise ValueError(
-                    f"Mismatch of combined key {combined_key} vs {_combined_key}")
-            row = []
-            if combine_key:
-                row += [combined_key]
-            else:
-                row += [entry.namespace, entry.key]
-            row += [entry.source_string, entry.translated_string]
-            if meta_data_keys:
-                for meta_data_key in meta_data_keys:
-                    row.append(entry.meta_data.get(meta_data_key, ""))
-            csvwriter.writerow(row)
+        csvwriter.writerows(rows)
+        print("Wrote", len(rows) - 1, "CSV rows to", csv_path)
 
 
 def generate_translation_csv(project_root, target_language, target, new_lines_dict: Dict[str, CSVEntryWithMetaData],
-                             meta_data_keys: List[str] = [], keep_translation_if_source_changed: bool = True, verbose_diff=False):
-    print("\n##", target, "##")
+                             meta_data_keys: List[str] = [],
+                             keep_translation_if_source_changed: bool = True,
+                             combine_key_for_translation: bool = True,
+                             verbose_diff=False):
+    print("##", target, "##")
     localization_root = _get_localization_root(project_root)
     csv_dir = os.path.normpath(os.path.join(
         localization_root, "CSVTranslations"))
@@ -459,6 +467,10 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
 
     translation_csv = os.path.join(last_translated_dir, target_csv_file_name)
     if os.path.exists(translation_csv):
+        p4 = UnrealPerforce()
+        translations_date = p4.get_last_change_date(translation_csv)
+        print(
+            f"combine current sources with translations from {translations_date}")
         last_translated_lines = read_translation_csv(translation_csv,
                                                      ignore_duplicates=True)
         # do NOT track stats of lines here - the diff will be done later
@@ -470,16 +482,31 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
                 if not keep_translation_if_source_changed:
                     continue
             new_line.translated_string = translated_line.translated_string
+        CSVEntryWithMetaData.diff(target_language,
+                                  last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
+
+        untranslated = list(
+            filter(lambda entry: entry.source_string != "" and entry.translated_string == "", last_translated_lines.values()))
+        if len(untranslated) > 0:
+            rows = [["CombinedKey", "SourceString"]]
+            for entry in untranslated:
+                rows.append(
+                    [entry.combined_key(), entry.source_string])
+            untranslated_csv = write_csv(
+                f"{target_language}_untranslated", rows)
+            csv_suffix = f"\t -> {untranslated_csv}" if verbose_diff else ""
+        else:
+            csv_suffix = ""
         print(
-            f"Imported {len(last_translated_lines)} translated lines from {translation_csv}")
-        CSVEntryWithMetaData.diff(
-            last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
+            f"  untranslated:  {len(untranslated)}{csv_suffix}")
+    else:
+        print("No translated CSV to import")
 
     meta_data_keys.insert(0, "Source")  # always include source location first
     write_translation_csv(os.path.normpath(os.path.join(
-        export_dir, target_csv_file_name)), new_lines_dict, combine_key=True, meta_data_keys=meta_data_keys)
+        export_dir, target_csv_file_name)), new_lines_dict, combine_key=combine_key_for_translation, meta_data_keys=meta_data_keys)
 
-    # export without metadata for game
+    # export without metadata for game - never combine key for game, as Unreal expects separate columns
     write_translation_csv(os.path.normpath(os.path.join(
         game_dir, target_csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
 
@@ -491,15 +518,15 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
             os.path.join(last_sent_dir, f"{target}_en.csv"))
         if not os.path.exists(last_sent_csv_path):
             last_sent_csv_path = None
-    else:
-        last_sent_csv_path = None
 
     if last_sent_csv_path:
-        print("Diffing against last sent CSV", last_sent_csv_path)
         old_lines_dict = read_translation_csv(
             last_sent_csv_path, ignore_duplicates=True)
-        CSVEntryWithMetaData.diff(
-            old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=verbose_diff)
+        CSVEntryWithMetaData.diff(target_language,
+                                  old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=verbose_diff)
+        if os.path.exists(translation_csv):
+            CSVEntryWithMetaData.diff(target_language,
+                                      last_translated_lines, old_lines_dict,  a_name="LastTranslated", b_name="LastSent", verbose=verbose_diff)
     else:
         print("No last sent CSV to diff against")
 

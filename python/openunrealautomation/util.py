@@ -318,15 +318,16 @@ def read_text_file(path: str) -> str:
         return f.read()
 
 
-def write_text_file(path: str, content: str) -> None:
+def write_text_file(path: str, content: str, print_message=True) -> None:
     pathlib.Path(path).parent.mkdir(exist_ok=True, parents=True)
     with open(path, "w", encoding="utf8") as f:
         f.write(content)
-        print("Wrote", (content.count("\n") + 1), "lines to", path)
+        if print_message:
+            print("Wrote", (content.count("\n") + 1), "lines to", path)
 
 
 def ouu_temp_file(file_name: str) -> str:
-    return os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation", file_name)
+    return os.path.normpath(os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation", file_name))
 
 
 def get_oua_version() -> str:
