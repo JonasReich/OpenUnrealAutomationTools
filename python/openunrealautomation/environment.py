@@ -78,6 +78,10 @@ class UnrealEnvironment:
         if not os.path.exists(self.engine_root):
             raise OUAException(f"Invalid engine path at {self.engine_root}")
 
+        if os.path.exists(os.path.join(self.engine_root, "$movedMarker")):
+            raise OUAException(
+                f"Engine installed at {self.engine_root} has a $movedMarker file, which indicates an incomplete installation")
+
         self.is_source_engine = os.path.exists(
             f"{engine_root}/Engine/Build/SourceDistribution.txt")
         self.is_installed_engine = os.path.exists(

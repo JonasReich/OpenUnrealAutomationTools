@@ -227,17 +227,15 @@ def run_tests(engine: UnrealEngine,
     if may_skip:
         last_test_report = find_last_test_report(engine, report_directory)
         if last_test_report is not None:
-            last_test_report_time = time.ctime(
-                os.path.getmtime(last_test_report))
+            last_test_report_time = os.path.getmtime(last_test_report)
 
             editor_dll_path = os.path.join(
                 engine.environment.project_root, f"Binaries/Win64/UnrealEditor-{engine.environment.project_name}.dll")
-            last_editor_build_time = time.ctime(
-                os.path.getmtime(editor_dll_path))
+            last_editor_build_time = os.path.getmtime(editor_dll_path)
 
             if last_test_report_time > last_editor_build_time:
                 print(
-                    f"Found test report {last_test_report} (@{last_test_report_time}) that was newer than last build of editor module {editor_dll_path} (@{last_editor_build_time})")
+                    f"Found test report {last_test_report} (@{time.ctime(last_test_report_time)}) that was newer than last build of editor module {editor_dll_path} (@{time.ctime(last_editor_build_time)})")
                 return 0
 
     json_path = os.path.join(report_directory, "index.json")
