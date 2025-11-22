@@ -6,12 +6,17 @@ because Epic's tooling assumes Perforce as only source control tool in many plac
 """
 
 import datetime
+import glob
+import hashlib
 import os
+import pickle
 import re
 import subprocess
 import time
 from locale import atoi
 from typing import Dict, List, Optional, Tuple
+
+from openunrealautomation.util import ouu_temp_file
 
 
 class UnrealPerforceUserInfo:
@@ -236,6 +241,53 @@ class UnrealPerforce:
         if os.path.isdir(path):
             return path + "/..."
         return path
+
+
+class UnrealPerforceLastChangeUserCache:
+    """Lookup last change developer for a p4 file.
+    This is particularly useful for asset validation jobs that need to lookup the same paths over and over again.
+    The cache_id should be some string that invalidates in a semi-frequent schedule so you don't get completely outdated data.
+
+    This should maybe be changed to just using a date based invalidation (e.g. clear every 30mins).
+    """
+
+    def __init__(self, p4: UnrealPerforce, cache_id: str):
+        self.p4 = p4
+        self.user_map = p4.get_user_map()
+        self.last_change_user_by_file = {}
+
+        all_cache_files = list(glob.glob(ouu_temp_file(
+            "p4.cache.last_change_user_by_file.*")))
+        all_cache_files.sort(key=lambda x: os.path.getmtime(x))
+        # delete all but the latest cache file (assuming if you parse again for the same file you want the most recent results)
+        for outdate_cache_file in all_cache_files[1:]:
+            os.remove(outdate_cache_file)
+
+        self.cache_file_path = ouu_temp_file(
+            "p4.cache.last_change_user_by_file." + str(int(hashlib.sha256(cache_id.encode('utf-8')).hexdigest(), 16)) + ".pkl")
+
+        if os.path.exists(self.cache_file_path):
+            print("Import user changes cache from",
+                  self.cache_file_path)
+            with open(self.cache_file_path, "rb") as cache:
+                self.last_change_user_by_file = pickle.load(cache)
+
+    def get(self, file_path: str) -> Optional[str]:
+        if file_path in self.last_change_user_by_file:
+            user = self.last_change_user_by_file.get(file_path)
+        else:
+            try:
+                user = self.p4.get_last_change_user(
+                    file_path)
+                print("file_path:", file_path, "user:", user)
+            except:
+                user = None
+            self.last_change_user_by_file[file_path] = user
+        return user
+
+    def write_cache(self) -> None:
+        with open(self.cache_file_path, "wb") as cache:
+            return pickle.dump(self.last_change_user_by_file, cache)
 
 
 if __name__ == "__main__":

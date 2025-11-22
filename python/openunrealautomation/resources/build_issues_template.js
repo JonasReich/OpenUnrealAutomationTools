@@ -185,10 +185,12 @@ function refreshIssueTable(source_file, scope) {
                 return;
             }
 
-            let group_id = line[grouping_field_name];
-            if ((group_id === undefined) == false) {
-                if (typeof group_id == "string") {
-                    if (group_id.trim().length > 0) {
+            let group_id_raw_value = line[grouping_field_name];
+            if ((group_id_raw_value === undefined) == false) {
+                if (typeof group_id_raw_value == "string") {
+                    let group_id = grouping_field_name == "tags_string" ? group_id_raw_value.split(", ")[0] : group_id_raw_value;
+                    const allow_empty_group = true;
+                    if (allow_empty_group || group_id.trim().length > 0) {
                         filtered_lines.push(line);
                         all_group_ids.add(group_id);
                         let group = null;
@@ -217,7 +219,7 @@ function refreshIssueTable(source_file, scope) {
                 } else {
                     // column valud could be array, etc
                     // no idea how to deal with this
-                    console.warn(`unsupported group column type: ${typeof group_id}`)
+                    console.warn(`unsupported group column type: ${typeof group_id_raw_value}`)
                 }
             }
         });
@@ -232,7 +234,7 @@ function refreshIssueTable(source_file, scope) {
             }
             let group_line = {
                 id: next_group_id,
-                line: group_id,
+                line: group_id.length > 0 ? group_id : "empty/none",
                 occurences: group.occurences,
                 severity: group.severity,
                 is_group: true,
@@ -345,7 +347,6 @@ function refreshIssueTable(source_file, scope) {
 
 let json_obj = JSON.parse(inline_json);
 console.log(json_obj);
-rebuildIssueTables();
 for (const [source_file, issue_scope] of Object.entries(json_obj)) {
     all_files.add(source_file);
     issue_scope.lines.forEach(line => {
@@ -354,12 +355,18 @@ for (const [source_file, issue_scope] of Object.entries(json_obj)) {
             incrementStringVar("developer", line.developer);
         }
         if ("tags" in line) {
+            if (line.tags.length == 0) {
+                // line["tags"] = ["unknown"];
+            }
             line.tags.forEach(tag => incrementTagCount(tag));
             line.tags_string = line.tags.join(", ")
+        } else {
+            // line["tags"] = ["unknown"];
         }
     });
 }
 
+rebuildIssueTables();
 $("#issue-grouping-select").change(function () {
     rebuildIssueTables();
 })

@@ -4,7 +4,10 @@ Parse UE logs for warning / error summary.
 
 import argparse
 import copy
+import glob
+import hashlib
 import os.path
+import pickle
 import re
 from enum import Enum
 from pathlib import Path
@@ -16,7 +19,7 @@ from alive_progress import alive_bar
 from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
-from openunrealautomation.util import strtobool
+from openunrealautomation.util import ouu_temp_file, strtobool
 
 
 def _get_name_id_list(xml_node: XmlNode, attribute: str) -> Set[str]:
@@ -919,6 +922,24 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     if log_path is None:
         raise OUAException("Cannot parse None logfile")
 
+    # this caching layer is mainly intended for iterating log report generation.
+    # disable if you want to iterate actual parsing.
+    ENABLE_LOGPARSE_RESULT_CACHE = True
+    if ENABLE_LOGPARSE_RESULT_CACHE:
+        # deleted all but 10 latest cache files
+        all_cache_files = list(glob.glob(ouu_temp_file("logpase.cache.*")))
+        all_cache_files.sort(key=lambda x: os.path.getmtime(x))
+        for outdate_cache_file in all_cache_files[10:]:
+            os.remove(outdate_cache_file)
+
+        LAST_LOGS_CACHE_RESULT_PATH = ouu_temp_file(
+            "logpase.cache." + str(int(hashlib.sha256(log_path.encode('utf-8')).hexdigest(), 16)) + ".pkl")
+        if os.path.exists(LAST_LOGS_CACHE_RESULT_PATH):
+            print("Import cached log parse results from",
+                  LAST_LOGS_CACHE_RESULT_PATH)
+            with open(LAST_LOGS_CACHE_RESULT_PATH, "rb") as cache:
+                return pickle.load(cache)
+
     print(f"Parsing log file '{log_path}'")
 
     root_scope_declaration = get_log_patterns(
@@ -1020,6 +1041,10 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     if not current_scope_instance.scope_declaration.is_root_scope():
         print(
             f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
+
+    if ENABLE_LOGPARSE_RESULT_CACHE:
+        with open(LAST_LOGS_CACHE_RESULT_PATH, "wb") as cache:
+            pickle.dump(root_scope_instance, cache)
 
     return root_scope_instance
 
