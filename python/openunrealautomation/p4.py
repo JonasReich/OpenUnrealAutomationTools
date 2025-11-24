@@ -258,7 +258,7 @@ class UnrealPerforceLastChangeUserCache:
 
         all_cache_files = list(glob.glob(ouu_temp_file(
             "p4.cache.last_change_user_by_file.*")))
-        all_cache_files.sort(key=lambda x: os.path.getmtime(x))
+        all_cache_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         # delete all but the latest cache file (assuming if you parse again for the same file you want the most recent results)
         for outdate_cache_file in all_cache_files[1:]:
             os.remove(outdate_cache_file)
@@ -286,6 +286,9 @@ class UnrealPerforceLastChangeUserCache:
         return user
 
     def write_cache(self) -> None:
+        print("Writing user changes cache to", self.cache_file_path)
+        os.makedirs(os.path.dirname(
+            self.cache_file_path), exist_ok=True)
         with open(self.cache_file_path, "wb") as cache:
             return pickle.dump(self.last_change_user_by_file, cache)
 

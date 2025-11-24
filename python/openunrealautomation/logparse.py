@@ -912,7 +912,7 @@ class LogScopeChange(Enum):
     CLOSE = 2
 
 
-def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: str) -> UnrealLogFilePatternScopeInstance:
+def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: str, enable_results_cache=True) -> UnrealLogFilePatternScopeInstance:
     """
     Parse the log file into a dictionary.
     Each key of the dict represents a named group of patterns.
@@ -924,11 +924,11 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
 
     # this caching layer is mainly intended for iterating log report generation.
     # disable if you want to iterate actual parsing.
-    ENABLE_LOGPARSE_RESULT_CACHE = True
-    if ENABLE_LOGPARSE_RESULT_CACHE:
+
+    if enable_results_cache:
         # deleted all but 10 latest cache files
         all_cache_files = list(glob.glob(ouu_temp_file("logpase.cache.*")))
-        all_cache_files.sort(key=lambda x: os.path.getmtime(x))
+        all_cache_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         for outdate_cache_file in all_cache_files[10:]:
             os.remove(outdate_cache_file)
 
@@ -1042,14 +1042,16 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
         print(
             f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
 
-    if ENABLE_LOGPARSE_RESULT_CACHE:
+    if enable_results_cache:
+        os.makedirs(os.path.dirname(
+            LAST_LOGS_CACHE_RESULT_PATH), exist_ok=True)
         with open(LAST_LOGS_CACHE_RESULT_PATH, "wb") as cache:
             pickle.dump(root_scope_instance, cache)
 
     return root_scope_instance
 
 
-def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str) -> List[UnrealLogFilePatternScopeInstance]:
+def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: str, enable_results_cache=True) -> List[UnrealLogFilePatternScopeInstance]:
     print(f"Searching for build logs in {log_dir}...")
     if not os.path.exists(log_dir):
         print("no logs found (directory does not exist)")
@@ -1066,7 +1068,7 @@ def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: 
     parsed_logs = []
     for log_file_path in log_file_paths:
         parsed_log = parse_log(
-            log_file_path, logparse_patterns_xml, target_name)
+            log_file_path, logparse_patterns_xml, target_name, enable_results_cache)
         parsed_logs.append(parsed_log)
     return parsed_logs
 
