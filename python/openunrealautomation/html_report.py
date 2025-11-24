@@ -12,15 +12,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import (automation_test_html_report,
-                                                 find_last_test_report)
+from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
-                                           _main_get_files, parse_log)
+from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import (get_oua_version, ouu_temp_file,
-                                       read_text_file, write_text_file)
+from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -48,7 +45,7 @@ def _generate_html_inline_source_log(parsed_log: UnrealLogFilePatternScopeInstan
 
     with alive_bar(log_file_line_count, title="_generate_html_inline_source_log") as update_progress_bar:
         last_line_was_relevant = True
-        for line_number, line in enumerate(log_file_lines, 1):
+        for line_number, line in enumerate(log_file_lines, 0):
             update_progress_bar()
 
             if include_all_lines or line_number in all_relevant_lines:

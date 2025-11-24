@@ -516,7 +516,10 @@ function addFilterButtonForStringVar(string_var, string_var_items) {
     })
 }
 
-addFilterButtonForStringVar("developer", all_devs);
+
+let sorted_devs = Array.from(all_devs);
+sorted_devs.sort();
+addFilterButtonForStringVar("developer", sorted_devs);
 
 //---------------------------
 // STATS
