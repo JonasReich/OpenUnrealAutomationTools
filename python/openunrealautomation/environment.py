@@ -348,7 +348,7 @@ class UnrealEnvironment:
         The project root is the folder containing the .uproject file.
         """
         # Any folder with a uproject file can be reasonably considered an Unreal project directory
-        return len(glob.glob(f"{path}/*.uproject")) > 0
+        return os.path.isdir(path) and len(glob.glob(f"{path}/*.uproject")) > 0
 
     @staticmethod
     def is_engine_root(path: str) -> bool:
@@ -356,6 +356,9 @@ class UnrealEnvironment:
         Determine if a path is an engine root directory.
         The engine root being the folder containing the Engine/ folder.
         """
+        if not os.path.isdir(path):
+            return False
+
         if not all(subdir in os.listdir(path) for subdir in ["Engine"]):
             return False
 
