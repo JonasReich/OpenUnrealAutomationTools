@@ -449,6 +449,7 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
                              combine_key_for_translation: bool = True,
                              verbose_diff=False):
     print("##", target, "##")
+    diff_id = target + "_" + target_language
     localization_root = _get_localization_root(project_root)
     csv_dir = os.path.normpath(os.path.join(
         localization_root, "CSVTranslations"))
@@ -482,18 +483,18 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
                 if not keep_translation_if_source_changed:
                     continue
             new_line.translated_string = translated_line.translated_string
-        CSVEntryWithMetaData.diff(target_language,
+        CSVEntryWithMetaData.diff(diff_id,
                                   last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
 
         untranslated = list(
-            filter(lambda entry: entry.source_string != "" and entry.translated_string == "", last_translated_lines.values()))
+            filter(lambda entry: entry.source_string != "" and entry.translated_string == "", new_lines_dict.values()))
         if len(untranslated) > 0:
             rows = [["CombinedKey", "SourceString"]]
             for entry in untranslated:
                 rows.append(
                     [entry.combined_key(), entry.source_string])
             untranslated_csv = write_csv(
-                f"{target_language}_untranslated", rows)
+                f"{diff_id}_untranslated", rows)
             csv_suffix = f"\t -> {untranslated_csv}" if verbose_diff else ""
         else:
             csv_suffix = ""
@@ -522,10 +523,10 @@ def generate_translation_csv(project_root, target_language, target, new_lines_di
     if last_sent_csv_path:
         old_lines_dict = read_translation_csv(
             last_sent_csv_path, ignore_duplicates=True)
-        CSVEntryWithMetaData.diff(target_language,
+        CSVEntryWithMetaData.diff(diff_id,
                                   old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=verbose_diff)
         if os.path.exists(translation_csv):
-            CSVEntryWithMetaData.diff(target_language,
+            CSVEntryWithMetaData.diff(diff_id,
                                       last_translated_lines, old_lines_dict,  a_name="LastTranslated", b_name="LastSent", verbose=verbose_diff)
     else:
         print("No last sent CSV to diff against")
