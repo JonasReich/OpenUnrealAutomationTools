@@ -478,14 +478,13 @@ def import_csv_translations(target_language, target,
     diff_id = target + "_" + target_language
     last_translated_lines = {}
 
-    # filter down files to what files actually exists and can be imported
-    translation_csvs = list(
-        filter(lambda csv_file: os.path.exists(csv_file), translation_csvs))
-
     if len(translation_csvs) == 0:
         print("No translated CSV to import")
     else:
         for translation_csv in translation_csvs:
+            if not os.path.exists(translation_csv):
+                continue
+
             p4 = UnrealPerforce()
             translations_date = p4.get_last_change_date(translation_csv)
             print(
@@ -499,6 +498,9 @@ def import_csv_translations(target_language, target,
 
         overrides = {}
         for translation_csv in translation_override_csvs:
+            if not os.path.exists(translation_csv):
+                continue
+
             p4 = UnrealPerforce()
             translations_date = p4.get_last_change_date(translation_csv)
             print(
