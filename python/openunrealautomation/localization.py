@@ -232,28 +232,38 @@ class CSVEntryWithMetaData:
         print(f"  removed:       {len(only_in_a)}{diff_suffix}")
 
         print(f"  added:         {len(only_in_b)}")
+
+        different_translation_text = 0
         different_source_text = 0
+
+        mod_source_rows = [
+            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"]]
+        mod_translation_rows = [
+            ["CombinedKey", f"Translation {a_name}", f"Translation {b_name}"]]
         for key in set(a.keys()).intersection(set(b.keys())):
             entry_a = a[key]
             entry_b = b[key]
             if entry_a.source_string != entry_b.source_string:
                 different_source_text = different_source_text + 1
-
-        rows = [
-            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"]]
-        for key in set(a.keys()).intersection(set(b.keys())):
-            entry_a = a[key]
-            entry_b = b[key]
-            if entry_a.source_string != entry_b.source_string:
                 if verbose:
-                    rows.append(
+                    mod_source_rows.append(
                         [key, entry_a.source_string, entry_b.source_string])
-        mod_diff = write_csv(diff_name + "_modified", rows)
+            if entry_a.translated_string != entry_b.translated_string:
+                different_translation_text = different_translation_text + 1
+                if verbose:
+                    mod_translation_rows.append(
+                        [key, str(entry_a.translated_string), str(entry_b.translated_string)])
+        mod_diff = write_csv(diff_name + "_modified_source", mod_source_rows)
         diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
         print(f"  mod. source:   {different_source_text}{diff_suffix}")
 
         num_unchanged = len(a) - len(only_in_a) - different_source_text
-        print(f"  unchanged:     {num_unchanged}")
+        print(f"  same source:   {num_unchanged}")
+
+        mod_diff = write_csv(
+            diff_name + "_modified_translation", mod_translation_rows)
+        diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
+        print(f"  mod. transl.:  {different_translation_text}{diff_suffix}")
 
 
 def _get_localization_root(project_root: str) -> str:
@@ -498,94 +508,119 @@ def write_translation_csv(csv_path: str, entries: Dict[str, CSVEntryWithMetaData
         print("Wrote", len(rows) - 1, "CSV rows to", csv_path)
 
 
-def generate_translation_csv(project_root, target_language, target, new_lines_dict: Dict[str, CSVEntryWithMetaData],
-                             meta_data_keys: Optional[List[str]] = None,
-                             keep_translation_if_source_changed: bool = True,
-                             combine_key_for_translation: bool = True,
-                             verbose_diff=False):
-    print("##", target, "-", target_language, "##")
+def get_csv_dir(project_root: str, dir_name: str) -> str:
     localization_root = _get_localization_root(project_root)
-    csv_dir = os.path.normpath(os.path.join(
+    base_csv_dir = os.path.normpath(os.path.join(
         localization_root, "CSVTranslations"))
-    os.makedirs(csv_dir, exist_ok=True)
+    result = os.path.normpath(os.path.join(
+        base_csv_dir, dir_name))
+    if os.path.exists(result) == False:
+        os.makedirs(result, exist_ok=True)
+    return result
 
-    last_sent_dir = os.path.normpath(os.path.join(
-        csv_dir, "LastSentToTranslation"))
-    last_translated_dir = os.path.normpath(os.path.join(
-        csv_dir, "ReceivedTranslation"))
-    export_dir = os.path.normpath(os.path.join(
-        csv_dir, "ExportForTranslation"))
-    game_dir = os.path.normpath(os.path.join(
-        csv_dir, "ExportForGame"))
 
-    target_csv_file_name = f"{target}_{target_language}.csv"
+def import_csv_translations(target_language, target,
+                            new_lines_dict: Dict[str, CSVEntryWithMetaData],
+                            translation_csvs: List[str],
+                            translation_override_csvs: List[str] = [],
+                            keep_translation_if_source_changed: bool = True,
+                            verbose_diff: bool = False) -> Dict[str, CSVEntryWithMetaData]:
+    """
+    Reads a number of translation files into the new_lines_dict translated_strings properties.
+    Also performs diffs to detect differences between translations and current strings and listing untranslated lines.
+    """
 
-    translation_csv = os.path.join(last_translated_dir, target_csv_file_name)
-    if os.path.exists(translation_csv):
+    diff_id = target + "_" + target_language
+    last_translated_lines = {}
+
+    if len(translation_csvs) == 0:
+        print("No translated CSV to import")
+    else:
+        for translation_csv in translation_csvs:
+            if not os.path.exists(translation_csv):
+                continue
+
         p4 = UnrealPerforce()
         translations_date = p4.get_last_change_date(translation_csv)
         print(
             f"combine current sources with translations from {translations_date}")
-        last_translated_lines = read_translation_csv(translation_csv,
-                                                     ignore_duplicates=True)
-        # do NOT track stats of lines here - the diff will be done later
-        for combined_key, translated_line in last_translated_lines.items():
-            if not combined_key in new_lines_dict:
-                continue
-            new_line = new_lines_dict[combined_key]
-            if new_line.source_string != translated_line.source_string:
-                if not keep_translation_if_source_changed:
-                    continue
-            new_line.translated_string = translated_line.translated_string
-        CSVEntryWithMetaData.diff(target_language,
+            last_translated_lines.update(read_translation_csv(translation_csv,
+                                                              ignore_duplicates=True))
+
+        # diff first, then update source strings / metadata based on current values
+        CSVEntryWithMetaData.diff(diff_id,
                                   last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
 
+        overrides = {}
+        for translation_csv in translation_override_csvs:
+            if not os.path.exists(translation_csv):
+                continue
+
+            p4 = UnrealPerforce()
+            translations_date = p4.get_last_change_date(translation_csv)
+            print(
+                f"combine current sources with overrides from {translations_date}")
+            raw_overrides = read_translation_csv(translation_csv,
+                                                     ignore_duplicates=True)
+            for override_key, override_value in raw_overrides.items():
+                if override_key in new_lines_dict:
+                    overrides[override_key] = override_value
+
+        # diff first, then merge overrides into the translations
+        CSVEntryWithMetaData.diff(diff_id,
+                                  last_translated_lines, overrides, a_name="LastTranslated", b_name="Overrides", verbose=verbose_diff)
+
+        last_translated_lines.update(overrides)
+
+        only_in_translation = last_translated_lines.keys() - new_lines_dict.keys()
+        for key in only_in_translation:
+            last_translated_lines.pop(key)
+
+        # do NOT track stats of lines here - the diff will be done later
+        for combined_key, new_line in new_lines_dict.items():
+            if not combined_key in last_translated_lines:
+                last_translated_lines[combined_key] = CSVEntryWithMetaData(
+                    new_line.namespace, new_line.key, new_line.source_string, None, meta_data=new_line.meta_data.copy())
+                continue
+
+            translated_line = last_translated_lines[combined_key]
+            if new_line.source_string != translated_line.source_string:
+                if not keep_translation_if_source_changed:
+                    del translated_line
+                    continue
+                else:
+                    translated_line.source_string = new_line.source_string
+            translated_line.meta_data = new_line.meta_data.copy()
+
         untranslated = list(
-            filter(lambda entry: entry.source_string != "" and entry.translated_string == "", last_translated_lines.values()))
+        filter(lambda entry: entry.source_string != "" and entry.translated_string == "", new_lines_dict.values()))
         if len(untranslated) > 0:
             rows = [["CombinedKey", "SourceString"]]
             for entry in untranslated:
                 rows.append(
                     [entry.combined_key(), entry.source_string])
             untranslated_csv = write_csv(
-                f"{target_language}_untranslated", rows)
+            f"{diff_id}_untranslated", rows)
             csv_suffix = f"\t -> {untranslated_csv}" if verbose_diff else ""
         else:
             csv_suffix = ""
         print(
             f"  untranslated:  {len(untranslated)}{csv_suffix}")
-    else:
-        print("No translated CSV to import")
 
+    return last_translated_lines
     if meta_data_keys is None:
         meta_data_keys = []
-    meta_data_keys.insert(0, "Source")  # always include source location first
-    write_translation_csv(os.path.normpath(os.path.join(
-        export_dir, target_csv_file_name)), new_lines_dict, combine_key=combine_key_for_translation, meta_data_keys=meta_data_keys)
 
+
+def export_csv_for_game_ouu(project_root: str, target_csv_file_name: str, new_lines_dict: Dict[str, CSVEntryWithMetaData]):
+    """
+    Exports lines for import into a game that uses OpenUnrealUtilities to import CSV strings at runtime.
+    """
+    # this path is REQUIRED by OpenUnrealUtiltiies text import
+    game_dir = get_csv_dir(project_root, "ExportForGame")
     # export without metadata for game - never combine key for game, as Unreal expects separate columns
     write_translation_csv(os.path.normpath(os.path.join(
         game_dir, target_csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
-
-    last_sent_csv_path = os.path.normpath(os.path.join(
-        last_sent_dir, target_csv_file_name))
-    if not os.path.exists(last_sent_csv_path):
-        # Fall back to English last sent CSV if target language one does not exist
-        last_sent_csv_path = os.path.normpath(
-            os.path.join(last_sent_dir, f"{target}_en.csv"))
-        if not os.path.exists(last_sent_csv_path):
-            last_sent_csv_path = None
-
-    if last_sent_csv_path:
-        old_lines_dict = read_translation_csv(
-            last_sent_csv_path, ignore_duplicates=True)
-        CSVEntryWithMetaData.diff(target_language,
-                                  old_lines_dict, new_lines_dict, a_name="LastSent", b_name="Current", verbose=verbose_diff)
-        if os.path.exists(translation_csv):
-            CSVEntryWithMetaData.diff(target_language,
-                                      last_translated_lines, old_lines_dict,  a_name="LastTranslated", b_name="LastSent", verbose=verbose_diff)
-    else:
-        print("No last sent CSV to diff against")
 
 
 def collect_source_cvs(root: str, root_relative_glob_patterns: List[str], path_to_namespace_pattern=r"Text\\(.*).csv") -> List[Tuple[str, str]]:
@@ -602,8 +637,6 @@ def collect_source_cvs(root: str, root_relative_glob_patterns: List[str], path_t
 
 def collect_source_strings(project_root: str, source_language: str, target: str, line_filter_func: Optional[Callable[[
         CSVEntryWithMetaData], bool]] = None,
-        line_conversion_func: Optional[Callable[[
-            CSVEntryWithMetaData], None]] = None,
         source_csvs: List[Tuple[str, str]] = []) -> Dict[str, CSVEntryWithMetaData]:
     localization_root = _get_localization_root(project_root)
     source_language_loca_root = os.path.join(
@@ -631,10 +664,6 @@ def collect_source_strings(project_root: str, source_language: str, target: str,
         new_lines = list(
             filter(lambda line: line_filter_func(line), new_lines))
         print("Filtered lines:", num_unfiltered_lines, "->", len(new_lines))
-
-    for line in new_lines:
-        if line_conversion_func:
-            line.translated_string = line_conversion_func(line)
 
     new_lines_dict = CSVEntryWithMetaData.list_to_dict(new_lines)
     return new_lines_dict
