@@ -229,9 +229,15 @@ def run_tests(engine: UnrealEngine,
         if last_test_report is not None:
             last_test_report_time = os.path.getmtime(last_test_report)
 
+            # check the last editor build time by checking editor and plugin DLLs (does not check for engine plugins / dlls at this time)
             editor_dll_path = os.path.join(
                 engine.environment.project_root, f"Binaries/Win64/UnrealEditor-{engine.environment.project_name}.dll")
             last_editor_build_time = os.path.getmtime(editor_dll_path)
+
+            for plugin_dll_path in glob.glob(os.path.join(
+                    engine.environment.project_root, f"Plugins/*/Binaries/Win64/UnrealEditor-*.dll"), recursive=True):
+                last_editor_build_time = max(
+                    last_editor_build_time, os.path.getmtime(plugin_dll_path))
 
             if last_test_report_time > last_editor_build_time:
                 print(

@@ -40,6 +40,7 @@
     background-color: #1c1c1c;
     overflow: scroll;
     max-height: 500px;
+    width: 100%;
 }
 
 code {
@@ -117,6 +118,16 @@ a.file-path {
     display: block;
     width: 100%;
     font-size: 0.8em;
+}
+
+/* make an expand button after an empty table smaller and inline with the header row to save space */
+.code-summary:empty+.btn-expand-source-container {
+    width: auto;
+    margin-left: 1em;
+    display: inline-block;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    margin-top: -5px;
 }
 
 .issue-row-group td:nth-of-type(1) {

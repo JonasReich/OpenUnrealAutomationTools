@@ -3,18 +3,24 @@ Localization utilities
 """
 
 import csv
+import datetime
+import glob
 import os
 import random
+import re
 from typing import Callable, Dict, List, Optional, Tuple
 
 import polib
+from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.p4 import UnrealPerforce
+from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import ouu_temp_file
 
 COMMENT_PREFIX_KEY = 'Key:\t'
 COMMENT_PREFIX_SOURCE_LOCATION = 'SourceLocation:\t'
 COMMENT_PREFIX_META_DATA = 'InfoMetaData:\t"'
 COMMENT_SEPARATOR_META_DATA = '" : "'
+PO_WRAP_WIDTH = 900
 
 
 def write_csv(file_name: str, rows: List[List[str]]) -> str:
@@ -111,6 +117,25 @@ class CSVEntryWithMetaData:
         return CSVEntryWithMetaData(namespace, key, source_text,
                                     meta_data=meta_data)
 
+    def to_po_entry(self) -> polib.POEntry:
+        result = polib.POEntry()
+        result.msgctxt = self.namespace + "," + self.key
+        result.msgid = _unclean_str(self.source_string)
+        result.msgstr = _unclean_str(self.translated_string)
+
+        source = self.meta_data['Source']
+
+        meta_data_rows = [f"{COMMENT_PREFIX_META_DATA}{meta_key}{COMMENT_SEPARATOR_META_DATA}{meta_value}\"" for meta_key,
+                          meta_value in self.meta_data.items() if meta_key != 'Source']
+        result.comment = "\n".join([
+            f"{COMMENT_PREFIX_KEY}{self.key}",
+            f"{COMMENT_PREFIX_SOURCE_LOCATION}{source}"
+        ]
+            + meta_data_rows
+        )
+        result.occurrences = [(source, None)]
+        return result
+
     @staticmethod
     def list_to_dict(entries: List['CSVEntryWithMetaData']) -> Dict[str, 'CSVEntryWithMetaData']:
         result = {}
@@ -126,6 +151,37 @@ class CSVEntryWithMetaData:
     @staticmethod
     def from_po(po_file_path: str) -> List['CSVEntryWithMetaData']:
         return [CSVEntryWithMetaData.from_po_entry(entry) for entry in polib.pofile(po_file_path)]
+
+    @staticmethod
+    def write_po_file(entries: Dict[str, 'CSVEntryWithMetaData'], po_file_path: str, target: str, language: str) -> None:
+        os.makedirs(os.path.dirname(po_file_path), exist_ok=True)
+        if os.path.exists(po_file_path):
+            po_file = polib.pofile(po_file_path)
+        else:
+            po_file = polib.POFile(encoding="utf-8")
+
+            # Add all the file metadata fields usually added by UE exports
+            # (Proper value for plural forms would need lookup to be resolved)
+            date_str = datetime.datetime.now().strftime("%Y-%M-%D %h:%m")
+
+            po_file.metadata = {
+                "Project-Id-Version": target,
+                "POT-Creation-Date": date_str,
+                "PO-Revision-Date": date_str,
+                "Language-Team": "",
+                "Language": language,
+                "MIME-Version": "1.0",
+                "Content-Type": "text/plain; charset=UTF-8",
+                "Content-Transfer-Encoding": "8bit",
+                "Plural-Forms": "unknown"}
+
+        po_file.header = f"{target} {language} translation.\nAutomated export by OpenUnrealAutomationTools (c) 2025 Jonas Reich.\n"
+
+        po_file.clear()
+        for entry in entries.values():
+            po_file.append(entry.to_po_entry())
+        po_file.wrapwidth = PO_WRAP_WIDTH
+        po_file.save(po_file_path)
 
     @staticmethod
     def from_source_csv(csv_path: str, project_root: str, namespace: str) -> List['CSVEntryWithMetaData']:
@@ -537,25 +593,25 @@ def import_csv_translations(target_language, target,
                     translated_line.source_string = new_line.source_string
             translated_line.meta_data = new_line.meta_data.copy()
 
-    untranslated = list(
-        filter(lambda entry: entry.source_string != "" and entry.translated_string == "", new_lines_dict.values()))
-    if len(untranslated) > 0:
-        rows = [["CombinedKey", "SourceString"]]
-        for entry in untranslated:
-            rows.append(
-                [entry.combined_key(), entry.source_string])
-        untranslated_csv = write_csv(
-            f"{diff_id}_untranslated", rows)
-        csv_suffix = f"\t -> {untranslated_csv}" if verbose_diff else ""
-    else:
-        csv_suffix = ""
-    print(
-        f"  untranslated:  {len(untranslated)}{csv_suffix}")
+        untranslated = list(
+            filter(lambda entry: entry.source_string != "" and entry.translated_string == "", new_lines_dict.values()))
+        if len(untranslated) > 0:
+            rows = [["CombinedKey", "SourceString"]]
+            for entry in untranslated:
+                rows.append(
+                    [entry.combined_key(), entry.source_string])
+            untranslated_csv = write_csv(
+                f"{diff_id}_untranslated", rows)
+            csv_suffix = f"\t -> {untranslated_csv}" if verbose_diff else ""
+        else:
+            csv_suffix = ""
+        print(
+            f"  untranslated:  {len(untranslated)}{csv_suffix}")
 
     return last_translated_lines
 
 
-def export_csv_for_game_ouu(project_root: str, target_csv_file_name: str, new_lines_dict: Dict[str, CSVEntryWithMetaData]):
+def export_csv_for_game_ouu(project_root: str, target: str, language: str, new_lines_dict: Dict[str, CSVEntryWithMetaData]):
     """
     Exports lines for import into a game that uses OpenUnrealUtilities to import CSV strings at runtime.
     """
@@ -563,28 +619,39 @@ def export_csv_for_game_ouu(project_root: str, target_csv_file_name: str, new_li
     game_dir = get_csv_dir(project_root, "ExportForGame")
     # export without metadata for game - never combine key for game, as Unreal expects separate columns
     write_translation_csv(os.path.normpath(os.path.join(
-        game_dir, target_csv_file_name)), new_lines_dict, combine_key=False, meta_data_keys=None)
+        game_dir, f"{target}_{language}.csv")), new_lines_dict, combine_key=False, meta_data_keys=None)
 
 
-def collect_source_strings(project_root: str, source_language: str, target: str, line_filter_func: Optional[Callable[[
-        CSVEntryWithMetaData], bool]] = None,
-        source_csvs: List[Tuple[str, str]] = []) -> Dict[str, CSVEntryWithMetaData]:
+def collect_source_cvs(root: str, root_relative_glob_patterns: List[str], path_to_namespace_pattern=r"Text\\(.*).csv") -> List[Tuple[str, str]]:
+    """Search for string tables from a glob pattern list. Default path_to_namespace_pattern assumes that the csvs have a namespace relative to a Text/ directory"""
+    source_csvs: List[Tuple[str, str]] = []
+    for glob_pattern in root_relative_glob_patterns:
+        for csv_path in glob.glob(os.path.join(root, glob_pattern), recursive=True):
+            namespace_match = re.search(path_to_namespace_pattern, csv_path)
+            assert namespace_match, f"Failed to extract namespace from {csv_path}"
+            namespace = namespace_match.group(1).replace("\\", "/")
+            source_csvs.append((csv_path, namespace))
+    return source_csvs
+
+
+def collect_source_strings(project_root: str,
+                           source_language: str,
+                           po_targets: List[str] = [],
+                           line_filter_func: Optional[Callable[[
+                               CSVEntryWithMetaData], bool]] = None,
+                           source_csvs: List[Tuple[str, str]] = []) -> Dict[str, CSVEntryWithMetaData]:
     localization_root = _get_localization_root(project_root)
-    source_language_loca_root = os.path.join(
-        localization_root, target, source_language)
-    source_po_path = os.path.normpath(
-        os.path.join(source_language_loca_root, f"{target}.po"))
-
-    print("\n##", target, "##")
-    print("Extracting strings from PO file",
-          source_po_path, "to CSV")
-
-    if not os.path.exists(source_po_path):
-        raise FileNotFoundError(source_po_path)
-
     new_lines: List[CSVEntryWithMetaData] = []
 
-    new_lines += CSVEntryWithMetaData.from_po(source_po_path)
+    for target in po_targets:
+        source_language_loca_root = os.path.join(
+            localization_root, target, source_language)
+        source_po_path = os.path.normpath(
+            os.path.join(source_language_loca_root, f"{target}.po"))
+        print("reading", source_po_path)
+        if not os.path.exists(source_po_path):
+            raise FileNotFoundError(source_po_path)
+        new_lines += CSVEntryWithMetaData.from_po(source_po_path)
 
     for source_csv, csv_namespace in source_csvs:
         new_lines += CSVEntryWithMetaData.from_source_csv(
@@ -598,3 +665,26 @@ def collect_source_strings(project_root: str, source_language: str, target: str,
 
     new_lines_dict = CSVEntryWithMetaData.list_to_dict(new_lines)
     return new_lines_dict
+
+
+def write_translation_po(project_root: str, language: str, target: str, new_lines_dict: Dict[str, CSVEntryWithMetaData]) -> None:
+    """
+    Write out the current lines dict into a po file for the given language and UE project name.
+    This does not retain any existing data from that po file.
+    """
+    localization_root = _get_localization_root(project_root)
+    language_loca_root = os.path.join(
+        localization_root, target, language)
+    po_path = os.path.normpath(
+        os.path.join(language_loca_root, f"{target}.po"))
+    print(f"Writing po file to {po_path}")
+    CSVEntryWithMetaData.write_po_file(
+        entries=new_lines_dict, po_file_path=po_path, target=target, language=language)
+
+
+def run_gather_commandlet(env: UnrealEnvironment, loc_project: str, commands=["Gather", "Export"]):
+    assert env
+    configs_str = ";".join(
+        [f"{env.project_root}/Config/Localization/{loc_project}_{command}.ini" for command in commands])
+    ue = UnrealEngine(env)
+    ue.run_commandlet("GatherText", arguments=[f"-config=\"{configs_str}\""])

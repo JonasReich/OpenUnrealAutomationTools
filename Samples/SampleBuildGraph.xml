@@ -51,19 +51,6 @@
 				Arguments="$(BuildArguments)"
 				Configuration="$(EditorBuildConfig)" Tag="#ProjectEditorFiles" />
 		</Node>
-
-		<Node Name="Localize" Requires="#$(ProjectName)Editor">
-			<!-- see AutomationTool\Scripts\Localisation.Automation.cs -->
-			<Property Name="SharedLocalizeParams"
-				Value="-UEProjectRoot=$(ProjectDir) -UEProjectDirectory='' -UEProjectName=$(ProjectName) -LocalizationProjectNames=$(ProjectsIncludedInLocalization) -LocalizationBranch=&quot;$(EscapedBranch)&quot;" />
-			<Command Name="Localize"
-				Arguments="$(SharedLocalizeParams) -LocalizationSteps=Gather,Export" />
-			<Property Name="LanguagesForCsvTranslation" Value="en,de,fr" />
-			<Spawn Exe="python"
-				Arguments="$(ProjectDir)/OpenUnrealAutomationTools/Samples/GenerateTranslationCSV.py $(ProjectDir) $(ProjectsIncludedInLocalization) --languages=$(LanguagesForCsvTranslation)" />
-			<Command Name="Localize"
-				Arguments="$(SharedLocalizeParams) -LocalizationSteps=Import,Compile,GenerateReports" />
-		</Node>
 	</Agent>
 
 	<!--
@@ -96,7 +83,7 @@
 			<Property Name="Generated_AllGamePackages"
 				Value="$(Generated_AllGamePackages);Package Game $(TargetPlatform)" />
 			<Node Name="Package Game $(TargetPlatform)"
-				Requires="#$(ProjectName)Editor;Localize;#CompiledGame$(TargetPlatform)"
+				Requires="#$(ProjectName)Editor;#CompiledGame$(TargetPlatform)"
 				Produces="#Game$(TargetPlatform)">
 				<Command Name="BuildCookRun"
 					Arguments="$(ProjectArgument) -Platform=$(TargetPlatform) -Config=$(BuildConfig) -Cook -package -SkipCookingEditorContent -pak -compressed -stage" />
