@@ -4,9 +4,11 @@ Environment (engine + project) utilities.
 
 import glob
 import inspect
+import json
 import os
 import pathlib
 import platform
+import re
 import winreg
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -18,7 +20,7 @@ from openunrealautomation.descriptor import (UnrealPluginDescriptor,
                                              UnrealProjectDescriptor)
 from openunrealautomation.p4 import UnrealPerforce
 from openunrealautomation.util import walk_level, walk_parents
-from openunrealautomation.version import UnrealVersionDescriptor
+from openunrealautomation.version import UnrealVersion, UnrealVersionDescriptor
 
 
 class UnrealEnvironment:
@@ -394,6 +396,30 @@ class UnrealEnvironment:
             raise NotImplementedError(
                 "engine_root_from_association() is only implemented on Windows")
 
+        # Epic decided to introduce a third way exlusively used for Epic Games Launcher installed engine versions.
+        # see https://forums.unrealengine.com/t/engine-association-issue/2651662
+        # All these versions should be registered as "major.minor", e.g. "5.7"
+        try:
+            associated_version = UnrealVersion.create_from_string(
+                engine_association_key)
+
+            # The launcher stores those versions in this file. If it doesn't exist, it was not installed via a new launcher (2025 or later),
+            # but it could still possibly be found because it was manually registered in the registry OR installed from an old launcher(pre 2025)
+            games_launcher_dat_path = f"C:/ProgramData/Epic/UnrealEngineLauncher/LauncherInstalled.dat"
+            if os.path.exists(games_launcher_dat_path):
+                with open(games_launcher_dat_path, "r", encoding="utf-8") as games_launcher_dat_file:
+                    # the following code assumes no variance in the entries/format of LauncherInstalled.dat
+                    launcher_installed_dat = json.load(games_launcher_dat_file)
+                    for installation in launcher_installed_dat["InstallationList"]:
+                        if installation["NamespaceId"] == "ue":
+                            installation_ue_version = UnrealVersion.create_from_string(
+                                installation["AppVersion"])
+                            if installation_ue_version.major_version == associated_version.major_version and installation_ue_version.minor_version == associated_version.minor_version:
+                                return installation["InstallLocation"]
+        except:
+            pass
+
+        # Try other methods for legacy / custom installs...
         # First check for entries of custom builds in HKEY_CURRENT_USER:
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
@@ -406,7 +432,7 @@ class UnrealEnvironment:
         except:
             pass
 
-        # If the first attempt, also check HKEY_LOCAL_MACHINE for installed engines:
+        # Also check HKEY_LOCAL_MACHINE for installed engines:
         try:
             key = winreg.OpenKey(
                 winreg.HKEY_LOCAL_MACHINE, f"SOFTWARE\\EpicGames\\Unreal Engine\\{engine_association_key}")
