@@ -934,7 +934,7 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
 
         LAST_LOGS_CACHE_RESULT_PATH = ouu_temp_file(
             "logpase.cache." + str(int(hashlib.sha256(log_path.encode('utf-8')).hexdigest(), 16)) + ".pkl")
-        if os.path.exists(LAST_LOGS_CACHE_RESULT_PATH):
+        if os.path.exists(LAST_LOGS_CACHE_RESULT_PATH) and os.path.getmtime(log_path) < os.path.getmtime(LAST_LOGS_CACHE_RESULT_PATH):
             print("Import cached log parse results from",
                   LAST_LOGS_CACHE_RESULT_PATH)
             with open(LAST_LOGS_CACHE_RESULT_PATH, "rb") as cache:
