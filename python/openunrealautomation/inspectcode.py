@@ -104,8 +104,10 @@ class InspectCode():
                          "**\\**.gen.cpp"]
         excludes_str = ";".join(exclude_paths)
 
-        # keep turned off for now. we have enough issues as is and times are shorter (I think?)
-        solution_wide_analysis = False
+        # Previously we had this turned off out of fear that SWEA would analyze all Epic/engine source code (that's why we also explicitly specify include directories),
+        # but turning this on seems to improve some issue detections, e.g. C++ #include analysis.
+        # With SWEA turned on, I could get rid of 13 CppUnunusedIncludeDirective warnings. No other side effects detected so far.
+        solution_wide_analysis = True
         swea_param = "--swea" if solution_wide_analysis else "--no-swea"
 
         solution_file = self.env.get_engine_solution(
@@ -120,6 +122,11 @@ class InspectCode():
                         f'--properties="Configuration=Development Editor;Platform=Win64"',
                         f'--include="{includes_str}"',
                         f'--exclude="{excludes_str}"',
+                        # Starting from version 2024.1, the default output format of InspectCode is Static Analysis Results Interchange Format (SARIF).
+                        # To get the old XML format, we explicitly specify XML, but XML will be deprecated "soon".
+                        # Source: https://www.jetbrains.com/help/resharper/InspectCode.html
+                        # TODO: Switch to SARIF format
+                        '-f=xml',
                         f'-o="{self.output_path}"',
                         solution_file
                         ]
