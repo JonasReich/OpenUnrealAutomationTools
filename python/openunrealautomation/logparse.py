@@ -926,11 +926,21 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     # disable if you want to iterate actual parsing.
 
     if enable_results_cache:
+
+        xml_path = logparse_patterns_xml if logparse_patterns_xml else _get_default_patterns_xml()
+        patterns_modtime = os.path.getmtime(xml_path)
+
         # deleted all but 10 latest cache files
         all_cache_files = list(glob.glob(ouu_temp_file("logpase.cache.*")))
         all_cache_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         for outdate_cache_file in all_cache_files[10:]:
             os.remove(outdate_cache_file)
+
+        # delete all cache files older than the patterns file
+        for cache_file in all_cache_files:
+            cache_modtime = os.path.getmtime(cache_file)
+            if cache_modtime < patterns_modtime:
+                os.remove(cache_file)
 
         LAST_LOGS_CACHE_RESULT_PATH = ouu_temp_file(
             "logpase.cache." + str(int(hashlib.sha256(log_path.encode('utf-8')).hexdigest(), 16)) + ".pkl")
