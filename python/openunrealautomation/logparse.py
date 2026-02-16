@@ -9,6 +9,7 @@ import hashlib
 import os.path
 import pickle
 import re
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple
@@ -107,7 +108,20 @@ class UnrealLogFileLineMatch:
     tags: Set[str]
 
     def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
-        self.line = line
+
+        # extract TeamCity timestamps
+        # #TODO this time pattern should not be hardcoded here
+        line_timestamp_match = re.search(
+            r"^\[(\d{2}:\d{2}:\d{2})\].(:\s+\[.*?\]\s*)?", line)
+        if line_timestamp_match:
+            self.time = datetime.strptime(
+                line_timestamp_match.group(1), "%H:%M:%S")
+            self.line = line.removeprefix(
+                line_timestamp_match.group(0))
+        else:
+            self.time = None
+            self.line = line
+
         self.owning_pattern = owning_pattern
         self.owning_match_list = owning_match_list
         self.owning_scope_instance = owning_scope_instance
@@ -714,6 +728,14 @@ class UnrealLogFilePatternScopeInstance:
     def get_scope_status(self) -> UnrealBuildStepStatus:
         return self.get_status(self.get_fully_qualified_scope_name())
 
+    def get_duration_seconds(self) -> float:
+        return (self.end_line_match.time - self.start_line_match.time).total_seconds() if self.start_line_match and self.end_line_match and self.start_line_match.time and self.end_line_match.time else 0.0
+
+    def get_exclusive_duration_seconds(self) -> float:
+        child_durations = sum(child.get_duration_seconds()
+                              for child in self.child_scope_instances)
+        return max(0.0, self.get_duration_seconds() - child_durations)
+
     def filter_inline(self, tags: List[str], min_severity: UnrealLogSeverity, min_matches: int = 1, unique_lines: bool = True) -> None:
         """
         Filter out match results by
@@ -755,6 +777,10 @@ class UnrealLogFilePatternScopeInstance:
         """
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
+        result["start_time"] = self.start_line_match.time.strftime(
+            "%H:%M:%S") if self.start_line_match is not None and self.start_line_match.time is not None else "00:00:00"
+        result["end_time"] = self.end_line_match.time.strftime(
+            "%H:%M:%S") if self.end_line_match is not None and self.end_line_match.time is not None else "00:00:00"
 
         lines = []
         for line in self.all_matching_lines(include_hidden=False):
@@ -766,14 +792,8 @@ class UnrealLogFilePatternScopeInstance:
             if line.owning_match_list:
                 line_json["match_group"] = line.owning_match_list.source_list.group_name
 
-            # extract TeamCity timestamps
-            # #TODO cleanup - this probably shouldn't happen at this json export stage, but we only need it here at the moment
-            line_timestamp_match = re.search(
-                r"^\[(\d{2}:\d{2}:\d{2})\]\s(:\s+\[.*?\]\s*)?", line.line)
-            if line_timestamp_match:
-                line_json["time"] = line_timestamp_match.group(1)
-                line_json["line"] = line.line.removeprefix(
-                    line_timestamp_match.group(0))
+            line_json["time"] = line.time.strftime(
+                "%H:%M:%S") if line.time else "00:00:00"
 
             def _set_line_string_variable(source, target):
                 value = line.string_vars.get(source, None)
