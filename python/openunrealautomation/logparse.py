@@ -9,7 +9,7 @@ import hashlib
 import os.path
 import pickle
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple
@@ -109,6 +109,8 @@ class UnrealLogFileLineMatch:
 
     def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
 
+        self.time = None
+
         # extract TeamCity timestamps
         # #TODO this time pattern should not be hardcoded here
         line_timestamp_match = re.search(
@@ -116,11 +118,17 @@ class UnrealLogFileLineMatch:
         if line_timestamp_match:
             self.time = datetime.strptime(
                 line_timestamp_match.group(1), "%H:%M:%S")
-            self.line = line.removeprefix(
+            line = line.removeprefix(
                 line_timestamp_match.group(0))
-        else:
-            self.time = None
-            self.line = line
+
+        ue_timestamp_match = re.search(
+            r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}.\d{2}.\d{2}:\d{3})\]", line)
+        if ue_timestamp_match:
+            if self.time is None:
+                self.time = datetime.strptime(
+                    ue_timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S:%f")
+            line = line.removeprefix(ue_timestamp_match.group(0))
+        self.line = line
 
         self.owning_pattern = owning_pattern
         self.owning_match_list = owning_match_list
@@ -173,6 +181,7 @@ class UnrealLogFilePattern:
 
     pattern: str
     is_regex: bool
+    time_spent_matching: float = 0.0
 
     string_var_names: Set[str]
     numeric_var_names: Set[str]
@@ -239,6 +248,14 @@ class UnrealLogFilePattern:
         Returns an UnrealLogFileLineMatch if a match was found. Otherwise None.
         Matches automatically alter the root pattern scope by reporting success/failure states of build steps.
         """
+        import time
+        start_time = time.process_time()
+        result = self._match_implementation(
+            line, line_nr, owning_match_list, owning_scope_instance)
+        self.time_spent_matching += time.process_time() - start_time
+        return result
+
+    def _match_implementation(self, line: str, line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None) -> Optional[UnrealLogFileLineMatch]:
         # HACK: Remove newlines at end
         line = line[0:-1]
 
@@ -248,11 +265,17 @@ class UnrealLogFilePattern:
         string_vars = {}
 
         def _add_asset_match():
-            asset_match = re.search(r"\/(Game|JsonData)[\w\/]+", line)
+            asset_match = re.search(
+                r"[\/\\](Game|JsonData|Content|Data)[\\\/][\w\/\\]+", line)
             if asset_match:
                 asset_path = asset_match.group(0)
-                if asset_path.startswith("/Game/__ExternalActors__/"):
-                    asset_path = "/Game/__ExternalActors__/..."
+                asset_path = asset_path.replace("\\", "/")
+
+                replace_roots = {"/Content/": "/Game/", "/Data/": "/JsonData/"}
+                for disk_root, unreal_root in replace_roots.items():
+                    if asset_path.startswith(disk_root):
+                        asset_path = unreal_root + \
+                            asset_path.removeprefix(disk_root)
                 string_vars["AssetPath"] = asset_path
 
         result_match = None
@@ -729,7 +752,13 @@ class UnrealLogFilePatternScopeInstance:
         return self.get_status(self.get_fully_qualified_scope_name())
 
     def get_duration_seconds(self) -> float:
-        return (self.end_line_match.time - self.start_line_match.time).total_seconds() if self.start_line_match and self.end_line_match and self.start_line_match.time and self.end_line_match.time else 0.0
+        if not (self.start_line_match and self.end_line_match and self.start_line_match.time and self.end_line_match.time):
+            return 0.0
+        end_time = self.end_line_match.time
+        if end_time < self.start_line_match.time:
+            end_time = end_time + timedelta(days=1)
+
+        return (end_time - self.start_line_match.time).total_seconds()
 
     def get_exclusive_duration_seconds(self) -> float:
         child_durations = sum(child.get_duration_seconds()
@@ -870,6 +899,35 @@ class UnrealLogFilePatternScopeInstance:
             # Automatically flag the owning scope as failure.
             self._flag_step_status(
                 full_scope_name, UnrealBuildStepStatus.FAILURE)
+
+    def print_pattern_match_timings(self) -> None:
+        pattern_times = []
+        for scope in self.scope_declaration.all_scopes():
+            for list in scope.all_lists():
+                for pattern in list.include_patterns:
+                    pattern_times.append(
+                        (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+                for pattern in list.exclude_patterns:
+                    pattern_times.append(
+                        (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+            for pattern in scope.start_patterns:
+                pattern_times.append(
+                    (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+            for pattern in scope.end_patterns:
+                pattern_times.append(
+                    (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+
+        pattern_times.sort(key=lambda x: x[2], reverse=True)
+
+        print(
+            f"Timings for pattern matches in scope {self.get_fully_qualified_scope_name()}:")
+        print(f"Total number of patterns in this scope: {len(pattern_times)}")
+        print(
+            f"Total time spent matching patterns in this scope: {sum(x[2] for x in pattern_times):.4f} seconds")
+        print(f"Top {min(10, len(pattern_times))} patterns by matching time:")
+        for pattern, is_regex, time in pattern_times[0:10]:
+            print(
+                f"Pattern '{pattern}' (regex={is_regex}) took {time:.4f} seconds to match")
 
     def _flag_step_status(self, flag: str, step_status: UnrealBuildStepStatus) -> None:
         """Reports a success or failure to the root scope."""

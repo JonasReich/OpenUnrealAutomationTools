@@ -1,3 +1,7 @@
+// TODO expose project name / Unreal link format
+const UNREAL_LINK_PROTOCOL = "tq2://";
+const UNREAL_ASSET_LINK_PREFIX = UNREAL_LINK_PROTOCOL + "content";
+const UNREAL_ACTOR_LINK_PREFIX = UNREAL_LINK_PROTOCOL + "level_actor";
 
 const SEVERITY = {
     MESSAGE: "message",
@@ -315,7 +319,16 @@ function refreshIssueTable(source_file, scope) {
                 field: 'asset_path',
                 title: 'Asset Path',
                 sortable: true,
-                width: 400
+                width: 400,
+                formatter: function (value) {
+                    if (value != undefined && value.length) {
+                        let is_external_actor = value.includes("__External");
+                        let href = is_external_actor ? `${UNREAL_ACTOR_LINK_PREFIX}${value}` : `${UNREAL_ASSET_LINK_PREFIX}${value}`;
+                        let label = is_external_actor ? "Actor Link" : value;
+                        return `<a href="${href}" onclick="$('.asset-link.visited').removeClass('visited'); $(this).addClass('visited');" class="asset-link">${label}</a>`;
+                    }
+                    return "";
+                }
             },
             {
                 field: 'occurences',
