@@ -297,6 +297,8 @@ def generate_html_report(
         replace("EMBEDDED_REPORTS", embedded_reports_str)
 
     write_text_file(html_report_path, output_html)
+    print(
+        f"Report size: {int(os.path.getsize(html_report_path) / (1024*1024) * 10) / 10.0} MB")
 
 
 def create_localization_report(env: UnrealEnvironment, localization_target: str) -> Optional[str]:

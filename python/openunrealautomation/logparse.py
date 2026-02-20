@@ -1126,10 +1126,11 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
                 # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
                 current_scope_instance._check_and_add(line, line_number)
 
-    if not current_scope_instance.scope_declaration.is_root_scope():
-        print(
-            f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
-
+        if not current_scope_instance.scope_declaration.is_root_scope():
+            print(
+                f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
+        root_scope_instance.close_scope(
+            UnrealLogFileLineMatch(lines[-1], None, len(lines) - 1))
     if enable_results_cache:
         os.makedirs(os.path.dirname(
             LAST_LOGS_CACHE_RESULT_PATH), exist_ok=True)
