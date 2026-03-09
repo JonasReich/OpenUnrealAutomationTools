@@ -9,6 +9,7 @@ import hashlib
 import os.path
 import pickle
 import re
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple
@@ -107,7 +108,28 @@ class UnrealLogFileLineMatch:
     tags: Set[str]
 
     def __init__(self, line: str, owning_pattern: Optional['UnrealLogFilePattern'], line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None, string_vars: dict = {}, numeric_vars: dict = {}) -> None:
+
+        self.time = None
+
+        # extract TeamCity timestamps
+        # #TODO this time pattern should not be hardcoded here
+        line_timestamp_match = re.search(
+            r"^\[(\d{2}:\d{2}:\d{2})\].(:\s+\[.*?\]\s*)?", line)
+        if line_timestamp_match:
+            self.time = datetime.strptime(
+                line_timestamp_match.group(1), "%H:%M:%S")
+            line = line.removeprefix(
+                line_timestamp_match.group(0))
+
+        ue_timestamp_match = re.search(
+            r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}.\d{2}.\d{2}:\d{3})\]", line)
+        if ue_timestamp_match:
+            if self.time is None:
+                self.time = datetime.strptime(
+                    ue_timestamp_match.group(1), "%Y.%m.%d-%H.%M.%S:%f")
+            line = line.removeprefix(ue_timestamp_match.group(0))
         self.line = line
+
         self.owning_pattern = owning_pattern
         self.owning_match_list = owning_match_list
         self.owning_scope_instance = owning_scope_instance
@@ -159,6 +181,7 @@ class UnrealLogFilePattern:
 
     pattern: str
     is_regex: bool
+    time_spent_matching: float = 0.0
 
     string_var_names: Set[str]
     numeric_var_names: Set[str]
@@ -225,6 +248,14 @@ class UnrealLogFilePattern:
         Returns an UnrealLogFileLineMatch if a match was found. Otherwise None.
         Matches automatically alter the root pattern scope by reporting success/failure states of build steps.
         """
+        import time
+        start_time = time.process_time()
+        result = self._match_implementation(
+            line, line_nr, owning_match_list, owning_scope_instance)
+        self.time_spent_matching += time.process_time() - start_time
+        return result
+
+    def _match_implementation(self, line: str, line_nr: int, owning_match_list: Optional['UnrealLogFilePatternList_MatchList'] = None, owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance'] = None) -> Optional[UnrealLogFileLineMatch]:
         # HACK: Remove newlines at end
         line = line[0:-1]
 
@@ -234,11 +265,17 @@ class UnrealLogFilePattern:
         string_vars = {}
 
         def _add_asset_match():
-            asset_match = re.search(r"\/(Game|JsonData)[\w\/]+", line)
+            asset_match = re.search(
+                r"[\/\\](Game|JsonData|Content|Data)[\\\/][\w\/\\]+", line)
             if asset_match:
                 asset_path = asset_match.group(0)
-                if asset_path.startswith("/Game/__ExternalActors__/"):
-                    asset_path = "/Game/__ExternalActors__/..."
+                asset_path = asset_path.replace("\\", "/")
+
+                replace_roots = {"/Content/": "/Game/", "/Data/": "/JsonData/"}
+                for disk_root, unreal_root in replace_roots.items():
+                    if asset_path.startswith(disk_root):
+                        asset_path = unreal_root + \
+                            asset_path.removeprefix(disk_root)
                 string_vars["AssetPath"] = asset_path
 
         result_match = None
@@ -714,6 +751,20 @@ class UnrealLogFilePatternScopeInstance:
     def get_scope_status(self) -> UnrealBuildStepStatus:
         return self.get_status(self.get_fully_qualified_scope_name())
 
+    def get_duration_seconds(self) -> float:
+        if not (self.start_line_match and self.end_line_match and self.start_line_match.time and self.end_line_match.time):
+            return 0.0
+        end_time = self.end_line_match.time
+        if end_time < self.start_line_match.time:
+            end_time = end_time + timedelta(days=1)
+
+        return (end_time - self.start_line_match.time).total_seconds()
+
+    def get_exclusive_duration_seconds(self) -> float:
+        child_durations = sum(child.get_duration_seconds()
+                              for child in self.child_scope_instances)
+        return max(0.0, self.get_duration_seconds() - child_durations)
+
     def filter_inline(self, tags: List[str], min_severity: UnrealLogSeverity, min_matches: int = 1, unique_lines: bool = True) -> None:
         """
         Filter out match results by
@@ -755,6 +806,10 @@ class UnrealLogFilePatternScopeInstance:
         """
         result = {}
         result["name"] = f"{self.get_scope_status().get_icon()} {self.get_scope_display_name()}"
+        result["start_time"] = self.start_line_match.time.strftime(
+            "%H:%M:%S") if self.start_line_match is not None and self.start_line_match.time is not None else "00:00:00"
+        result["end_time"] = self.end_line_match.time.strftime(
+            "%H:%M:%S") if self.end_line_match is not None and self.end_line_match.time is not None else "00:00:00"
 
         lines = []
         for line in self.all_matching_lines(include_hidden=False):
@@ -766,14 +821,8 @@ class UnrealLogFilePatternScopeInstance:
             if line.owning_match_list:
                 line_json["match_group"] = line.owning_match_list.source_list.group_name
 
-            # extract TeamCity timestamps
-            # #TODO cleanup - this probably shouldn't happen at this json export stage, but we only need it here at the moment
-            line_timestamp_match = re.search(
-                r"^\[(\d{2}:\d{2}:\d{2})\]\s(:\s+\[.*?\]\s*)?", line.line)
-            if line_timestamp_match:
-                line_json["time"] = line_timestamp_match.group(1)
-                line_json["line"] = line.line.removeprefix(
-                    line_timestamp_match.group(0))
+            line_json["time"] = line.time.strftime(
+                "%H:%M:%S") if line.time else "00:00:00"
 
             def _set_line_string_variable(source, target):
                 value = line.string_vars.get(source, None)
@@ -851,6 +900,35 @@ class UnrealLogFilePatternScopeInstance:
             self._flag_step_status(
                 full_scope_name, UnrealBuildStepStatus.FAILURE)
 
+    def print_pattern_match_timings(self) -> None:
+        pattern_times = []
+        for scope in self.scope_declaration.all_scopes():
+            for list in scope.all_lists():
+                for pattern in list.include_patterns:
+                    pattern_times.append(
+                        (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+                for pattern in list.exclude_patterns:
+                    pattern_times.append(
+                        (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+            for pattern in scope.start_patterns:
+                pattern_times.append(
+                    (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+            for pattern in scope.end_patterns:
+                pattern_times.append(
+                    (pattern.pattern, pattern.is_regex, pattern.time_spent_matching))
+
+        pattern_times.sort(key=lambda x: x[2], reverse=True)
+
+        print(
+            f"Timings for pattern matches in scope {self.get_fully_qualified_scope_name()}:")
+        print(f"Total number of patterns in this scope: {len(pattern_times)}")
+        print(
+            f"Total time spent matching patterns in this scope: {sum(x[2] for x in pattern_times):.4f} seconds")
+        print(f"Top {min(10, len(pattern_times))} patterns by matching time:")
+        for pattern, is_regex, time in pattern_times[0:10]:
+            print(
+                f"Pattern '{pattern}' (regex={is_regex}) took {time:.4f} seconds to match")
+
     def _flag_step_status(self, flag: str, step_status: UnrealBuildStepStatus) -> None:
         """Reports a success or failure to the root scope."""
         # TODO At the moment this always uses the root scope, but maybe there is some benefit in tracking these flags on sub-scopes?
@@ -926,11 +1004,21 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
     # disable if you want to iterate actual parsing.
 
     if enable_results_cache:
+
+        xml_path = logparse_patterns_xml if logparse_patterns_xml else _get_default_patterns_xml()
+        patterns_modtime = os.path.getmtime(xml_path)
+
         # deleted all but 10 latest cache files
         all_cache_files = list(glob.glob(ouu_temp_file("logpase.cache.*")))
         all_cache_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         for outdate_cache_file in all_cache_files[10:]:
             os.remove(outdate_cache_file)
+
+        # delete all cache files older than the patterns file
+        for cache_file in all_cache_files:
+            cache_modtime = os.path.getmtime(cache_file)
+            if cache_modtime < patterns_modtime:
+                os.remove(cache_file)
 
         LAST_LOGS_CACHE_RESULT_PATH = ouu_temp_file(
             "logpase.cache." + str(int(hashlib.sha256(log_path.encode('utf-8')).hexdigest(), 16)) + ".pkl")
@@ -1038,10 +1126,11 @@ def parse_log(log_path: str, logparse_patterns_xml: Optional[str], target_name: 
                 # A line can be matched by multiple scopes. Always give the starting and ending scope an opportunity to parse it.
                 current_scope_instance._check_and_add(line, line_number)
 
-    if not current_scope_instance.scope_declaration.is_root_scope():
-        print(
-            f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
-
+        if not current_scope_instance.scope_declaration.is_root_scope():
+            print(
+                f"WARNING: Child scope '{current_scope_instance.get_fully_qualified_scope_name()}' was opened but not closed. This may be a sign of an uncompleted automation step.")
+        root_scope_instance.close_scope(
+            UnrealLogFileLineMatch(lines[-1], None, len(lines) - 1))
     if enable_results_cache:
         os.makedirs(os.path.dirname(
             LAST_LOGS_CACHE_RESULT_PATH), exist_ok=True)

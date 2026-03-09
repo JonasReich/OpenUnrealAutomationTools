@@ -154,6 +154,10 @@ a.file-path {
     font-family: Consolas;
 }
 
+.issue-table tr:has(.asset-link.visited) td {
+    background-color: var(--bs-table-hover-bg);
+}
+
 .issue-table td {
     overflow: clip;
     text-overflow: ellipsis;

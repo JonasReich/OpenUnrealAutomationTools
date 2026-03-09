@@ -11,8 +11,13 @@ from openunrealautomation.util import force_rmtree
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--all", action="store_true",
+                        help="Clean all intermediate directories in the workspace")
     parser.add_argument("--clean", action="store_true")
+    parser.add_argument("--platforms", default="Linux;PS5;XSX",
+                        help="Semicolon separated list of platforms to clean (irrespective of configuration)")
+    parser.add_argument("--configs", default="Debug;DebugGame",
+                        help="Semicolon separated list of configurations to clean (irrespective of platform)")
     args = parser.parse_args()
 
     ue = UnrealEngine.create_from_parent_tree(
@@ -36,7 +41,7 @@ if __name__ == "__main__":
     if args.all:
         dirs_to_clean = all_intermediate_dirs
     else:
-        platforms_to_clean = ["Linux", "PS5"]
+        platforms_to_clean = args.platforms.split(";")
         for platform in platforms_to_clean:
             platform_dirs = set()
             for intermediate_dir in all_intermediate_dirs:
@@ -56,8 +61,7 @@ if __name__ == "__main__":
             print(
                 f"Found {len(target_dirs)} Win64 {target} intermediate directories")
 
-        # "Shipping" is dangerous to include, because most tools are compiled in shipping
-        configs_to_clean = ["Debug", "DebugGame"]
+        configs_to_clean = args.configs.split(";")
         for config in configs_to_clean:
             config_dirs = set()
             for intermediate_dir in all_intermediate_dirs:
@@ -69,6 +73,20 @@ if __name__ == "__main__":
                     dirs_to_clean.add(glob_line)
             print(
                 f"Found {len(config_dirs)} Win64 {config} intermediate directories")
+
+        # Check for intermediates that don't have source files
+        no_source_dirs = set()
+        for intermediate_dir in all_intermediate_dirs:
+            parent_dir = Path(intermediate_dir).parent
+            has_source = False
+            for glob_line in glob.glob(f"{parent_dir}/Source/**"):
+                has_source = True
+                break
+            if not has_source:
+                no_source_dirs.add(intermediate_dir)
+                dirs_to_clean.add(intermediate_dir)
+        print(
+            f"Found {len(no_source_dirs)} intermediate directories with no source files (e.g. deleted plugins)")
 
     def dir_size(root_dir):
         root_directory = Path(root_dir)

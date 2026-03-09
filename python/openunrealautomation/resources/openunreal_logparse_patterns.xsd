@@ -83,14 +83,11 @@
             <xs:element name="Start" type="PatternType" minOccurs="1" maxOccurs="unbounded" />
             <xs:element name="End" type="PatternType" minOccurs="1" maxOccurs="unbounded" />
 
-            <xs:choice>
+            <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element name="Scope" type="ScopeType" />
                 <xs:element name="Link" type="LinkType" />
                 <xs:element name="Patterns" type="PatternListType" />
             </xs:choice>
-            <xs:element name="Scope" type="ScopeType" minOccurs="0" maxOccurs="unbounded" />
-            <xs:element name="Link" type="LinkType" minOccurs="0" maxOccurs="unbounded" />
-            <xs:element name="Patterns" type="PatternListType" minOccurs="0" maxOccurs="unbounded" />
         </xs:sequence>
         <xs:attribute name="Name" type="xs:string" use="required" />
         <!-- Exit scope if a line does not match. Useful if you don't have a specific scope exit

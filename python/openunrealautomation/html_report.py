@@ -12,12 +12,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from alive_progress import alive_bar
-from openunrealautomation.automationtest import automation_test_html_report, find_last_test_report
+from openunrealautomation.automationtest import (automation_test_html_report,
+                                                 find_last_test_report)
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
-from openunrealautomation.logparse import UnrealLogFilePatternScopeInstance, _main_get_files, parse_log
+from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
+                                           _main_get_files, parse_log)
 from openunrealautomation.unrealengine import UnrealEngine
-from openunrealautomation.util import get_oua_version, ouu_temp_file, read_text_file, write_text_file
+from openunrealautomation.util import (get_oua_version, ouu_temp_file,
+                                       read_text_file, write_text_file)
 
 
 def _parsed_log_dict_to_json(parsed_log_dict: dict, output_json_path: str) -> str:
@@ -170,6 +173,34 @@ def _generate_hierarchical_cook_timing_stat_html(source_file_id, log_file_name, 
         js_data_dict=js_data_dict)
 
 
+def _generate_scopes_icicle_chart(parsed_log: UnrealLogFilePatternScopeInstance, source_file_id: str) -> str:
+    all_scopes = [scope for scope, _ in parsed_log.all_scope_instances()]
+
+    print(f"Generating scopes icicle chart for {len(all_scopes)} scopes...")
+
+    if len(all_scopes) == 0:
+        return ""
+
+    scope_labels = {}
+
+    all_labels = set()
+    for scope in all_scopes:
+        label = f"{ time.strftime('%H:%M:%S',time.gmtime(scope.get_duration_seconds()))} | {scope.get_scope_display_name(add_line_suffix=True)}"
+        while label in all_labels:
+            label += "_"
+        scope_labels[scope] = label
+        all_labels.add(label)
+
+    js_data_dict = f"labels : {[scope_labels[scope] for scope in all_scopes]},\n" +\
+        f"parents : {[scope_labels[scope.parent_scope_instance] if scope.parent_scope_instance else '' for scope in all_scopes]},\n" +\
+        f"values : {[scope.get_exclusive_duration_seconds() / 60.0 for scope in all_scopes]}"
+
+    return _generate_plotly_icicle_chart(
+        plot_id=f"scopes_icicle_chart_{source_file_id}",
+        plot_title=f"Scopes Hierarchy and Duration",
+        js_data_dict=js_data_dict)
+
+
 def generate_html_report(
     html_report_template_path: Optional[str],
     html_report_path: str,
@@ -200,6 +231,9 @@ def generate_html_report(
                                                                             Path(
                                                                                 parsed_log.source_file).name,
                                                                             log_file_str)
+
+        injected_javascript += _generate_scopes_icicle_chart(
+            parsed_log, source_file_id)
         parsed_log_dict = parsed_log.json()
 
         parsed_log_dict["source_file"] = source_file_id
@@ -263,6 +297,8 @@ def generate_html_report(
         replace("EMBEDDED_REPORTS", embedded_reports_str)
 
     write_text_file(html_report_path, output_html)
+    print(
+        f"Report size: {int(os.path.getsize(html_report_path) / (1024*1024) * 10) / 10.0} MB")
 
 
 def create_localization_report(env: UnrealEnvironment, localization_target: str) -> Optional[str]:

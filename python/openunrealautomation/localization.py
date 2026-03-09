@@ -441,17 +441,21 @@ def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict
         metadata_keys = [
             key for key in header_row if key not in non_metadata_keys]
 
-        for row in csvreader:
-            source_string = row[column_indices["SourceString"]]
-            translated_string = row[column_indices["LocalizedString"]]
-            if use_combined_key:
-                _combined_key = row[column_indices["CombinedKey"]]
-                namespace, key = _combined_key.split(":", 1)
-            else:
-                namespace = row[column_indices["Namespace"]]
-                key = row[column_indices["Key"]]
-            meta_data = {meta_key: row[column_indices[meta_key]]
-                         for meta_key in metadata_keys}
+        for row_num, row in enumerate(csvreader, 2):
+            try:
+                source_string = row[column_indices["SourceString"]]
+                translated_string = row[column_indices["LocalizedString"]]
+                if use_combined_key:
+                    _combined_key = row[column_indices["CombinedKey"]]
+                    namespace, key = _combined_key.split(":", 1)
+                else:
+                    namespace = row[column_indices["Namespace"]]
+                    key = row[column_indices["Key"]]
+                meta_data = {meta_key: row[column_indices[meta_key]]
+                             for meta_key in metadata_keys}
+            except IndexError as e:
+                raise IndexError(
+                    f"wrong number of CSV columns in {csv_path}:{row_num}")
             new_entry = CSVEntryWithMetaData(
                 namespace, key, source_string, translated_string, meta_data)
             combined_key = new_entry.combined_key()
