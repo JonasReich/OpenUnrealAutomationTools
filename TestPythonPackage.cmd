@@ -8,4 +8,6 @@ if [%1]==[] (
     set "PYTHON=%1"
 )
 
+set SOURCE_PATH=%~dp0python\openunrealautomation
+
 %PYTHON% -m pytest %SOURCE_PATH%

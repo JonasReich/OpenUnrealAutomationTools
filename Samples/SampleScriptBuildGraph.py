@@ -161,7 +161,7 @@ def main():
                          out_json_path=os.path.join(
                              report_dir, "BuildReport.json"),
                          report_title=f"{ue.environment.project_name} Build Report",
-                         background_image_uri="https://docs.unrealengine.com/5.0/Images/samples-and-tutorials/sample-games/lyra-game-sample/BannerImage.png",
+                         background_image_uri="",
                          filter_tags_and_labels={"ART": "🎨 Art", "CODE": "🤖 Code", "CONTENT": "📝 Content"})
 
 
