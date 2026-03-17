@@ -94,7 +94,7 @@ class UnrealLogFileLineMatch:
     A pattern match of a single file from a log file.
     Stores meta information from where it was parsed and variables extracted from the line.
     """
-    line: str = ""
+    line: str
     owning_pattern: Optional['UnrealLogFilePattern']
     owning_match_list: Optional['UnrealLogFilePatternList_MatchList']
     owning_scope_instance: Optional['UnrealLogFilePatternScopeInstance']
@@ -181,7 +181,7 @@ class UnrealLogFilePattern:
 
     pattern: str
     is_regex: bool
-    time_spent_matching: float = 0.0
+    time_spent_matching: float
 
     string_var_names: Set[str]
     numeric_var_names: Set[str]
@@ -202,6 +202,7 @@ class UnrealLogFilePattern:
         self.owning_list = owning_list
         self.pattern = pattern
         self.is_regex = is_regex
+        self.time_spent_matching = 0.0
         self.string_var_names = string_var_names
         self.numeric_var_names = numeric_var_names
         self.success_flag_names = success_flag_names
