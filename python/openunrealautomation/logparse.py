@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
 from xml.etree.ElementTree import Element as XmlNode
 from xml.etree.ElementTree import ElementTree as XmlTree
 
@@ -21,6 +21,13 @@ from openunrealautomation.core import OUAException
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.logfile import UnrealLogFile
 from openunrealautomation.util import ouu_temp_file, strtobool
+
+TEAMCITY_TIMESTAMP_REGEX = re.compile(
+    r"^\[(\d{2}:\d{2}:\d{2})\].(:\s+\[.*?\]\s*)?")
+UE_TIMESTAMP_REGEX = re.compile(
+    r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}.\d{2}.\d{2}:\d{3})\]")
+UE_ASSET_PATH_REGEX = re.compile(
+    r"[\/\\](Game|JsonData|Content|Data)[\\\/][\w\/\\]+")
 
 
 def _get_name_id_list(xml_node: XmlNode, attribute: str) -> Set[str]:
@@ -113,16 +120,14 @@ class UnrealLogFileLineMatch:
 
         # extract TeamCity timestamps
         # #TODO this time pattern should not be hardcoded here
-        line_timestamp_match = re.search(
-            r"^\[(\d{2}:\d{2}:\d{2})\].(:\s+\[.*?\]\s*)?", line)
+        line_timestamp_match = TEAMCITY_TIMESTAMP_REGEX.search(line)
         if line_timestamp_match:
             self.time = datetime.strptime(
                 line_timestamp_match.group(1), "%H:%M:%S")
             line = line.removeprefix(
                 line_timestamp_match.group(0))
 
-        ue_timestamp_match = re.search(
-            r"\[(\d{4}\.\d{2}\.\d{2}-\d{2}.\d{2}.\d{2}:\d{3})\]", line)
+        ue_timestamp_match = UE_TIMESTAMP_REGEX.search(line)
         if ue_timestamp_match:
             if self.time is None:
                 self.time = datetime.strptime(
@@ -179,7 +184,7 @@ class UnrealLogFilePattern:
     owning_scope: 'UnrealLogFilePatternScopeDeclaration'
     owning_list: Optional['UnrealLogFilePatternList']
 
-    pattern: str
+    pattern: Union[str, re.Pattern]
     is_regex: bool
     time_spent_matching: float
 
@@ -200,7 +205,7 @@ class UnrealLogFilePattern:
                  tags: Set[str]) -> None:
         self.owning_scope = owning_scope
         self.owning_list = owning_list
-        self.pattern = pattern
+        self.pattern = re.compile(pattern) if is_regex else pattern
         self.is_regex = is_regex
         self.time_spent_matching = 0.0
         self.string_var_names = string_var_names
@@ -266,8 +271,7 @@ class UnrealLogFilePattern:
         string_vars = {}
 
         def _add_asset_match():
-            asset_match = re.search(
-                r"[\/\\](Game|JsonData|Content|Data)[\\\/][\w\/\\]+", line)
+            asset_match = UE_ASSET_PATH_REGEX.search(line)
             if asset_match:
                 asset_path = asset_match.group(0)
                 asset_path = asset_path.replace("\\", "/")
@@ -281,7 +285,7 @@ class UnrealLogFilePattern:
 
         result_match = None
         if self.is_regex:
-            re_match = re.search(self.pattern, line)
+            re_match = self.pattern.search(line)
             if re_match is None:
                 return None
             for name in self.string_var_names:

@@ -113,12 +113,14 @@ def _generate_hierarchical_cook_timing_stat_html(source_file_id, log_file_name, 
     all_labels = set()
 
     lines = log_file_str.splitlines()
+
+    cook_log_regex = re.compile(
+        r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)")
     with alive_bar(len(lines), title="_generate_hierarchical_cook_timing_stat_html") as update_progress_bar:
         for line in lines:
             update_progress_bar()
 
-            matches = re.search(
-                r"LogCook: Display:   (?P<Indent>\s*)(?P<Label>\w+): (?P<Time>\d+\.\d+)s \((?P<Counter>\d+)\)", line)
+            matches = cook_log_regex.search(line)
             if matches:
                 indent = len(matches.group("Indent")) / 2
                 label = matches.group("Label")
