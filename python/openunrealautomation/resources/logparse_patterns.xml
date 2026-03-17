@@ -64,6 +64,9 @@
         <Patterns Name="Suppressed Messages" Severity="Message" Hidden="true">
             <!-- duplicate messages from map check message log -->
             <Include>is not valid. See the MapCheck log messages for details</Include>
+            <!-- any non-error / non-warning log lines. this allone can speed up parsing times
+            significantly. From 43 to 34 seconds for 30k log lines -->
+            <Include>: Display: </Include>
         </Patterns>
 
         <Patterns Name="Load Issues: One File Per Actor" Tags="Code" Severity="Error">

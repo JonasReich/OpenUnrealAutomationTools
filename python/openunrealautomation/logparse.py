@@ -1167,11 +1167,12 @@ def parse_logs(log_dir: str, logparse_patterns_xml: Optional[str], target_name: 
     return parsed_logs
 
 
-def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, max_lines: int = 20) -> None:
+def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, max_lines: int = 20, enable_results_cache: bool = True) -> None:
     header_divider = "\n==========================="
     print(header_divider, "\nParsing log file", path, "...", header_divider)
 
-    scope_with_matches = parse_log(path, logparse_patterns_xml, target_name)
+    scope_with_matches = parse_log(
+        path, logparse_patterns_xml, target_name, enable_results_cache=enable_results_cache)
     print("\n", scope_with_matches.format(max_lines))
 
 
@@ -1216,6 +1217,10 @@ if __name__ == "__main__":
 
     for file in args.files:
         if file is not None:
-            print_parsed_log(file, args.pattern_file, args.target)
+            print_parsed_log(file,
+                             args.pattern_file,
+                             args.target,
+                             2,
+                             enable_results_cache=False)
         else:
             print("no file for target", args.target)
