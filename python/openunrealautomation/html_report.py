@@ -9,7 +9,7 @@ import re
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from alive_progress import alive_bar
 from openunrealautomation.automationtest import (automation_test_html_report,
@@ -17,7 +17,7 @@ from openunrealautomation.automationtest import (automation_test_html_report,
 from openunrealautomation.environment import UnrealEnvironment
 from openunrealautomation.inspectcode import InspectCode
 from openunrealautomation.logparse import (UnrealLogFilePatternScopeInstance,
-                                           _main_get_files, parse_log)
+                                           _main_get_args, parse_log)
 from openunrealautomation.unrealengine import UnrealEngine
 from openunrealautomation.util import (get_oua_version, ouu_temp_file,
                                        read_text_file, write_text_file)
@@ -321,27 +321,26 @@ def create_localization_report(env: UnrealEnvironment, localization_target: str)
 
 
 if __name__ == "__main__":
-    try:
-        ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
-    except Exception:
-        ue = None
-
-    pattern, files = _main_get_files()
+    args = _main_get_args()
 
     temp_dir = os.path.join(tempfile.gettempdir(), "OpenUnrealAutomation")
     os.makedirs(temp_dir, exist_ok=True)
 
     all_logs = []
-    for target, file in files:
+    for file in args.files:
         if file is None:
             continue
         parsed_log = parse_log(
-            file, pattern, target)
+            file, args.pattern_file, args.target)
         all_logs.append(parsed_log)
 
     report_path = os.path.join(temp_dir, "test_report")
 
     embedded_reports = []
+    try:
+        ue = UnrealEngine.create_from_parent_tree(str(Path(__file__).parent))
+    except Exception:
+        ue = None
     if ue:
         try:
             inspectcode = InspectCode(ue.environment, ouu_temp_file(

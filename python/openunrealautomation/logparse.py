@@ -1171,27 +1171,35 @@ def print_parsed_log(path: str, logparse_patterns_xml: str, target_name: str, ma
     print("\n", scope_with_matches.format(max_lines))
 
 
-def _main_get_files() -> Tuple[str, List[Tuple[str, Optional[str]]]]:
+class _Args:
+    def __init__(self, pattern_file: str, target: str, files: List[str]):
+        self.pattern_file = pattern_file
+        """pattern file"""
+        self.target = target
+        """target within the pattern file"""
+        self.files = files
+        """files to be parsed"""
+
+
+def _main_get_args() -> _Args:
     argparser = argparse.ArgumentParser()
+    argparser.add_argument("--patterns", default=_get_default_patterns_xml())
+    argparser.add_argument("--target", default="BuildGraph")
     argparser.add_argument("--files")
-    argparser.add_argument("--pattern", default=_get_default_patterns_xml())
     cli_args = argparser.parse_args()
 
     files: List[Tuple[str, Optional[str]]]
     if cli_args.files is not None:
-        files_strs = cli_args.files.split(",")
-        files = []
-        for i in range(0, len(files_strs), 2):
-            files.append((files_strs[i], files_strs[i+1]))
+        files = cli_args.files.split(",")
     else:
         env = UnrealEnvironment.create_from_invoking_file_parent_tree()
         files = [
-            ("BuildGraph", UnrealLogFile.UAT.find_latest(env)),
-            ("BuildGraph", UnrealLogFile.COOK.find_latest(env)),
-            ("BuildGraph", UnrealLogFile.EDITOR.find_latest(env))
+            UnrealLogFile.UAT.find_latest(env),
+            UnrealLogFile.COOK.find_latest(env),
+            UnrealLogFile.EDITOR.find_latest(env)
         ]
 
-    return cli_args.pattern, files
+    return _Args(cli_args.patterns, cli_args.target, files)
 
 
 def _get_default_patterns_xml():
@@ -1200,10 +1208,10 @@ def _get_default_patterns_xml():
 
 
 if __name__ == "__main__":
-    pattern, files = _main_get_files()
+    args = _main_get_args()
 
-    for target, file in files:
+    for file in args.files:
         if file is not None:
-            print_parsed_log(file, _get_default_patterns_xml(), target)
+            print_parsed_log(file, args.pattern_file, args.target)
         else:
-            print("no file for target", target)
+            print("no file for target", args.target)
