@@ -217,7 +217,7 @@ class CSVEntryWithMetaData:
         return new_lines
 
     @staticmethod
-    def diff(diff_name: str, a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False) -> None:
+    def diff(diff_name: str, a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False, diff_translations: bool = True) -> None:
         print(
             f"Diffing CSVs: {a_name} ({len(a)} entries) vs {b_name} ({len(b)} entries)")
         only_in_a = set(a.keys()) - set(b.keys())
@@ -238,7 +238,7 @@ class CSVEntryWithMetaData:
         different_source_text = 0
 
         mod_source_rows = [
-            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"]]
+            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}", f"TranslatedString {a_name}", f"TranslatedString {b_name}"]]
         mod_translation_rows = [
             ["CombinedKey", f"Translation {a_name}", f"Translation {b_name}"]]
         for key in set(a.keys()).intersection(set(b.keys())):
@@ -248,8 +248,8 @@ class CSVEntryWithMetaData:
                 different_source_text = different_source_text + 1
                 if verbose:
                     mod_source_rows.append(
-                        [key, entry_a.source_string, entry_b.source_string])
-            if entry_a.translated_string != entry_b.translated_string:
+                        [key, entry_a.source_string, entry_b.source_string, str(entry_a.translated_string), str(entry_b.translated_string)])
+            if diff_translations and entry_a.translated_string != entry_b.translated_string:
                 different_translation_text = different_translation_text + 1
                 if verbose:
                     mod_translation_rows.append(
@@ -261,10 +261,12 @@ class CSVEntryWithMetaData:
         num_unchanged = len(a) - len(only_in_a) - different_source_text
         print(f"  same source:   {num_unchanged}")
 
-        mod_diff = write_csv(
-            diff_name + "_modified_translation", mod_translation_rows)
-        diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
-        print(f"  mod. transl.:  {different_translation_text}{diff_suffix}")
+        if diff_translations:
+            mod_diff = write_csv(
+                diff_name + "_modified_translation", mod_translation_rows)
+            diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
+            print(
+                f"  mod. transl.:  {different_translation_text}{diff_suffix}")
 
 
 def _get_localization_root(project_root: str) -> str:
@@ -567,6 +569,9 @@ def import_csv_translations(target_language, target,
 
     translation_csvs = list(filter(os.path.exists, translation_csvs))
 
+    CSVEntryWithMetaData.diff(diff_id, new_lines_dict, overrides,
+                              a_name="Current", b_name="Overrides", verbose=verbose_diff)
+
     if len(translation_csvs) == 0:
         last_translated_lines = new_lines_dict.copy()
         last_translated_lines.update(overrides)
@@ -584,7 +589,9 @@ def import_csv_translations(target_language, target,
 
         # diff first, then update source strings / metadata based on current values
         CSVEntryWithMetaData.diff(diff_id,
-                                  last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
+                                  last_translated_lines, new_lines_dict, a_name="Current", b_name="LastTranslated", verbose=verbose_diff,
+                                  # do not diff translations here - the source doesn't have any
+                                  diff_translations=False)
 
         # diff first, then merge overrides into the translations
         CSVEntryWithMetaData.diff(diff_id,
@@ -592,9 +599,9 @@ def import_csv_translations(target_language, target,
 
         last_translated_lines.update(overrides)
 
-        only_in_translation = last_translated_lines.keys() - new_lines_dict.keys()
+        not_in_source_keys = last_translated_lines.keys() - new_lines_dict.keys()
         if not keep_translation_if_source_missing:
-            for key in only_in_translation:
+            for key in not_in_source_keys:
                 last_translated_lines.pop(key)
 
         # do NOT track stats of lines here - the diff will be done later
@@ -627,18 +634,6 @@ def import_csv_translations(target_language, target,
             csv_suffix = ""
         print(
             f"  untranslated:  {len(untranslated)}{csv_suffix}")
-
-        if len(only_in_translation) > 0:
-            rows = [["CombinedKey", "SourceString"]]
-            for entry in only_in_translation:
-                rows.append(
-                    [entry, ""])
-            only_translated_csv = write_csv(
-                f"{diff_id}_only_translated", rows)
-            csv_suffix = f"\t -> {only_translated_csv}" if verbose_diff else ""
-        else:
-            csv_suffix = ""
-        print(f"  only transl.:  {len(only_in_translation)}{csv_suffix}")
 
     return last_translated_lines
 
