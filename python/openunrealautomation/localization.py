@@ -627,7 +627,18 @@ def import_csv_translations(target_language, target,
             csv_suffix = ""
         print(
             f"  untranslated:  {len(untranslated)}{csv_suffix}")
-        print(f"  only transl.:  {len(only_in_translation)}")
+
+        if len(only_in_translation) > 0:
+            rows = [["CombinedKey", "SourceString"]]
+            for entry in only_in_translation:
+                rows.append(
+                    [entry, ""])
+            only_translated_csv = write_csv(
+                f"{diff_id}_only_translated", rows)
+            csv_suffix = f"\t -> {only_translated_csv}" if verbose_diff else ""
+        else:
+            csv_suffix = ""
+        print(f"  only transl.:  {len(only_in_translation)}{csv_suffix}")
 
     return last_translated_lines
 
