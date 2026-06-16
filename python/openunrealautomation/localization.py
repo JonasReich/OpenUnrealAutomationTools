@@ -543,10 +543,15 @@ def import_csv_translations(target_language, target,
                             translation_override_csvs: List[str] = [],
                             keep_translation_if_source_changed: bool = True,
                             keep_translation_if_source_missing: bool = False,
+                            ignore_namespace_in_translation: bool = False,
                             verbose_diff: bool = False) -> Dict[str, CSVEntryWithMetaData]:
     """
     Reads a number of translation files into the new_lines_dict translated_strings properties.
     Also performs diffs to detect differences between translations and current strings and listing untranslated lines.
+
+    @param ignore_namespace_in_translation If true, the namespace of the translation CSVs will be ignored and only the key will be used for matching translations.
+    This is useful for cases where the namespace in the source CSVs has changed and you want to keep existing translations.
+    However, this can lead to incorrect translations if there are duplicate keys across namespaces.
     """
 
     diff_id = target + "_" + target_language
@@ -584,12 +589,28 @@ def import_csv_translations(target_language, target,
             translations_date = p4.get_last_change_date(translation_csv)
             print(
                 f"combine current sources with translations from {translations_date}")
-            last_translated_lines.update(read_translation_csv(translation_csv,
-                                                              ignore_duplicates=True))
+            new_translations = read_translation_csv(translation_csv,
+                                                    ignore_duplicates=True)
+            if ignore_namespace_in_translation:
+                new_translations_no_namespace = {}
+                assert keep_translation_if_source_missing == False, "ignore_namespace_in_translation cannot be used together with keep_translation_if_source_missing"
+                for line in new_translations.values():
+                    line.namespace = ""
+                    new_translations_no_namespace[line.key] = line
+                print("New translations with ignored namespace:",
+                      len(new_translations_no_namespace))
+                # int this mode, we use the new lines as a foundation and only update the translated string if a matching key is found in the translations, regardless of namespace
+                last_translated_lines = new_lines_dict.copy()
+                for line in last_translated_lines.values():
+                    if line.key in new_translations_no_namespace:
+                        line.translated_string = new_translations_no_namespace[
+                            line.key].translated_string
+            else:
+                last_translated_lines.update(new_translations)
 
         # diff first, then update source strings / metadata based on current values
         CSVEntryWithMetaData.diff(diff_id,
-                                  last_translated_lines, new_lines_dict, a_name="Current", b_name="LastTranslated", verbose=verbose_diff,
+                                  new_lines_dict, last_translated_lines, a_name="Current", b_name="LastTranslated", verbose=verbose_diff,
                                   # do not diff translations here - the source doesn't have any
                                   diff_translations=False)
 
