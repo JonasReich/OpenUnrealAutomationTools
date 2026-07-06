@@ -95,6 +95,23 @@ class UnrealPerforce:
         source_stream = str(match.group(1)).strip()
         return source_stream
 
+    def resolve_stream_from_changelist(self, changelist: int) -> str:
+        """
+        Determines which Perforce stream a submitted changelist belongs to by
+        inspecting the depot path of its first affected file.
+        """
+        output = self._p4_get_output(["describe", "-s", str(changelist)])
+        # "p4 describe -s" lists affected files as "... //depot/stream/path#rev action".
+        # A submitted changelist lives in a single stream, so the first file's
+        # "//depot/stream" prefix is the stream we want.
+        match = re.search(
+            r"^\.\.\. (//[^/]+/[^/]+)/.+#\d+ \w+", output, re.MULTILINE)
+        if match is None:
+            raise ValueError(
+                f"Could not determine a Perforce stream from changelist {changelist}. "
+                f"'p4 describe -s {changelist}' returned no affected files.")
+        return match.group(1)
+
     def sync(self, path, cl: Optional[int] = None, force: bool = False):
         path = self._auto_path(path)
         args = ["sync"]
@@ -105,6 +122,10 @@ class UnrealPerforce:
         else:
             args += [f"{path}@{cl}"]
         self._p4(args)
+
+    def download_file(self, depot_path: str, changelist: int, local_path: str):
+        self._p4(["print", "-o", local_path, f"{depot_path}@{changelist}"])
+        print("Downloaded", depot_path, "at CL", changelist, "to", local_path)
 
     def add(self, path, verbose: bool = True):
         path = self._auto_path(path)
