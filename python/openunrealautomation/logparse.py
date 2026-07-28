@@ -980,6 +980,10 @@ def get_log_patterns(xml_path: Optional[str], target_name: str) -> UnrealLogFile
     for target in root_node.findall("./Target"):
         if target.get("Name") == target_name:
             return UnrealLogFilePatternScopeDeclaration._from_xml_node(target, root_node, parent_scope=None, parent_target_name=target_name)
+    # Also allow templates to be used as targets
+    for template in root_node.findall("./Template"):
+        if template.get("Name") == target_name:
+            return UnrealLogFilePatternScopeDeclaration._from_xml_node(template, root_node, parent_scope=None, parent_target_name=target_name)
     raise OUAException(
         f"No definition for log file target '{target_name}' in patterns from {xml_path}")
 
