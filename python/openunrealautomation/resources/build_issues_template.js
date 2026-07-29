@@ -91,6 +91,94 @@ let next_group_id = -1;
 
 // ----- GLOBALS -----
 
+// ----- ADDRESSED ISSUE TRACKING -----
+// Lets users mark reported issues as "addressed" (already handled). The state is persisted in
+// localStorage, keyed on the issue content (not the volatile line number), so it survives both page
+// reloads and regenerations of the report. State is namespaced by report title, so different builds
+// of the same report share their addressed state, while unrelated reports stay independent.
+
+// Report title is stable across regenerations of the same report -> use it as the storage namespace.
+const REPORT_NAMESPACE = document.title;
+const ADDRESSED_STORAGE_KEY = "oua_addressed::" + REPORT_NAMESPACE;
+
+// Small, fast string hash (cyrb53). Produces a compact hex string that is safe to embed as an HTML
+// attribute value regardless of the arbitrary log text that feeds into it.
+function hashString(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
+
+// Stable identity for a single issue line. Deliberately excludes the line number (which changes on
+// every regeneration) so a triaged issue stays addressed across builds. Source file + asset path +
+// severity disambiguate identical message text coming from different logs/assets.
+function issueKey(source_file, line) {
+    return hashString([
+        source_file,
+        line.line ?? "",
+        line.asset_path ?? "",
+        line.severity ?? ""
+    ].join(""));
+}
+
+// Load the addressed set from localStorage. Degrades to an in-session-only set if storage is
+// unavailable (e.g. some browsers on file:// origins, or private mode).
+function loadAddressed() {
+    try {
+        return new Set(JSON.parse(localStorage.getItem(ADDRESSED_STORAGE_KEY) || "[]"));
+    } catch (e) {
+        console.warn("Could not read addressed-issue state from localStorage:", e);
+        return new Set();
+    }
+}
+
+let addressed = loadAddressed();
+
+function saveAddressed() {
+    try {
+        localStorage.setItem(ADDRESSED_STORAGE_KEY, JSON.stringify([...addressed]));
+    } catch (e) {
+        console.warn("Could not persist addressed-issue state to localStorage:", e);
+    }
+}
+
+function updateAddressedSummary() {
+    $("#addressed-summary").text(`${addressed.size} addressed`);
+}
+
+function toggleAddressed(key, is_checked) {
+    if (is_checked) {
+        addressed.add(key);
+    } else {
+        addressed.delete(key);
+    }
+    saveAddressed();
+    updateAddressedSummary();
+    // NOTE: intentionally does NOT re-render the tables. A full rebuild resets the tree-grid group
+    // collapse state, which would collapse the group the user just expanded to reach this line. Row
+    // styling is updated in place by the change handler instead.
+}
+
+function resetAddressed() {
+    addressed.clear();
+    try {
+        localStorage.removeItem(ADDRESSED_STORAGE_KEY);
+    } catch (e) {
+        console.warn("Could not clear addressed-issue state from localStorage:", e);
+    }
+    updateAddressedSummary();
+    // Update the DOM in place rather than re-rendering (see toggleAddressed note).
+    $(".addressed-check").prop("checked", false);
+    $("tr.addressed").removeClass("addressed");
+}
+// ----- ADDRESSED ISSUE TRACKING -----
+
 const zeroPad = (num, places) => String(num).padStart(places, '0');
 function getTagLabel(tag) {
     return tags_and_labels[tag] ?? tag;
@@ -263,6 +351,19 @@ function refreshIssueTable(source_file, scope) {
         // showColumns: true,
         columns: [
             {
+                field: 'addressed',
+                title: '',
+                width: 28,
+                formatter: function (value, row) {
+                    // No checkbox on synthetic group-header rows.
+                    if (row.is_group) {
+                        return "";
+                    }
+                    const key = issueKey(source_file, row);
+                    return `<input type="checkbox" class="addressed-check" title="Mark issue as addressed" data-key="${key}" ${addressed.has(key) ? "checked" : ""}>`;
+                }
+            },
+            {
                 field: 'group_expander',
                 title: '',
                 width: 30,
@@ -345,7 +446,8 @@ function refreshIssueTable(source_file, scope) {
             const row_header_class = (row.is_group) ? " issue-row-group" : " issue-row-normal";
             // auto collapse non header rows
             const row_collapse_class = do_not_group || row.is_group ? "" : " collapse";
-            return { classes: row.severity + row_header_class + row_collapse_class };
+            const row_addressed_class = (!row.is_group && addressed.has(issueKey(source_file, row))) ? " addressed" : "";
+            return { classes: row.severity + row_header_class + row_collapse_class + row_addressed_class };
         },
 
         // parentIdField: 'pid',
@@ -440,6 +542,21 @@ $(show_all_button).click(function () {
     resetFilter();
 })
 $("#filter-btns").append(show_all_button);
+
+// ----- ADDRESSED ISSUE TRACKING: UI WIRING -----
+// Toggle the addressed checkbox for an issue. Delegated so it survives table re-renders (grouping
+// changes / filter changes). Styling is updated on this single row in place to avoid a full rebuild.
+$(document).on("change", ".addressed-check", function () {
+    toggleAddressed($(this).data("key"), this.checked);
+    $(this).closest("tr").toggleClass("addressed", this.checked);
+});
+
+// Reset control + summary count.
+$("#reset-addressed-btn").click(function () {
+    resetAddressed();
+});
+updateAddressedSummary();
+// ----- ADDRESSED ISSUE TRACKING: UI WIRING -----
 
 
 function _filterButtonToggle(value, filter_prop, css_class_prefix, data_prop) {

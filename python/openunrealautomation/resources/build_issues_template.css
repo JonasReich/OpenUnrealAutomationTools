@@ -188,3 +188,17 @@ a.file-path {
 .source-file-summary {
     float: left;
 }
+
+/* Issues the user has marked as addressed: de-emphasized but still visible. */
+tr.addressed td {
+    opacity: 0.45;
+}
+
+tr.addressed td.line-text {
+    text-decoration: line-through;
+}
+
+/* Keep the addressed checkbox fully legible even on a dimmed row. */
+tr.addressed td:has(.addressed-check) {
+    opacity: 1;
+}
