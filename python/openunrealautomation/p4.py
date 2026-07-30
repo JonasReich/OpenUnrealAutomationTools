@@ -244,14 +244,20 @@ class UnrealPerforce:
     def _p4(self, args):
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
+        # stdin=DEVNULL: when this process is launched from a GUI parent (e.g. the Unreal
+        # editor via FPlatformProcess::ExecProcess), it inherits an invalid stdin handle.
+        # Without an explicit stdin, subprocess tries to duplicate that handle and fails
+        # with 'WinError 6: The handle is invalid'.
         subprocess.run(_args, encoding="unicode_escape",
-                       check=self.check, cwd=cwd)
+                       check=self.check, cwd=cwd, stdin=subprocess.DEVNULL)
 
     def _p4_get_output(self, args) -> str:
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
         try:
-            return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, bufsize=1, shell=True, universal_newlines=True)
+            # stdin=DEVNULL: avoid inheriting an invalid stdin handle when launched from a
+            # GUI parent process. See note in _p4() above.
+            return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, bufsize=1, shell=True, universal_newlines=True)
         except subprocess.CalledProcessError as e:
             print(
                 f"Encountered non-zero exit code for Perforce command 'p4 {' '.join(_args)}': {e.returncode}. Dumping output below...")
