@@ -618,6 +618,18 @@ def import_csv_translations(target_language, target,
         CSVEntryWithMetaData.diff(diff_id,
                                   last_translated_lines, overrides, a_name="LastTranslated", b_name="Overrides", verbose=verbose_diff)
 
+        # also count identical translations between last_translated_lines and overrides
+        # to spot overrides that are no longer needed
+        identical_overrides = 0
+        for override_key, override_value in overrides.items():
+            if override_key in last_translated_lines:
+                last_translated_value = last_translated_lines[override_key]
+                if last_translated_value.translated_string == override_value.translated_string:
+                    identical_overrides += 1
+
+        print(
+            f"  identical OR:  {identical_overrides}")
+
         last_translated_lines.update(overrides)
 
         not_in_source_keys = last_translated_lines.keys() - new_lines_dict.keys()

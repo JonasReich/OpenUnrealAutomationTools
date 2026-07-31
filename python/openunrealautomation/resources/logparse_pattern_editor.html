@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Logparse Pattern Editor</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1d2330; --muted:#5b6472; --line:#dde1e8;
+    --accent:#3453d6; --accent-ink:#fff; --chip:#eef1f6; --shadow:0 1px 3px rgba(20,30,60,.08),0 6px 20px rgba(20,30,60,.06);
+    --code:#f2f3f7;
+    --sev-Message:#5b6472; --sev-Warning:#b7791f; --sev-Severe_Warning:#d1660f; --sev-Error:#c0392b; --sev-Fatal:#7d1f8f;
+    --ok:#1f9d55; --danger:#c0392b; --warn-bg:#fff7e6; --warn-ink:#8a5a00; --warn-line:#f0d089;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12151c; --panel:#1a1f2b; --ink:#e7eaf0; --muted:#9aa4b4; --line:#2a3140;
+      --accent:#5b78f0; --chip:#232a38; --code:#0f131b; --shadow:0 1px 3px rgba(0,0,0,.4);
+      --warn-bg:#2a2410; --warn-ink:#e8c877; --warn-line:#5c4d1f;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  code,.mono{font-family:"Cascadia Code",Consolas,"SF Mono",Menlo,monospace}
+
+  header.top{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+  .bar{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap}
+  .bar h1{font-size:16px;margin:0 12px 0 0;display:flex;align-items:center;gap:8px}
+  .bar h1 .dot{width:10px;height:10px;border-radius:50%;background:var(--accent)}
+  .spacer{flex:1}
+  .fname{color:var(--muted);font-size:13px}
+  .fname .dirty{color:var(--danger);font-weight:600;margin-left:6px}
+
+  button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer;transition:.12s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  button.primary:hover{filter:brightness(1.06)}
+  button.ghost{background:transparent}
+  button.danger{color:var(--danger);border-color:transparent}
+  button.danger:hover{border-color:var(--danger)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.iconbtn{padding:4px 8px;font-size:13px;line-height:1}
+
+  .searchwrap{display:flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+  .searchwrap input{border:0;background:transparent;color:var(--ink);font:inherit;outline:none;width:220px}
+  label.toggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer}
+
+  main{max-width:1100px;margin:0 auto;padding:18px 16px 80px}
+
+  .empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:48px;text-align:center;box-shadow:var(--shadow)}
+  .empty h2{margin:0 0 8px}
+  .empty p{color:var(--muted);max-width:640px;margin:8px auto}
+
+  details.help{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:16px;box-shadow:var(--shadow)}
+  details.help>summary{cursor:pointer;padding:12px 16px;font-weight:600;list-style:none}
+  details.help>summary::-webkit-details-marker{display:none}
+  details.help>summary::before{content:"▸ ";color:var(--muted)}
+  details.help[open]>summary::before{content:"▾ "}
+  .helpbody{padding:0 18px 16px;color:var(--muted)}
+  .helpbody dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:8px 0}
+  .helpbody dt{font-weight:600;color:var(--ink)}
+
+  .section-label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:20px 4px 8px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+  .card>.card-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+  .card>.card-head .kind{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .card>.card-head .name{font-weight:700;font-size:15px}
+  .card>.card-head .count{color:var(--muted);font-size:12px}
+  .card-body{padding:10px 14px 14px}
+  .collapsed .card-body{display:none}
+  .caret{color:var(--muted);width:16px;display:inline-block;transition:transform .12s}
+  .collapsed .caret{transform:rotate(-90deg)}
+
+  .scope{border-left:3px solid var(--line);padding:8px 0 4px 14px;margin:10px 0}
+  .scope>.scope-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .scope>.scope-head .stitle{font-weight:600}
+  .ro-badge{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  .startend{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px}
+  .startend .se{font-size:12px;background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+  .startend .se b{color:var(--muted);font-weight:600;margin-right:4px}
+
+  .link-row{display:flex;align-items:center;gap:8px;background:var(--chip);border:1px dashed var(--line);border-radius:8px;padding:6px 10px;margin:8px 0;font-size:13px}
+  .link-row a{color:var(--accent);cursor:pointer;font-weight:600;text-decoration:none}
+  .link-row a:hover{text-decoration:underline}
+
+  .group{border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+  .group>.g-head{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--chip);flex-wrap:wrap}
+  .group>.g-head .g-name{font-weight:600}
+  .group>.g-head .g-actions{margin-left:auto;display:flex;gap:4px}
+  .group.hiddengroup{opacity:.62}
+
+  .sev{font-size:11px;font-weight:700;letter-spacing:.03em;color:#fff;border-radius:5px;padding:2px 7px}
+  .sev.Message{background:var(--sev-Message)} .sev.Warning{background:var(--sev-Warning)}
+  .sev.Severe_Warning{background:var(--sev-Severe_Warning)} .sev.Error{background:var(--sev-Error)} .sev.Fatal{background:var(--sev-Fatal)}
+  .tag{font-size:11px;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:1px 8px}
+  .badge{font-size:10px;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
+  .badge.hid{background:var(--chip)}
+  .badge.flag{color:var(--ok);border-color:var(--ok)}
+  .badge.fail{color:var(--danger);border-color:var(--danger)}
+
+  .rules{padding:4px 10px 8px}
+  .rule{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-top:1px dashed var(--line)}
+  .rule:first-child{border-top:0}
+  .rule .style{font-size:10px;font-weight:700;text-transform:uppercase;border-radius:5px;padding:2px 6px;margin-top:2px;white-space:nowrap}
+  .rule .style.Regex{background:#e6ecff;color:#2740b8}
+  .rule .style.Literal{background:#e9efe9;color:#2c6b3f}
+  @media (prefers-color-scheme: dark){ .rule .style.Regex{background:#26304f;color:#aebdff} .rule .style.Literal{background:#20301f;color:#a6d6a6} }
+  .rule.exclude .style{outline:2px solid var(--danger);outline-offset:1px}
+  .rule .ptext{flex:1;background:var(--code);border-radius:6px;padding:5px 8px;word-break:break-all;white-space:pre-wrap}
+  .rule .rvars{font-size:11px;color:var(--muted);margin-top:3px}
+  .rule .rvars b{color:var(--ink);font-weight:600}
+  .rule .r-actions{display:flex;gap:2px}
+  .excl-tag{font-size:10px;color:var(--danger);font-weight:700;text-transform:uppercase;margin-top:3px}
+
+  .warnflag{display:inline-flex;align-items:center;gap:5px;background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line);border-radius:6px;padding:1px 7px;font-size:11px;margin-top:4px}
+
+  .addrow{margin-top:8px}
+  .muted{color:var(--muted)}
+  .hide{display:none !important}
+
+  /* modal */
+  .modal-back{position:fixed;inset:0;background:rgba(10,15,25,.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50;overflow:auto}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);width:640px;max-width:100%}
+  .modal-head{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .modal-head h3{margin:0;font-size:16px}
+  .modal-body{padding:16px 18px;max-height:70vh;overflow:auto}
+  .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+  .field{margin-bottom:14px}
+  .field>label{display:block;font-weight:600;margin-bottom:4px}
+  .field .hint{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+  .field input[type=text],.field textarea,.field select{width:100%;font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .field textarea{font-family:"Cascadia Code",Consolas,monospace;min-height:70px;resize:vertical}
+  .row2{display:flex;gap:12px}.row2>*{flex:1}
+  .checkline{display:flex;align-items:center;gap:8px}
+  .vargrid{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--chip)}
+  .varrow{display:flex;align-items:center;gap:8px;padding:4px 0}
+  .varrow .vname{font-family:monospace;font-weight:600;min-width:120px}
+  .varrow .missing{color:var(--danger);font-size:11px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg label{padding:4px 10px;cursor:pointer;font-size:12px;background:var(--panel)}
+  .seg input{display:none}
+  .seg input:checked+span{background:var(--accent);color:#fff;display:inline-block;margin:-4px -10px;padding:4px 10px}
+  .tester{border:1px dashed var(--line);border-radius:8px;padding:10px;margin-top:8px}
+  .tester .res{margin-top:6px;font-size:12px}
+  .tester .res .hit{background:#fff2ac;color:#000;border-radius:3px;padding:0 2px}
+  .err{color:var(--danger);font-size:12px;margin-top:4px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;box-shadow:var(--shadow);z-index:80;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <h1><span class="dot"></span>Logparse Pattern Editor</h1>
+    <button class="primary" id="btnOpen">Open XML…</button>
+    <button id="btnSave" disabled>Save</button>
+    <button id="btnDownload" disabled title="Save a copy to your Downloads folder">Save a copy…</button>
+    <div class="searchwrap hide" id="searchWrap">
+      <span class="muted">🔍</span><input id="search" placeholder="Filter rules, groups, severity, tags…" />
+    </div>
+    <label class="toggle hide" id="hiddenToggleWrap"><input type="checkbox" id="showHidden" /> Show hidden groups</label>
+    <div class="spacer"></div>
+    <button class="ghost hide" id="btnExpand">Expand all</button>
+    <button class="ghost hide" id="btnCollapse">Collapse all</button>
+    <span class="fname" id="fname"></span>
+  </div>
+</header>
+
+<main>
+  <details class="help">
+    <summary>What is this? &nbsp;<span class="muted" style="font-weight:400">Read me — plain-English guide to the pieces</span></summary>
+    <div class="helpbody">
+      <p>This file tells the build-log analyzer which lines in a build log are interesting, and how to label them.
+      You mostly care about <b>Rule groups</b> and the <b>rules</b> inside them. The structural pieces
+      (Templates, Targets, Scopes, Links) are shown read-only so you can see the layout without accidentally breaking it.</p>
+      <dl>
+        <dt>Rule group</dt><dd>A named bucket of one or more match rules that all share a severity and category (e.g. "Material Errors").</dd>
+        <dt>Rule (Include / Exclude)</dt><dd><b>Include</b> = a line matching this is captured. <b>Exclude</b> = a line matching this is thrown out even if an Include matched. The first Include that matches a line wins.</dd>
+        <dt>Match style</dt><dd><b>Plain text</b> (Literal): the line just has to contain this text (case-insensitive). <b>Regex</b>: a regular-expression pattern for advanced matching.</dd>
+        <dt>Severity</dt><dd>How the match is reported: Message · Warning · Severe&nbsp;Warning · Error · Fatal.</dd>
+        <dt>Tags</dt><dd>Categories like Code / Content / Art, used to filter the report.</dd>
+        <dt>Hidden</dt><dd>The group still matches lines but they are not shown in the report (used for background bookkeeping).</dd>
+        <dt>Variables</dt><dd>For Regex rules only: named pieces you capture out of the line (e.g. a file name or a number). The tool detects them for you.</dd>
+        <dt>Success / Failure flags</dt><dd>Marks a build step as passed/failed when the line matches. The common value is <code>auto</code>.</dd>
+        <dt>Scope</dt><dd>A region of the log between a Start line and an End line. Rules inside a scope only apply within that region. (Read-only here.)</dd>
+        <dt>Link</dt><dd>Reuses all the rules from another Template/Target by name, to avoid duplication. (Read-only here.)</dd>
+      </dl>
+      <p class="muted" id="fsaNote"></p>
+    </div>
+  </details>
+
+  <div id="empty" class="empty">
+    <h2>Open a pattern file to begin</h2>
+    <p>Click <b>Open XML…</b> and choose <code>logparse_patterns.xml</code> (it lives next to this tool).
+       In Chrome or Edge the tool can save your changes straight back to the same file. In other browsers it saves a copy you then replace the original with.</p>
+    <p><button class="primary" id="btnOpen2">Open XML…</button></p>
+  </div>
+
+  <div id="tree"></div>
+</main>
+
+<input type="file" id="fileInput" accept=".xml,text/xml,application/xml" class="hide" />
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Constants derived from openunreal_logparse_patterns.xsd + logparse.py
+// ---------------------------------------------------------------------------
+const SEVERITIES = ["Message","Warning","Severe_Warning","Error","Fatal"];
+const STYLES = ["Literal","Regex"];
+const LIST_RE = /^[\w_]+(;[\w_]+)*$/; // TagOrVarListType
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let xmlDoc = null;
+let fileHandle = null;      // FileSystemFileHandle when opened via File System Access API
+let fileName = "";
+let baselineText = "";      // serialized text at last save/open, for dirty tracking
+let dirty = false;
+
+const $ = (id)=>document.getElementById(id);
+const treeEl = $("tree"), emptyEl = $("empty");
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+function el(tag, attrs, ...children){
+  const n = document.createElement(tag);
+  if(attrs) for(const k in attrs){
+    if(k==="class") n.className=attrs[k];
+    else if(k==="text") n.textContent=attrs[k];
+    else if(k.startsWith("on")) n.addEventListener(k.slice(2), attrs[k]);
+    else if(attrs[k]!=null) n.setAttribute(k, attrs[k]);
+  }
+  for(const c of children){ if(c==null) continue; n.append(c.nodeType?c:document.createTextNode(String(c))); }
+  return n;
+}
+function parseList(s){ return (s||"").split(";").map(x=>x.trim()).filter(Boolean); }
+function normList(s){ // accept comma or semicolon, normalise to semicolon list
+  return (s||"").split(/[;,]/).map(x=>x.trim()).filter(Boolean).join(";");
+}
+function strToBool(s){ if(s==null) return false; s=String(s).trim().toLowerCase(); return s==="true"||s==="1"||s==="yes"; }
+// Convert Python-style named groups to JS syntax so we can test in the browser.
+function toJsRegex(src){ return src.replace(/\(\?P</g,"(?<").replace(/\(\?P=(\w+)\)/g,"\\k<$1>"); }
+function detectGroups(src){
+  const set=[]; const re=/\(\?P?<([A-Za-z_]\w*)>/g; let m;
+  while((m=re.exec(src))!==null){ if(!set.includes(m[1])) set.push(m[1]); }
+  return set;
+}
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1800); }
+function setDirty(v){
+  dirty=v;
+  $("btnSave").disabled = !xmlDoc;
+  const d=$("fname").querySelector(".dirty");
+  if(d) d.classList.toggle("hide", !v);
+}
+
+// ---------------------------------------------------------------------------
+// Load
+// ---------------------------------------------------------------------------
+async function openFile(){
+  if(window.showOpenFilePicker){
+    try{
+      const [h] = await window.showOpenFilePicker({
+        types:[{description:"XML files", accept:{"application/xml":[".xml"],"text/xml":[".xml"]}}]
+      });
+      fileHandle = h;
+      const f = await h.getFile();
+      const t = await f.text();
+      loadText(t, f.name);
+      return;
+    }catch(e){
+      if(e && e.name==="AbortError") return;
+      // Fall through to <input> fallback (e.g. opened via file:// where the API is blocked).
+    }
+  }
+  fileHandle = null;
+  $("fileInput").click();
+}
+$("fileInput").addEventListener("change", async (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  fileHandle = null;
+  const t = await f.text();
+  loadText(t, f.name);
+  e.target.value = "";
+});
+
+function loadText(text, name){
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  const perr = doc.querySelector("parsererror");
+  if(perr){ alert("This does not look like valid XML:\n\n"+perr.textContent.slice(0,400)); return; }
+  if(!doc.querySelector("Root")){ alert("No <Root> element found. Is this a logparse patterns file?"); return; }
+  xmlDoc = doc; fileName = name || "logparse_patterns.xml";
+  baselineText = serialize(doc);
+  emptyEl.classList.add("hide");
+  ["searchWrap","hiddenToggleWrap","btnExpand","btnCollapse"].forEach(id=>$(id).classList.remove("hide"));
+  $("btnDownload").disabled = false;
+  const dirtySpan = el("span",{class:"dirty hide",text:"● unsaved"});
+  $("fname").textContent = fileName + (fileHandle?"":"  (copy-save mode)") + "  ";
+  $("fname").append(dirtySpan);
+  setDirty(false);
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Serialize (pretty printer that preserves comments, order, blank-line grouping)
+// ---------------------------------------------------------------------------
+const IND = "    ";
+function escText(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function isSignificant(n){
+  return n.nodeType===Node.ELEMENT_NODE || n.nodeType===Node.COMMENT_NODE ||
+         (n.nodeType===Node.TEXT_NODE && n.textContent.trim()!=="");
+}
+function serialize(doc){
+  let out = '<?xml version="1.0" encoding="utf-8"?>\n';
+  out += serializeChildren(doc, 0);
+  return out.replace(/\n{3,}/g,"\n\n").replace(/\s*$/,"\n");
+}
+function serializeChildren(parent, depth){
+  let res=""; let pendingBlank=false; let started=false;
+  for(const child of parent.childNodes){
+    if(child.nodeType===Node.TEXT_NODE && child.textContent.trim()===""){
+      if(started && (child.textContent.match(/\n/g)||[]).length>=2) pendingBlank=true;
+      continue;
+    }
+    if(child.nodeType===Node.PROCESSING_INSTRUCTION_NODE) continue;
+    if(pendingBlank){ res+="\n"; pendingBlank=false; }
+    res += serializeNode(child, depth);
+    started=true;
+  }
+  return res;
+}
+function serializeNode(node, depth){
+  const ind = IND.repeat(depth);
+  if(node.nodeType===Node.COMMENT_NODE) return ind + "<!--" + node.data + "-->\n";
+  if(node.nodeType===Node.TEXT_NODE) return ind + escText(node.textContent.trim()) + "\n";
+  if(node.nodeType!==Node.ELEMENT_NODE) return "";
+  const tag = node.tagName;
+  let attrs = "";
+  for(const a of node.attributes) attrs += " " + a.name + '="' + escAttr(a.value) + '"';
+  const kids = [...node.childNodes].filter(isSignificant);
+  if(kids.length===0){
+    if(tag==="Link") return ind + "<" + tag + attrs + " />\n";
+    return ind + "<" + tag + attrs + "></" + tag + ">\n";
+  }
+  if(kids.length===1 && kids[0].nodeType===Node.TEXT_NODE){
+    return ind + "<" + tag + attrs + ">" + escText(kids[0].textContent) + "</" + tag + ">\n";
+  }
+  let res = ind + "<" + tag + attrs + ">\n";
+  res += serializeChildren(node, depth+1);
+  res += ind + "</" + tag + ">\n";
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// Save
+// ---------------------------------------------------------------------------
+async function saveInPlace(){
+  if(!xmlDoc) return;
+  const text = serialize(xmlDoc);
+  if(fileHandle){
+    try{
+      const w = await fileHandle.createWritable();
+      await w.write(text); await w.close();
+      baselineText = text; setDirty(false); toast("Saved to "+fileName);
+    }catch(e){ alert("Could not save in place:\n"+e.message+"\n\nUse “Save a copy…” instead."); }
+  }else{
+    downloadCopy();
+  }
+}
+function downloadCopy(){
+  if(!xmlDoc) return;
+  const text = serialize(xmlDoc);
+  const blob = new Blob([text], {type:"application/xml"});
+  const a = el("a",{href:URL.createObjectURL(blob), download: fileName||"logparse_patterns.xml"});
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  baselineText = text; setDirty(false);
+  toast("Saved a copy — replace the original with it");
+}
+
+// ---------------------------------------------------------------------------
+// Rendering (view over the live DOM)
+// ---------------------------------------------------------------------------
+function nodeId(kind, name){ return "node-"+kind+"-"+String(name).replace(/[^\w]+/g,"_"); }
+
+function render(){
+  treeEl.innerHTML="";
+  const root = xmlDoc.querySelector("Root");
+  const templates = [...root.children].filter(c=>c.tagName==="Template");
+  const targets = [...root.children].filter(c=>c.tagName==="Target");
+
+  if(targets.length){
+    treeEl.append(el("div",{class:"section-label"},"Targets — top-level log types the analyzer runs"));
+    targets.forEach(t=>treeEl.append(renderTopCard(t,"Target")));
+  }
+  if(templates.length){
+    treeEl.append(el("div",{class:"section-label"},"Templates — reusable rule sets (referenced by Links)"));
+    templates.forEach(t=>treeEl.append(renderTopCard(t,"Template")));
+  }
+  applyFilter();
+}
+
+function renderTopCard(node, kind){
+  const name = node.getAttribute("Name")||"(unnamed)";
+  const card = el("div",{class:"card", id:nodeId(kind,name)});
+  const body = el("div",{class:"card-body"});
+  const head = el("div",{class:"card-head", onclick:()=>card.classList.toggle("collapsed")},
+    el("span",{class:"caret"},"▾"),
+    el("span",{class:"kind"},kind),
+    el("span",{class:"name"},name),
+    el("span",{class:"count"}, groupCountLabel(node))
+  );
+  card.append(head, body);
+  body.append(renderContainerChildren(node, kind));
+  return card;
+}
+function groupCountLabel(node){
+  const g = node.querySelectorAll("Patterns").length;
+  const s = node.querySelectorAll("Scope").length;
+  const parts=[]; if(g) parts.push(g+" rule group"+(g>1?"s":"")); if(s) parts.push(s+" scope"+(s>1?"s":""));
+  return parts.join(" · ");
+}
+
+// Render the ordered children of a Template/Target/Scope container.
+function renderContainerChildren(container, kind){
+  const frag = document.createDocumentFragment();
+  for(const child of container.children){
+    if(child.tagName==="Patterns") frag.append(renderGroup(child));
+    else if(child.tagName==="Scope") frag.append(renderScope(child));
+    else if(child.tagName==="Link") frag.append(renderLink(child));
+  }
+  frag.append(el("div",{class:"addrow"},
+    el("button",{class:"iconbtn", onclick:()=>addGroup(container)}, "＋ Add rule group")
+  ));
+  return frag;
+}
+
+function renderScope(scope){
+  const wrap = el("div",{class:"scope"});
+  const head = el("div",{class:"scope-head"},
+    el("span",{class:"ro-badge"},"Scope"),
+    el("span",{class:"stitle"}, scope.getAttribute("Name")||"(unnamed scope)")
+  );
+  if(strToBool(scope.getAttribute("RequireAllLinesMatch")))
+    head.append(el("span",{class:"badge"},"RequireAllLinesMatch"));
+  if(scope.getAttribute("DisplayNameVariable"))
+    head.append(el("span",{class:"badge"},"name→"+scope.getAttribute("DisplayNameVariable")));
+  wrap.append(head);
+
+  const se = el("div",{class:"startend"});
+  scope.querySelectorAll(":scope>Start").forEach(s=>se.append(el("span",{class:"se"}, el("b",{},"Start"), styleShort(s)+" "+ (s.textContent||"(empty)"))));
+  scope.querySelectorAll(":scope>End").forEach(s=>se.append(el("span",{class:"se"}, el("b",{},"End"), styleShort(s)+" "+ (s.textContent||"(empty)"))));
+  wrap.append(se);
+
+  wrap.append(renderContainerChildren(scope, "Scope"));
+  return wrap;
+}
+function styleShort(ruleEl){
+  const st = ruleEl.getAttribute("Style");
+  return "["+(st||"Regex*")+"]";
+}
+
+function renderLink(link){
+  const target = link.getAttribute("Template")||"?";
+  const row = el("div",{class:"link-row"},
+    el("span",{class:"ro-badge"},"Link"),
+    "reuses all rules from ",
+    el("a",{onclick:()=>jumpTo(target)}, target)
+  );
+  return row;
+}
+function jumpTo(name){
+  let node = document.getElementById(nodeId("Template",name)) || document.getElementById(nodeId("Target",name));
+  if(node){ node.classList.remove("collapsed"); node.scrollIntoView({behavior:"smooth",block:"start"}); node.style.outline="2px solid var(--accent)"; setTimeout(()=>node.style.outline="",1200); }
+}
+
+function renderGroup(patterns){
+  const sev = patterns.getAttribute("Severity")||"Message";
+  const hidden = strToBool(patterns.getAttribute("Hidden"));
+  const g = el("div",{class:"group"+(hidden?" hiddengroup":"")});
+  g.dataset.hidden = hidden ? "1":"0";
+  const head = el("div",{class:"g-head"},
+    el("span",{class:"g-name"}, patterns.getAttribute("Name")||"(unnamed)"),
+    el("span",{class:"sev "+sev}, sev.replace("_"," "))
+  );
+  parseList(patterns.getAttribute("Tags")).forEach(t=>head.append(el("span",{class:"tag"},t)));
+  if(hidden) head.append(el("span",{class:"badge hid"},"Hidden"));
+  parseList(patterns.getAttribute("SuccessFlags")).forEach(f=>head.append(el("span",{class:"badge flag"},"✓ "+f)));
+  parseList(patterns.getAttribute("FailureFlags")).forEach(f=>head.append(el("span",{class:"badge fail"},"✕ "+f)));
+
+  const actions = el("div",{class:"g-actions"},
+    el("button",{class:"iconbtn", title:"Edit group", onclick:()=>editGroup(patterns)},"✎"),
+    el("button",{class:"iconbtn danger", title:"Delete group", onclick:()=>deleteGroup(patterns)},"🗑")
+  );
+  head.append(actions);
+  g.append(head);
+
+  const rules = el("div",{class:"rules"});
+  [...patterns.children].filter(c=>c.tagName==="Include"||c.tagName==="Exclude").forEach(r=>rules.append(renderRule(r, patterns)));
+  g.append(rules);
+  g.append(el("div",{class:"addrow", style:"padding:0 10px 10px"},
+    el("button",{class:"iconbtn", onclick:()=>addRule(patterns,"Include")},"＋ Add rule")
+  ));
+  return g;
+}
+
+function renderRule(rule, patterns){
+  const isExcl = rule.tagName==="Exclude";
+  const styleAttr = rule.getAttribute("Style");
+  const styleEff = styleAttr || "Regex"; // parser default when omitted
+  const row = el("div",{class:"rule"+(isExcl?" exclude":"")});
+  row.append(el("span",{class:"style "+styleEff, title:isExcl?"Exclude rule":"Include rule"}, styleAttr?styleEff:"Regex"));
+  const main = el("div",{style:"flex:1"});
+  main.append(el("div",{class:"ptext mono"}, rule.textContent!==""?rule.textContent:"(empty)"));
+
+  const sv = parseList(rule.getAttribute("StringVariables"));
+  const nv = parseList(rule.getAttribute("NumericVariables"));
+  if(sv.length||nv.length){
+    const v = el("div",{class:"rvars"});
+    if(sv.length) v.append(el("b",{},"text: "), sv.join(", ")+"  ");
+    if(nv.length) v.append(el("b",{},"number: "), nv.join(", "));
+    main.append(v);
+  }
+  parseList(rule.getAttribute("Tags")).forEach(()=>{});
+  const extra=[];
+  parseList(rule.getAttribute("Tags")).forEach(t=>extra.push("tag:"+t));
+  parseList(rule.getAttribute("SuccessFlags")).forEach(f=>extra.push("✓"+f));
+  parseList(rule.getAttribute("FailureFlags")).forEach(f=>extra.push("✕"+f));
+  if(extra.length) main.append(el("div",{class:"rvars"}, extra.join("   ")));
+  if(isExcl) main.append(el("div",{class:"excl-tag"},"Exclude — drops matching lines"));
+
+  // Warnings
+  if(!styleAttr) main.append(el("div",{class:"warnflag"},"⚠ No Style set — the parser will treat this as Regex. Edit to make it explicit."));
+  if(styleEff==="Regex"){
+    const groups = detectGroups(rule.textContent||"");
+    const declared = new Set([...sv,...nv]);
+    const undeclared = groups.filter(g=>!declared.has(g));
+    const phantom = [...declared].filter(d=>!groups.includes(d));
+    try{ new RegExp(toJsRegex(rule.textContent||"")); }
+    catch(e){ main.append(el("div",{class:"warnflag"},"⚠ Not a valid regex: "+e.message)); }
+    if(undeclared.length) main.append(el("div",{class:"warnflag"},"⚠ Captured group(s) not declared as variables: "+undeclared.join(", ")));
+    if(phantom.length) main.append(el("div",{class:"warnflag"},"⚠ Declared variable(s) not found in the pattern: "+phantom.join(", ")));
+  }
+
+  row.append(main);
+  row.append(el("div",{class:"r-actions"},
+    el("button",{class:"iconbtn", title:"Move up", onclick:()=>moveRule(rule,-1)},"↑"),
+    el("button",{class:"iconbtn", title:"Move down", onclick:()=>moveRule(rule,1)},"↓"),
+    el("button",{class:"iconbtn", title:"Edit rule", onclick:()=>editRule(rule)},"✎"),
+    el("button",{class:"iconbtn danger", title:"Delete rule", onclick:()=>deleteRule(rule)},"🗑")
+  ));
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Filter
+// ---------------------------------------------------------------------------
+function applyFilter(){
+  const q = ($("search").value||"").trim().toLowerCase();
+  const showHidden = $("showHidden").checked;
+  treeEl.querySelectorAll(".group").forEach(g=>{
+    const isHidden = g.dataset.hidden==="1";
+    let vis = true;
+    if(isHidden && !showHidden) vis=false;
+    if(vis && q){ vis = g.textContent.toLowerCase().includes(q); }
+    g.classList.toggle("hide", !vis);
+  });
+  // Hide cards / scopes that end up with no visible groups when filtering
+  treeEl.querySelectorAll(".card").forEach(card=>{
+    if(!q && showHidden){ card.classList.remove("hide"); return; }
+    const anyGroup = [...card.querySelectorAll(".group")].some(g=>!g.classList.contains("hide"));
+    const headMatch = q && card.querySelector(".card-head").textContent.toLowerCase().includes(q);
+    card.classList.toggle("hide", !(anyGroup || headMatch || (!q)));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------
+function markChanged(){ setDirty(true); render(); }
+
+function addGroup(container){
+  const p = xmlDoc.createElement("Patterns");
+  p.setAttribute("Name","New Rule Group");
+  p.setAttribute("Severity","Warning");
+  const inc = xmlDoc.createElement("Include");
+  inc.setAttribute("Style","Literal");
+  inc.textContent = "";
+  p.append(inc);
+  container.append(p);
+  setDirty(true);
+  editGroup(p, ()=>{ render(); });
+}
+function deleteGroup(patterns){
+  if(!confirm('Delete rule group "'+(patterns.getAttribute("Name")||"")+'" and all its rules?')) return;
+  patterns.remove(); markChanged();
+}
+function addRule(patterns, kind){
+  const r = xmlDoc.createElement(kind);
+  r.setAttribute("Style","Literal");
+  r.textContent="";
+  patterns.append(r);
+  setDirty(true);
+  editRule(r, ()=>render());
+}
+function deleteRule(rule){
+  const p = rule.parentElement;
+  const count = [...p.children].filter(c=>c.tagName==="Include"||c.tagName==="Exclude").length;
+  if(count<=1){ alert("A rule group must keep at least one rule. Delete the whole group instead if you don't need it."); return; }
+  if(!confirm("Delete this rule?")) return;
+  rule.remove(); markChanged();
+}
+function moveRule(rule, dir){
+  const siblings = [...rule.parentElement.children].filter(c=>c.tagName==="Include"||c.tagName==="Exclude");
+  const i = siblings.indexOf(rule);
+  const j = i+dir;
+  if(j<0||j>=siblings.length) return;
+  if(dir<0) rule.parentElement.insertBefore(rule, siblings[j]);
+  else rule.parentElement.insertBefore(siblings[j], rule);
+  markChanged();
+}
+
+// ---------------------------------------------------------------------------
+// Modal infrastructure
+// ---------------------------------------------------------------------------
+function openModal(title, bodyBuilder, onSave){
+  const root = $("modalRoot");
+  const back = el("div",{class:"modal-back"});
+  const modal = el("div",{class:"modal"});
+  const body = el("div",{class:"modal-body"});
+  const errline = el("div",{class:"err hide"});
+  const close = ()=>back.remove();
+  const ctx = { errline, close, setError:(m)=>{ errline.textContent=m||""; errline.classList.toggle("hide",!m); } };
+  bodyBuilder(body, ctx);
+  const btnSave = el("button",{class:"primary", onclick:()=>{ const ok=onSave(ctx); if(ok!==false){ close(); setDirty(true); render(); } }},"Save");
+  modal.append(
+    el("div",{class:"modal-head"}, el("h3",{},title)),
+    body,
+    errline,
+    el("div",{class:"modal-foot"}, el("button",{onclick:close},"Cancel"), btnSave)
+  );
+  back.append(modal);
+  back.addEventListener("mousedown",(e)=>{ if(e.target===back) close(); });
+  document.addEventListener("keydown", function esc(e){ if(e.key==="Escape"){ close(); document.removeEventListener("keydown",esc);} });
+  root.append(back);
+}
+function field(labelText, control, hint){
+  const f = el("div",{class:"field"});
+  const lab = el("label",{}, labelText);
+  if(hint) lab.append(el("span",{class:"hint"},hint));
+  f.append(lab, control);
+  return f;
+}
+function selectCtrl(options, value){
+  const s = el("select");
+  options.forEach(o=>{ const opt=el("option",{value:o}, o.replace("_"," ")); if(o===value) opt.selected=true; s.append(opt); });
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// Group editor
+// ---------------------------------------------------------------------------
+function editGroup(patterns){
+  openModal("Edit rule group", (body)=>{
+    const name = el("input",{type:"text", value:patterns.getAttribute("Name")||""});
+    const sev = selectCtrl(SEVERITIES, patterns.getAttribute("Severity")||"Warning");
+    const tags = el("input",{type:"text", value:parseList(patterns.getAttribute("Tags")).join("; ")});
+    const hidden = el("input",{type:"checkbox"}); hidden.checked = strToBool(patterns.getAttribute("Hidden"));
+    const succ = el("input",{type:"text", value:parseList(patterns.getAttribute("SuccessFlags")).join("; ")});
+    const fail = el("input",{type:"text", value:parseList(patterns.getAttribute("FailureFlags")).join("; ")});
+    body.append(
+      field("Name", name, "required — shown as the group heading in the report"),
+      field("Severity", sev),
+      field("Tags", tags, "categories like Code; Content; Art (semicolon-separated)"),
+      field("", el("label",{class:"checkline"}, hidden, el("span",{},"Hidden — still matches, but not shown in the report"))),
+      el("div",{class:"row2"},
+        field("Success flags", succ, "usually 'auto'"),
+        field("Failure flags", fail, "usually 'auto'")
+      )
+    );
+    body._read = ()=>({name:name.value.trim(), sev:sev.value, tags:normList(tags.value), hidden:hidden.checked, succ:normList(succ.value), fail:normList(fail.value)});
+    editGroup._body = body;
+  }, (ctx)=>{
+    const v = editGroup._body._read();
+    if(!v.name){ ctx.setError("Name is required."); return false; }
+    if(v.tags && !LIST_RE.test(v.tags)){ ctx.setError("Tags may only contain letters, digits and _ (semicolon-separated)."); return false; }
+    if(v.succ && !LIST_RE.test(v.succ)){ ctx.setError("Success flags may only contain letters, digits and _."); return false; }
+    if(v.fail && !LIST_RE.test(v.fail)){ ctx.setError("Failure flags may only contain letters, digits and _."); return false; }
+    setAttr(patterns,"Name",v.name);
+    setAttr(patterns,"Severity",v.sev);
+    setAttr(patterns,"Tags",v.tags);
+    if(v.hidden) patterns.setAttribute("Hidden","true"); else patterns.removeAttribute("Hidden");
+    setAttr(patterns,"SuccessFlags",v.succ);
+    setAttr(patterns,"FailureFlags",v.fail);
+  });
+}
+function setAttr(node, name, val){ if(val==="" || val==null) node.removeAttribute(name); else node.setAttribute(name, val); }
+
+// ---------------------------------------------------------------------------
+// Rule editor
+// ---------------------------------------------------------------------------
+function editRule(rule){
+  openModal("Edit rule", (body)=>{
+    const kind = selectCtrl(["Include","Exclude"], rule.tagName);
+    const style = selectCtrl(STYLES, rule.getAttribute("Style")|| "Literal");
+    const pattern = el("textarea", {spellcheck:"false"}); pattern.value = rule.textContent||"";
+    const succ = el("input",{type:"text", value:parseList(rule.getAttribute("SuccessFlags")).join("; ")});
+    const fail = el("input",{type:"text", value:parseList(rule.getAttribute("FailureFlags")).join("; ")});
+    const tags = el("input",{type:"text", value:parseList(rule.getAttribute("Tags")).join("; ")});
+
+    const varBox = el("div",{class:"vargrid"});
+    const tester = el("div",{class:"tester"});
+    const sampleIn = el("input",{type:"text", placeholder:"paste a sample log line to test the match…", style:"width:100%;font-family:monospace;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px"});
+    const testRes = el("div",{class:"res muted"},"—");
+    tester.append(el("div",{class:"muted",style:"font-size:12px;margin-bottom:4px"},"Try it out"), sampleIn, testRes);
+
+    const regexOnly = el("div");
+    regexOnly.append(field("Captured variables", varBox, "the tool detects (?P<name>…) groups — pick what each one is"), tester);
+
+    function existingKind(name){
+      if(parseList(rule.getAttribute("NumericVariables")).includes(name)) return "num";
+      if(parseList(rule.getAttribute("StringVariables")).includes(name)) return "str";
+      return "ignore";
+    }
+    // Track choices across re-renders of the variable list.
+    const choices = {};
+    parseList(rule.getAttribute("StringVariables")).forEach(n=>choices[n]="str");
+    parseList(rule.getAttribute("NumericVariables")).forEach(n=>choices[n]="num");
+
+    function rebuildVars(){
+      const groups = detectGroups(pattern.value);
+      const known = new Set(groups);
+      // include declared-but-missing so the user can clean them up
+      Object.keys(choices).forEach(k=>known.add(k));
+      varBox.innerHTML="";
+      if(known.size===0){ varBox.append(el("div",{class:"muted",style:"font-size:12px"},"No named groups yet. Add e.g. (?P<FileName>.*) to capture a variable.")); }
+      [...known].forEach(name=>{
+        if(!(name in choices)) choices[name] = existingKind(name);
+        const missing = !groups.includes(name);
+        const seg = el("span",{class:"seg"});
+        [["str","text"],["num","number"],["ignore","ignore"]].forEach(([val,lab])=>{
+          const id="v_"+name+"_"+val;
+          const input=el("input",{type:"radio", name:"var_"+name, id, value:val, onchange:()=>choices[name]=val});
+          if(choices[name]===val) input.checked=true;
+          seg.append(el("label",{for:id}, input, el("span",{},lab)));
+        });
+        varBox.append(el("div",{class:"varrow"},
+          el("span",{class:"vname"}, name),
+          seg,
+          missing? el("span",{class:"missing"},"not found in pattern — will be dropped") : null
+        ));
+      });
+    }
+    function runTest(){
+      const src = pattern.value;
+      if(style.value!=="Regex"){ testRes.innerHTML=""; testRes.className="res muted"; testRes.textContent = sampleIn.value? (sampleIn.value.toLowerCase().includes(src.toLowerCase())?"✓ contains the text":"✗ text not found") : "—"; return; }
+      let re; try{ re=new RegExp(toJsRegex(src)); }catch(e){ testRes.className="res err"; testRes.textContent="Invalid regex: "+e.message; return; }
+      if(!sampleIn.value){ testRes.className="res muted"; testRes.textContent="—"; return; }
+      const m = re.exec(sampleIn.value);
+      if(!m){ testRes.className="res"; testRes.textContent="✗ no match"; return; }
+      testRes.className="res";
+      testRes.innerHTML="";
+      const before=sampleIn.value.slice(0,m.index), hit=m[0], after=sampleIn.value.slice(m.index+m[0].length);
+      testRes.append("✓ match: ", el("span",{},before), el("span",{class:"hit"},hit), el("span",{},after));
+      if(m.groups){ const gl=el("div",{style:"margin-top:4px"}); Object.entries(m.groups).forEach(([k,v])=>gl.append(el("span",{class:"tag",style:"margin-right:6px"}, k+" = "+v))); testRes.append(gl); }
+    }
+    function syncStyle(){ regexOnly.classList.toggle("hide", style.value!=="Regex"); rebuildVars(); runTest(); }
+    style.addEventListener("change", syncStyle);
+    pattern.addEventListener("input", ()=>{ rebuildVars(); runTest(); });
+    sampleIn.addEventListener("input", runTest);
+
+    body.append(
+      el("div",{class:"row2"}, field("Rule type", kind, "Include = capture · Exclude = drop"), field("Match style", style, "Plain text or Regex")),
+      field("Pattern", pattern, "type it normally — you do NOT need to escape < > & ; the tool handles that"),
+      regexOnly,
+      el("div",{class:"row2"}, field("Success flags", succ, "usually 'auto'"), field("Failure flags", fail, "usually 'auto'")),
+      field("Tags", tags, "optional per-rule categories")
+    );
+    syncStyle();
+
+    body._read = ()=>{
+      const groups = detectGroups(pattern.value);
+      const strv=[], numv=[];
+      groups.forEach(g=>{ if(choices[g]==="num") numv.push(g); else if(choices[g]==="str") strv.push(g); });
+      return { kind:kind.value, style:style.value, pattern:pattern.value,
+               strv:strv.join(";"), numv:numv.join(";"),
+               succ:normList(succ.value), fail:normList(fail.value), tags:normList(tags.value) };
+    };
+    editRule._body = body;
+  }, (ctx)=>{
+    const v = editRule._body._read();
+    if(v.pattern===""){ ctx.setError("The pattern cannot be empty."); return false; }
+    if(v.style==="Regex"){ try{ new RegExp(toJsRegex(v.pattern)); }catch(e){ ctx.setError("Invalid regex: "+e.message); return false; } }
+    if(v.succ && !LIST_RE.test(v.succ)){ ctx.setError("Success flags may only contain letters, digits and _."); return false; }
+    if(v.fail && !LIST_RE.test(v.fail)){ ctx.setError("Failure flags may only contain letters, digits and _."); return false; }
+
+    // Handle Include<->Exclude change: rename the element (preserve position).
+    let target = rule;
+    if(v.kind!==rule.tagName){
+      const repl = xmlDoc.createElement(v.kind);
+      rule.replaceWith(repl); target = repl;
+    }
+    // Always write Style explicitly (avoids the XSD/parser default mismatch).
+    target.setAttribute("Style", v.style);
+    target.textContent = v.pattern;
+    setAttr(target,"StringVariables", v.style==="Regex"? v.strv : "");
+    setAttr(target,"NumericVariables", v.style==="Regex"? v.numv : "");
+    setAttr(target,"SuccessFlags", v.succ);
+    setAttr(target,"FailureFlags", v.fail);
+    setAttr(target,"Tags", v.tags);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+$("btnOpen").addEventListener("click", openFile);
+$("btnOpen2").addEventListener("click", openFile);
+$("btnSave").addEventListener("click", saveInPlace);
+$("btnDownload").addEventListener("click", downloadCopy);
+$("search").addEventListener("input", applyFilter);
+$("showHidden").addEventListener("change", applyFilter);
+$("btnExpand").addEventListener("click", ()=>treeEl.querySelectorAll(".card").forEach(c=>c.classList.remove("collapsed")));
+$("btnCollapse").addEventListener("click", ()=>treeEl.querySelectorAll(".card").forEach(c=>c.classList.add("collapsed")));
+
+window.addEventListener("beforeunload", (e)=>{ if(dirty){ e.preventDefault(); e.returnValue=""; } });
+
+document.addEventListener("keydown",(e)=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="s"){ e.preventDefault(); if(xmlDoc) saveInPlace(); }
+});
+
+$("fsaNote").textContent = window.showOpenFilePicker
+  ? "This browser supports saving changes straight back to the file (use Save)."
+  : "Tip: this browser can't write files directly — use “Save a copy…”. For in-place saving, open this page in Chrome or Edge served from a local web server.";
+</script>
+</body>
+</html>
