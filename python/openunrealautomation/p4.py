@@ -54,6 +54,7 @@ class UnrealPerforce:
         self.check = check
         self.cwd = cwd
         self._current_cl = None
+        self._stream_depots = None
 
     def get_current_cl(self, force_refresh=False) -> int:
         if self._current_cl and not force_refresh:
@@ -73,6 +74,23 @@ class UnrealPerforce:
         current_stream_clean = current_stream_output.strip()
         assert (not "\n" in current_stream_clean)
         return current_stream_clean
+
+    def get_stream_depots(self) -> Dict[str, int]:
+        """
+        Returns all stream depot names mapped to their stream depth, which is the number of path
+        components below the depot root that make up a stream path.
+        """
+        if self._stream_depots is not None:
+            return self._stream_depots
+
+        depots_output = self._p4_get_output(
+            ["-F", "%name% %type% %depth%", "-ztag", "depots"])
+        self._stream_depots = {}
+        for line in depots_output.splitlines():
+            fields = line.split()
+            if len(fields) == 3 and fields[1] == "stream":
+                self._stream_depots[fields[0]] = int(fields[2])
+        return self._stream_depots
 
     def resolve_virtual_stream_parent(self, stream) -> str:
         """
@@ -97,20 +115,25 @@ class UnrealPerforce:
 
     def resolve_stream_from_changelist(self, changelist: int) -> str:
         """
-        Determines which Perforce stream a submitted changelist belongs to by
-        inspecting the depot path of its first affected file.
+        Determines which Perforce stream a submitted changelist belongs to by inspecting the depot
+        paths of its affected files. Files from traditional depots are ignored, so this also works
+        for changelists that contain both stream files and files from a traditional depot.
         """
         output = self._p4_get_output(["describe", "-s", str(changelist)])
-        # "p4 describe -s" lists affected files as "... //depot/stream/path#rev action".
-        # A submitted changelist lives in a single stream, so the first file's
-        # "//depot/stream" prefix is the stream we want.
-        match = re.search(
-            r"^\.\.\. (//[^/]+/[^/]+)/.+#\d+ \w+", output, re.MULTILINE)
-        if match is None:
-            raise ValueError(
-                f"Could not determine a Perforce stream from changelist {changelist}. "
-                f"'p4 describe -s {changelist}' returned no affected files.")
-        return match.group(1)
+        stream_depots = self.get_stream_depots()
+        # "p4 describe -s" lists affected files as "... //depot/path#rev action".
+        for match in re.finditer(r"^\.\.\. //(?P<depot>[^/]+)/(?P<path>.+)#\d+ \w+$", output, re.MULTILINE):
+            depot = match.group("depot")
+            stream_depth = stream_depots.get(depot)
+            if stream_depth is None:
+                continue
+            path_components = match.group("path").split("/")
+            if len(path_components) <= stream_depth:
+                continue
+            return "//" + "/".join([depot] + path_components[:stream_depth])
+        raise ValueError(
+            f"Could not determine a Perforce stream from changelist {changelist}. "
+            f"'p4 describe -s {changelist}' returned no affected files in a stream depot.")
 
     def sync(self, path, cl: Optional[int] = None, force: bool = False):
         path = self._auto_path(path)
