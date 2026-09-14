@@ -54,6 +54,7 @@ class UnrealPerforce:
         self.check = check
         self.cwd = cwd
         self._current_cl = None
+        self._stream_depots = None
 
     def get_current_cl(self, force_refresh=False) -> int:
         if self._current_cl and not force_refresh:
@@ -73,6 +74,23 @@ class UnrealPerforce:
         current_stream_clean = current_stream_output.strip()
         assert (not "\n" in current_stream_clean)
         return current_stream_clean
+
+    def get_stream_depots(self) -> Dict[str, int]:
+        """
+        Returns all stream depot names mapped to their stream depth, which is the number of path
+        components below the depot root that make up a stream path.
+        """
+        if self._stream_depots is not None:
+            return self._stream_depots
+
+        depots_output = self._p4_get_output(
+            ["-F", "%name% %type% %depth%", "-ztag", "depots"])
+        self._stream_depots = {}
+        for line in depots_output.splitlines():
+            fields = line.split()
+            if len(fields) == 3 and fields[1] == "stream":
+                self._stream_depots[fields[0]] = int(fields[2])
+        return self._stream_depots
 
     def resolve_virtual_stream_parent(self, stream) -> str:
         """
@@ -95,6 +113,28 @@ class UnrealPerforce:
         source_stream = str(match.group(1)).strip()
         return source_stream
 
+    def resolve_stream_from_changelist(self, changelist: int) -> str:
+        """
+        Determines which Perforce stream a submitted changelist belongs to by inspecting the depot
+        paths of its affected files. Files from traditional depots are ignored, so this also works
+        for changelists that contain both stream files and files from a traditional depot.
+        """
+        output = self._p4_get_output(["describe", "-s", str(changelist)])
+        stream_depots = self.get_stream_depots()
+        # "p4 describe -s" lists affected files as "... //depot/path#rev action".
+        for match in re.finditer(r"^\.\.\. //(?P<depot>[^/]+)/(?P<path>.+)#\d+ \w+$", output, re.MULTILINE):
+            depot = match.group("depot")
+            stream_depth = stream_depots.get(depot)
+            if stream_depth is None:
+                continue
+            path_components = match.group("path").split("/")
+            if len(path_components) <= stream_depth:
+                continue
+            return "//" + "/".join([depot] + path_components[:stream_depth])
+        raise ValueError(
+            f"Could not determine a Perforce stream from changelist {changelist}. "
+            f"'p4 describe -s {changelist}' returned no affected files in a stream depot.")
+
     def sync(self, path, cl: Optional[int] = None, force: bool = False):
         path = self._auto_path(path)
         args = ["sync"]
@@ -105,6 +145,10 @@ class UnrealPerforce:
         else:
             args += [f"{path}@{cl}"]
         self._p4(args)
+
+    def download_file(self, depot_path: str, changelist: int, local_path: str):
+        self._p4(["print", "-o", local_path, f"{depot_path}@{changelist}"])
+        print("Downloaded", depot_path, "at CL", changelist, "to", local_path)
 
     def add(self, path, verbose: bool = True):
         path = self._auto_path(path)
@@ -223,14 +267,20 @@ class UnrealPerforce:
     def _p4(self, args):
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
+        # stdin=DEVNULL: when this process is launched from a GUI parent (e.g. the Unreal
+        # editor via FPlatformProcess::ExecProcess), it inherits an invalid stdin handle.
+        # Without an explicit stdin, subprocess tries to duplicate that handle and fails
+        # with 'WinError 6: The handle is invalid'.
         subprocess.run(_args, encoding="unicode_escape",
-                       check=self.check, cwd=cwd)
+                       check=self.check, cwd=cwd, stdin=subprocess.DEVNULL)
 
     def _p4_get_output(self, args) -> str:
         _args = ["p4"] + args
         cwd = os.getcwd() if self.cwd is None else self.cwd
         try:
-            return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, bufsize=1, shell=True, universal_newlines=True)
+            # stdin=DEVNULL: avoid inheriting an invalid stdin handle when launched from a
+            # GUI parent process. See note in _p4() above.
+            return subprocess.check_output(_args, cwd=cwd, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, bufsize=1, shell=True, universal_newlines=True)
         except subprocess.CalledProcessError as e:
             print(
                 f"Encountered non-zero exit code for Perforce command 'p4 {' '.join(_args)}': {e.returncode}. Dumping output below...")

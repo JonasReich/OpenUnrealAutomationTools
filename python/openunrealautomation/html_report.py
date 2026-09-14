@@ -180,7 +180,8 @@ def _generate_scopes_icicle_chart(parsed_log: UnrealLogFilePatternScopeInstance,
 
     print(f"Generating scopes icicle chart for {len(all_scopes)} scopes...")
 
-    if len(all_scopes) == 0:
+    if len(all_scopes) < 2:
+        print("...skipping, because we have less than 2 scopes")
         return ""
 
     scope_labels = {}

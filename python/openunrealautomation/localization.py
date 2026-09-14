@@ -217,7 +217,7 @@ class CSVEntryWithMetaData:
         return new_lines
 
     @staticmethod
-    def diff(diff_name: str, a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False) -> None:
+    def diff(diff_name: str, a: Dict[str, 'CSVEntryWithMetaData'], b: Dict[str, 'CSVEntryWithMetaData'], a_name: str = "A", b_name: str = "B", verbose=False, diff_translations: bool = True) -> None:
         print(
             f"Diffing CSVs: {a_name} ({len(a)} entries) vs {b_name} ({len(b)} entries)")
         only_in_a = set(a.keys()) - set(b.keys())
@@ -238,7 +238,7 @@ class CSVEntryWithMetaData:
         different_source_text = 0
 
         mod_source_rows = [
-            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}"]]
+            ["CombinedKey", f"SourceString {a_name}", f"SourceString {b_name}", f"TranslatedString {a_name}", f"TranslatedString {b_name}"]]
         mod_translation_rows = [
             ["CombinedKey", f"Translation {a_name}", f"Translation {b_name}"]]
         for key in set(a.keys()).intersection(set(b.keys())):
@@ -248,8 +248,8 @@ class CSVEntryWithMetaData:
                 different_source_text = different_source_text + 1
                 if verbose:
                     mod_source_rows.append(
-                        [key, entry_a.source_string, entry_b.source_string])
-            if entry_a.translated_string != entry_b.translated_string:
+                        [key, entry_a.source_string, entry_b.source_string, str(entry_a.translated_string), str(entry_b.translated_string)])
+            if diff_translations and entry_a.translated_string != entry_b.translated_string:
                 different_translation_text = different_translation_text + 1
                 if verbose:
                     mod_translation_rows.append(
@@ -261,10 +261,12 @@ class CSVEntryWithMetaData:
         num_unchanged = len(a) - len(only_in_a) - different_source_text
         print(f"  same source:   {num_unchanged}")
 
-        mod_diff = write_csv(
-            diff_name + "_modified_translation", mod_translation_rows)
-        diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
-        print(f"  mod. transl.:  {different_translation_text}{diff_suffix}")
+        if diff_translations:
+            mod_diff = write_csv(
+                diff_name + "_modified_translation", mod_translation_rows)
+            diff_suffix = f"\t -> diff: {mod_diff}" if verbose else ""
+            print(
+                f"  mod. transl.:  {different_translation_text}{diff_suffix}")
 
 
 def _get_localization_root(project_root: str) -> str:
@@ -406,7 +408,7 @@ def leetify(text: str) -> str:
     return result_text
 
 
-def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict[str, CSVEntryWithMetaData]:
+def read_translation_csv(csv_path: str, ignore_duplicates: bool = False, allow_empty_translations: bool = False) -> Dict[str, CSVEntryWithMetaData]:
     """
     Read an existing translation CSV and return a dictionary of namespace -> key -> CSVEntryWithMetaData.
     Supports both "CombinedKey" and "Namespace" formats.
@@ -426,7 +428,8 @@ def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict
         # validate CSV format
         try:
             assert "SourceString" in column_indices
-            assert "LocalizedString" in column_indices
+            if not allow_empty_translations:
+                assert "LocalizedString" in column_indices
             if use_combined_key:
                 assert "Key" not in column_indices
                 assert "Namespace" not in column_indices
@@ -444,10 +447,20 @@ def read_translation_csv(csv_path: str, ignore_duplicates: bool = False) -> Dict
         for row_num, row in enumerate(csvreader, 2):
             try:
                 source_string = row[column_indices["SourceString"]]
-                translated_string = row[column_indices["LocalizedString"]]
+                try:
+                    translated_string = row[column_indices["LocalizedString"]]
+                except KeyError as e:
+                    if allow_empty_translations:
+                        translated_string = ""
+                    else:
+                        raise e
                 if use_combined_key:
                     _combined_key = row[column_indices["CombinedKey"]]
-                    namespace, key = _combined_key.split(":", 1)
+                    try:
+                        namespace, key = _combined_key.split(":", 1)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid CombinedKey format in {csv_path}:{row_num}: {_combined_key}")
                 else:
                     namespace = row[column_indices["Namespace"]]
                     key = row[column_indices["Key"]]
@@ -529,57 +542,100 @@ def import_csv_translations(target_language, target,
                             translation_csvs: List[str],
                             translation_override_csvs: List[str] = [],
                             keep_translation_if_source_changed: bool = True,
+                            keep_translation_if_source_missing: bool = False,
+                            ignore_namespace_in_translation: bool = False,
                             verbose_diff: bool = False) -> Dict[str, CSVEntryWithMetaData]:
     """
     Reads a number of translation files into the new_lines_dict translated_strings properties.
     Also performs diffs to detect differences between translations and current strings and listing untranslated lines.
+
+    @param ignore_namespace_in_translation If true, the namespace of the translation CSVs will be ignored and only the key will be used for matching translations.
+    This is useful for cases where the namespace in the source CSVs has changed and you want to keep existing translations.
+    However, this can lead to incorrect translations if there are duplicate keys across namespaces.
     """
 
     diff_id = target + "_" + target_language
     last_translated_lines = {}
 
+    overrides = {}
+    for override_csv in translation_override_csvs:
+        if not os.path.exists(override_csv):
+            continue
+
+        p4 = UnrealPerforce()
+        overrides_date = p4.get_last_change_date(override_csv)
+        print(
+            f"reading overrides from {override_csv} - last changed on {overrides_date}")
+        raw_overrides = read_translation_csv(override_csv,
+                                             ignore_duplicates=True)
+        for override_key, override_value in raw_overrides.items():
+            if keep_translation_if_source_missing or override_key in new_lines_dict:
+                overrides[override_key] = override_value
+
+    translation_csvs = list(filter(os.path.exists, translation_csvs))
+
+    CSVEntryWithMetaData.diff(diff_id, new_lines_dict, overrides,
+                              a_name="Current", b_name="Overrides", verbose=verbose_diff)
+
     if len(translation_csvs) == 0:
-        print("No translated CSV to import")
+        last_translated_lines = new_lines_dict.copy()
+        last_translated_lines.update(overrides)
+
+        print(
+            f"No translated CSV to import -> only applying {len(overrides)} overrides")
     else:
         for translation_csv in translation_csvs:
-            if not os.path.exists(translation_csv):
-                continue
-
             p4 = UnrealPerforce()
             translations_date = p4.get_last_change_date(translation_csv)
             print(
                 f"combine current sources with translations from {translations_date}")
-            last_translated_lines.update(read_translation_csv(translation_csv,
-                                                              ignore_duplicates=True))
+            new_translations = read_translation_csv(translation_csv,
+                                                    ignore_duplicates=True)
+            if ignore_namespace_in_translation:
+                new_translations_no_namespace = {}
+                assert keep_translation_if_source_missing == False, "ignore_namespace_in_translation cannot be used together with keep_translation_if_source_missing"
+                for line in new_translations.values():
+                    line.namespace = ""
+                    new_translations_no_namespace[line.key] = line
+                print("New translations with ignored namespace:",
+                      len(new_translations_no_namespace))
+                # int this mode, we use the new lines as a foundation and only update the translated string if a matching key is found in the translations, regardless of namespace
+                last_translated_lines = new_lines_dict.copy()
+                for line in last_translated_lines.values():
+                    if line.key in new_translations_no_namespace:
+                        line.translated_string = new_translations_no_namespace[
+                            line.key].translated_string
+            else:
+                last_translated_lines.update(new_translations)
 
         # diff first, then update source strings / metadata based on current values
         CSVEntryWithMetaData.diff(diff_id,
-                                  last_translated_lines, new_lines_dict, a_name="LastTranslated", b_name="Current", verbose=verbose_diff)
-
-        overrides = {}
-        for translation_csv in translation_override_csvs:
-            if not os.path.exists(translation_csv):
-                continue
-
-            p4 = UnrealPerforce()
-            translations_date = p4.get_last_change_date(translation_csv)
-            print(
-                f"combine current sources with overrides from {translations_date}")
-            raw_overrides = read_translation_csv(translation_csv,
-                                                 ignore_duplicates=True)
-            for override_key, override_value in raw_overrides.items():
-                if override_key in new_lines_dict:
-                    overrides[override_key] = override_value
+                                  new_lines_dict, last_translated_lines, a_name="Current", b_name="LastTranslated", verbose=verbose_diff,
+                                  # do not diff translations here - the source doesn't have any
+                                  diff_translations=False)
 
         # diff first, then merge overrides into the translations
         CSVEntryWithMetaData.diff(diff_id,
                                   last_translated_lines, overrides, a_name="LastTranslated", b_name="Overrides", verbose=verbose_diff)
 
+        # also count identical translations between last_translated_lines and overrides
+        # to spot overrides that are no longer needed
+        identical_overrides = 0
+        for override_key, override_value in overrides.items():
+            if override_key in last_translated_lines:
+                last_translated_value = last_translated_lines[override_key]
+                if last_translated_value.translated_string == override_value.translated_string:
+                    identical_overrides += 1
+
+        print(
+            f"  identical OR:  {identical_overrides}")
+
         last_translated_lines.update(overrides)
 
-        only_in_translation = last_translated_lines.keys() - new_lines_dict.keys()
-        for key in only_in_translation:
-            last_translated_lines.pop(key)
+        not_in_source_keys = last_translated_lines.keys() - new_lines_dict.keys()
+        if not keep_translation_if_source_missing:
+            for key in not_in_source_keys:
+                last_translated_lines.pop(key)
 
         # do NOT track stats of lines here - the diff will be done later
         for combined_key, new_line in new_lines_dict.items():
@@ -652,22 +708,25 @@ def collect_source_strings(project_root: str,
             localization_root, target, source_language)
         source_po_path = os.path.normpath(
             os.path.join(source_language_loca_root, f"{target}.po"))
-        print("reading", source_po_path)
+        print(" - reading", source_po_path)
         if not os.path.exists(source_po_path):
             raise FileNotFoundError(source_po_path)
         new_lines += CSVEntryWithMetaData.from_po(source_po_path)
 
+    if len(source_csvs) > 0:
+        print(f" - reading {len(source_csvs)} additional source CSVs...")
     for source_csv, csv_namespace in source_csvs:
         new_lines += CSVEntryWithMetaData.from_source_csv(
             source_csv, project_root, csv_namespace)
 
+    num_unfiltered_lines = len(new_lines)
     if line_filter_func:
-        num_unfiltered_lines = len(new_lines)
         new_lines = list(
             filter(lambda line: line_filter_func(line), new_lines))
-        print("Filtered lines:", num_unfiltered_lines, "->", len(new_lines))
 
     new_lines_dict = CSVEntryWithMetaData.list_to_dict(new_lines)
+    print("-> Collected", len(new_lines_dict),
+          "source strings (filtered from " + str(num_unfiltered_lines) + " total)")
     return new_lines_dict
 
 

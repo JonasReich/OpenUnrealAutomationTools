@@ -317,6 +317,37 @@ class UnrealEngine:
             tagged_files.add(file_node.text)
         return tagged_files
 
+    def turnkey_install_sdk(self, platform: str) -> int:
+        """
+        Install an AutoSDK for build jobs via Turnkey for the given platform.
+        This is a convenience function - any further adjustments should be made by calling Turnkey directly.
+        """
+        return self.run(UnrealProgram.UAT, arguments=["Turnkey", "-command=InstallSDK", f"-platform={platform}", "-NeededOnly", "-BestAvailable"])
+
+    def get_autosdk_variables(self, platform: str) -> Dict[str, str]:
+        """
+        Get the environment variables that AutoSDK expects to be set after "installing" an SDK for a given platform.
+        This is useful for build jobs to set up their environment correctly after installing an Auto SDK via Turnkey.
+        """
+        if os.environ.get("UE_SDKS_ROOT") is None:
+            raise OUAException(
+                "UE_SDKS_ROOT environment variable is not set. Please make sure to setup AutoSDK environment variables correctly before calling this function.")
+        ue_sdks_root = pathlib.Path(os.environ["UE_SDKS_ROOT"])
+        # TODO support other host platforms as well, currently this is only set up for Win64 since that's the only platform that AutoSDK is used for in our current build system.
+        platform_sdk_dir = ue_sdks_root / "HostWin64" / platform
+        if not platform_sdk_dir.exists():
+            raise OUAException(
+                f"Could not find SDK directory for platform {platform} in expected location {platform_sdk_dir}. Please make sure to setup AutoSDK environment variables correctly before calling this function.")
+        variables_file = platform_sdk_dir / "OutputEnvVars.txt"
+        # Read the environment variables from the file
+        variables = {}
+        with open(variables_file, "r") as f:
+            for line in f:
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    variables[key.strip()] = value.strip()
+        return variables
+
     def generate_project_files(self, engine_sln=False, extra_shell=False) -> None:
         """
         Generate project files (the C++/C# projects and .sln on Windows).

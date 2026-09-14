@@ -9,12 +9,15 @@
 }
 
 .highlight-line {
-    margin-top: -100px;
     position: relative;
     display: inline;
-    padding-top: 100px;
     z-index: +1;
     color: white;
+    /* Offset the line from the top when it is scrolled into view via the goToSource anchor
+       jump, so a few context lines stay visible above it. Uses scroll-margin-top instead of a
+       padding/negative-margin hack: the old padding box overlapped the lines above and, being
+       lifted by z-index, intercepted text selection there in Firefox (Chromium was unaffected). */
+    scroll-margin-top: 100px;
 }
 
 .highlight-line::after {
@@ -33,7 +36,7 @@
 }
 
 .code-summary {
-    font-size: 0.8em;
+    font-size: 0.9em;
 }
 
 .code-container {
@@ -163,6 +166,7 @@ a.file-path {
     text-overflow: ellipsis;
     max-width: 100px;
     white-space: pre;
+    padding: 0.2em;
 }
 
 .source-file-container {
@@ -187,4 +191,18 @@ a.file-path {
 
 .source-file-summary {
     float: left;
+}
+
+/* Issues the user has marked as addressed: de-emphasized but still visible. */
+tr.addressed td {
+    opacity: 0.45;
+}
+
+tr.addressed td.line-text {
+    text-decoration: line-through;
+}
+
+/* Keep the addressed checkbox fully legible even on a dimmed row. */
+tr.addressed td:has(.addressed-check) {
+    opacity: 1;
 }
