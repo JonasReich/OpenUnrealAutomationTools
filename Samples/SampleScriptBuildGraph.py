@@ -106,7 +106,7 @@ def main():
             pass
 
     # TODO move to BuildGraph sample
-    enable_tests = not ue.dry_run and no_exceptions
+    enable_tests = not ue.dry_run and no_exceptions and not args.no_tests
     step_header("Automation Tests", enable_tests)
     if enable_tests:
         try:
@@ -189,6 +189,8 @@ if __name__ == "__main__":
     argparser.add_argument("--static-analysis", action="store_true",
                            help="Run static code analysis on the project. Not reccommended if you're running the build for multiple engine versions / platforms, "
                            "because it significantly increases build times.")
+    argparser.add_argument("--no-tests", action="store_true",
+                           help="Skip automation tests.")
     argparser.add_argument("--engine-versions", default="",
                            help="Semicolon separated engine identifiers. If supplied, the build is ran multiple times, once for each engine version. "
                            "This is useful to confirm if the build succeeds for different engine versions.")
