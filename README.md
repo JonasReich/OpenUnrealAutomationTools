@@ -1,7 +1,9 @@
 
-# Open Unreal Automation Tools
+# Open Unreal Utilities - Automation Tools
 
-![](./Resources/oua_wide.png)
+![Open Unreal Utilities - Automation Tools logo](./Resources/ouu_wide.png)
+
+> Part of [Open Unreal Utilities](https://github.com/JonasReich/OpenUnrealUtilities), a family of Unreal Engine plugins and tools.
 
 The Open Unreal Automation Tools are lightweight scripts for automating Unreal Engine processes like builds, automation tests, etc.
 
